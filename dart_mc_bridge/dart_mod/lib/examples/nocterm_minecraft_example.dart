@@ -1,10 +1,15 @@
 /// Example nocterm UI rendered to Minecraft blocks.
 ///
 /// This demonstrates rendering a terminal UI as colored concrete blocks
-/// in the Minecraft world.
+/// in the Minecraft world using nocterm's declarative component system.
 library;
 
+import 'dart:async';
+
 import 'package:nocterm/nocterm.dart';
+import 'package:nocterm/src/backend/terminal.dart' as term;
+import 'package:nocterm/src/binding/terminal_binding.dart';
+import 'package:nocterm/src/buffer.dart' as buf;
 import 'package:nocterm_minecraft/nocterm_minecraft.dart';
 import 'package:dart_mc_mod/dart_mod.dart' show BlockPos;
 
@@ -13,221 +18,223 @@ import '../api/block.dart';
 import '../api/custom_block.dart';
 import '../api/block_registry.dart';
 import '../api/player.dart';
+// ignore: unused_import - used by demoCreateTestScreen
 import '../src/bridge.dart';
 import '../src/types.dart';
 
-/// A simple test component with colored boxes.
-class TestMinecraftUI extends StatelessComponent {
+// =============================================================================
+// Animated nocterm Components
+// =============================================================================
+
+/// Custom painter for diagonal rainbow wave pattern.
+/// Draws diagonal stripes that animate over time.
+class RainbowWavePainter extends CustomPainter {
+  RainbowWavePainter({required this.frame});
+
+  final int frame;
+
+  // Rainbow colors
+  static const _colors = [
+    Color.fromRGB(255, 0, 0), // Red
+    Color.fromRGB(255, 127, 0), // Orange
+    Color.fromRGB(255, 255, 0), // Yellow
+    Color.fromRGB(0, 255, 0), // Green
+    Color.fromRGB(0, 255, 255), // Cyan
+    Color.fromRGB(0, 0, 255), // Blue
+    Color.fromRGB(139, 0, 255), // Purple
+    Color.fromRGB(255, 0, 255), // Magenta
+  ];
+
+  @override
+  void paint(TerminalCanvas canvas, Size size) {
+    for (int y = 0; y < size.height; y++) {
+      for (int x = 0; x < size.width; x++) {
+        // Diagonal stripes: x + y gives diagonal, add frame for animation
+        final colorIndex = ((x + y + frame) ~/ 3) % _colors.length;
+        final color = _colors[colorIndex];
+
+        // Fill this pixel with the background color
+        canvas.fillRect(
+          Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1),
+          ' ', // Space character (we only care about background)
+          style: TextStyle(backgroundColor: color),
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(RainbowWavePainter oldDelegate) {
+    return frame != oldDelegate.frame;
+  }
+}
+
+/// An animated rainbow stripes component using setState and CustomPaint.
+/// Creates diagonal rainbow stripes that animate.
+class RainbowWaveComponent extends StatefulComponent {
+  const RainbowWaveComponent({super.key, this.gridWidth = 21, this.gridHeight = 16});
+
+  final int gridWidth;
+  final int gridHeight;
+
+  @override
+  State<RainbowWaveComponent> createState() => _RainbowWaveState();
+}
+
+class _RainbowWaveState extends State<RainbowWaveComponent> {
+  Timer? _timer;
+  int _frame = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Animate at ~4 FPS for smooth scrolling
+    _timer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      setState(() => _frame++);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
   @override
   Component build(BuildContext context) {
-    return Column(
-      children: [
-        // Red header bar
-        Container(
-          color: Colors.red,
-          height: 3,
-          child: Center(
-            child: Text('Minecraft nocterm'),
-          ),
-        ),
-        // Main content area with colored sections
-        Expanded(
-          child: Row(
-            children: [
-              // Blue sidebar
-              Container(
-                color: Colors.blue,
-                width: 5,
-              ),
-              // Green main area
-              Expanded(
-                child: Container(
-                  color: Colors.green,
-                  child: Center(
-                    child: Container(
-                      color: Colors.yellow,
-                      width: 8,
-                      height: 4,
-                      child: Center(
-                        child: Text('Hi!'),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Magenta sidebar
-              Container(
-                color: Colors.magenta,
-                width: 5,
-              ),
-            ],
-          ),
-        ),
-        // Cyan footer
-        Container(
-          color: Colors.cyan,
-          height: 2,
-        ),
-      ],
+    return CustomPaint(
+      painter: RainbowWavePainter(frame: _frame),
+      size: Size(component.gridWidth.toDouble(), component.gridHeight.toDouble()),
     );
   }
 }
 
-/// A colorful gradient test pattern.
-class ColorTestPattern extends StatelessComponent {
+/// A static UI demo component (no animation).
+/// Simple solid color fill to test rendering works.
+class StaticUIComponent extends StatelessComponent {
   @override
   Component build(BuildContext context) {
-    return Column(
-      children: [
-        _colorRow(Colors.white, Colors.black),
-        _colorRow(Colors.red, Colors.brightRed),
-        _colorRow(Colors.yellow, Colors.brightYellow),
-        _colorRow(Colors.green, Colors.cyan),
-        _colorRow(Colors.blue, Colors.brightBlue),
-        _colorRow(Colors.magenta, Colors.brightMagenta),
-      ],
-    );
-  }
-
-  Component _colorRow(Color left, Color right) {
-    return Expanded(
-      child: Row(
-        children: [
-          Expanded(child: Container(color: left)),
-          Expanded(child: Container(color: right)),
-        ],
-      ),
+    // Just a solid red container that fills the entire space
+    return Container(
+      color: Colors.red,
     );
   }
 }
 
 // =============================================================================
-// Screen Manager - Manages active Minecraft screens
+// Minecraft Screen Manager with Declarative Rendering
 // =============================================================================
 
-/// Manages nocterm screens rendered in Minecraft.
+/// Manages nocterm rendering to Minecraft.
 class MinecraftScreenManager {
   static MinecraftScreenManager? _instance;
   static MinecraftScreenManager get instance => _instance ??= MinecraftScreenManager._();
 
   MinecraftScreenManager._();
 
-  MinecraftBinding? _activeBinding;
-  MinecraftScreen? _activeScreen;
+  MinecraftScreen? _screen;
+  TerminalBinding? _binding;
+  HeadlessBackend? _backend;
+  bool _isRunning = false;
+  bool _bindingInitialized = false;
 
-  /// Animation state
-  bool _animationRunning = false;
-  int _animationFrame = 0;
+  MinecraftScreen? get screen => _screen;
+  bool get isRunning => _isRunning;
 
-  /// Create and activate a screen at the given corners.
-  /// Corners must be in the same vertical plane (same X or same Z).
-  void createScreen(BlockPos corner1, BlockPos corner2) {
-    // Dispose existing screen if any
-    _activeBinding?.detach();
-    _animationRunning = false;
+  /// Start rendering a nocterm component to a Minecraft screen.
+  void start(MinecraftScreen screen, Component component) {
+    _screen = screen;
+    _isRunning = true;
 
-    try {
-      _activeScreen = MinecraftScreen.fromCorners(corner1, corner2);
-      _activeBinding = MinecraftBinding(
-        screen: _activeScreen!,
-        world: World.overworld,
+    // Create binding only once (to avoid extension registration conflicts)
+    if (!_bindingInitialized) {
+      _backend = HeadlessBackend(
+        size: Size(screen.width.toDouble(), screen.height.toDouble()),
       );
-      print('[nocterm_mc] Screen created: ${_activeScreen!.width}x${_activeScreen!.height}');
-    } catch (e) {
-      print('[nocterm_mc] Failed to create screen: $e');
+      final terminal = term.Terminal(_backend!, size: _backend!.getSize());
+      _binding = TerminalBinding(terminal);
+      _bindingInitialized = true;
+      print('[nocterm_mc] Created TerminalBinding');
+    } else {
+      // Update backend size if screen dimensions changed
+      _backend!.notifySizeChanged(Size(screen.width.toDouble(), screen.height.toDouble()));
     }
+
+    // Hook up buffer rendering to Minecraft
+    _binding!.onBufferPainted = (buffer) {
+      if (_isRunning && _screen != null) {
+        _renderBufferToMinecraft(buffer, _screen!);
+      }
+    };
+
+    // Attach component and trigger render
+    _binding!.attachRootComponent(component);
+    _binding!.scheduleFrame();
+
+    print('[nocterm_mc] Started rendering ${screen.width}x${screen.height}');
   }
 
-  /// Get the active binding (to attach to TerminalBinding).
-  MinecraftBinding? get binding => _activeBinding;
-
-  /// Get the active screen dimensions.
-  MinecraftScreen? get screen => _activeScreen;
-
-  /// Whether animation is currently running.
-  bool get isAnimating => _animationRunning;
-
-  /// Current animation frame.
-  int get animationFrame => _animationFrame;
-
-  /// Start the animation loop.
-  void startAnimation() {
-    _animationRunning = true;
-    _animationFrame = 0;
+  /// Stop the current rendering session (but keep binding alive).
+  void stop() {
+    _isRunning = false;
+    _binding?.onBufferPainted = null;
+    print('[nocterm_mc] Stopped rendering');
   }
 
-  /// Stop the animation loop.
-  void stopAnimation() {
-    _animationRunning = false;
-  }
-
-  /// Called every tick to update animation.
-  /// Returns true if a frame was rendered.
-  bool tick(int gameTick) {
-    if (!_animationRunning || _activeScreen == null) return false;
-
-    // Render every 4 ticks (5 FPS) to avoid overwhelming the server
-    if (gameTick % 4 != 0) return false;
-
-    _animationFrame++;
-    _renderAnimatedFrame(_activeScreen!, World.overworld, _animationFrame);
-    return true;
-  }
-
-  /// Clear the screen (fill with air blocks).
+  /// Clear the screen blocks.
   void clearScreen() {
-    if (_activeScreen == null) return;
-    _animationRunning = false;
+    if (_screen == null) return;
 
     final world = World.overworld;
-    for (var y = 0; y < _activeScreen!.height; y++) {
-      for (var x = 0; x < _activeScreen!.width; x++) {
-        final pos = _activeScreen!.bufferToWorld(x, y);
+    for (var y = 0; y < _screen!.height; y++) {
+      for (var x = 0; x < _screen!.width; x++) {
+        final pos = _screen!.bufferToWorld(x, y);
         world.setBlock(pos, Block.air);
       }
     }
     print('[nocterm_mc] Screen cleared');
   }
 
-  /// Dispose the current screen.
+  /// Dispose the screen (but keep binding for reuse).
   void dispose() {
-    _activeBinding?.detach();
-    _activeBinding = null;
-    _activeScreen = null;
-    _animationRunning = false;
+    stop();
+    _screen = null;
   }
 
-  /// Renders an animated frame with wave/rainbow effect.
-  void _renderAnimatedFrame(MinecraftScreen screen, World world, int frame) {
-    // Color palette for rainbow effect
-    final palette = [
-      Block('minecraft:red_concrete'),
-      Block('minecraft:orange_concrete'),
-      Block('minecraft:yellow_concrete'),
-      Block('minecraft:lime_concrete'),
-      Block('minecraft:cyan_concrete'),
-      Block('minecraft:blue_concrete'),
-      Block('minecraft:purple_concrete'),
-      Block('minecraft:magenta_concrete'),
-    ];
+  /// Render a nocterm buffer to Minecraft blocks.
+  void _renderBufferToMinecraft(buf.Buffer buffer, MinecraftScreen screen) {
+    final world = World.overworld;
 
-    for (int y = 0; y < screen.height; y++) {
-      for (int x = 0; x < screen.width; x++) {
-        final pos = screen.bufferToWorld(x, y);
+    // Debug: log first cell's color to see if animation is working
+    final firstCell = buffer.getCell(0, 0);
+    final firstBg = firstCell.style.backgroundColor;
 
-        // Create a wave pattern that moves over time
-        // The wave moves diagonally across the screen
-        final wave = (x + y + frame) % palette.length;
-        final block = palette[wave];
+    for (int y = 0; y < buffer.height && y < screen.height; y++) {
+      for (int x = 0; x < buffer.width && x < screen.width; x++) {
+        final cell = buffer.getCell(x, y);
+        final bgColor = cell.style.backgroundColor;
 
-        world.setBlock(pos, block);
+        // Render background color as blocks
+        if (bgColor != null && !bgColor.isDefault) {
+          final argb = (bgColor.alpha << 24) | (bgColor.red << 16) | (bgColor.green << 8) | bgColor.blue;
+          final block = ColorMapper.getBlockFromArgb(argb);
+          final worldPos = screen.bufferToWorld(x, y);
+          world.setBlock(worldPos, block);
+        } else {
+          // No background = use white concrete as fallback
+          final worldPos = screen.bufferToWorld(x, y);
+          world.setBlock(worldPos, Block('minecraft:white_concrete'));
+        }
       }
     }
   }
 }
 
-/// Register the screen corner block and demo trigger block.
-/// Call this during mod initialization before BlockRegistry.freeze().
+// =============================================================================
+// Block Registration
+// =============================================================================
+
+/// Register nocterm minecraft blocks.
 void registerNoctermMinecraftBlocks() {
   print('[nocterm_mc] Registering nocterm minecraft blocks...');
   ScreenCornerBlock.register();
@@ -236,21 +243,18 @@ void registerNoctermMinecraftBlocks() {
 }
 
 // =============================================================================
-// Demo Trigger Block - Creates and renders a nocterm screen
+// Demo Trigger Block
 // =============================================================================
 
-/// Demo block that creates a nocterm screen and renders a test UI.
+/// Demo block for nocterm Minecraft rendering.
 /// - Right-click: Create screen with static UI
 /// - Right-click again: Start rainbow wave animation
-/// - Sneak + right-click: Clear screen and stop animation
+/// - Sneak + right-click: Clear and stop
 class NoctermDemoBlock extends CustomBlock {
   NoctermDemoBlock()
       : super(
           id: 'dartmod:nocterm_demo',
-          settings: BlockSettings(
-            hardness: 1.0,
-            resistance: 1.0,
-          ),
+          settings: BlockSettings(hardness: 1.0, resistance: 1.0),
         );
 
   @override
@@ -258,70 +262,51 @@ class NoctermDemoBlock extends CustomBlock {
     final player = Player(playerId);
     final manager = MinecraftScreenManager.instance;
 
-    // Check if sneaking - if so, clear the screen
+    // Sneak + click = clear
     if (player.isSneaking) {
-      _clearScreen(player);
+      manager.clearScreen();
+      manager.dispose();
+      player.sendMessage('§a[nocterm] §fScreen cleared!');
       return ActionResult.success;
     }
 
-    // If screen exists, toggle animation
+    // If screen exists, toggle to animated
     if (manager.screen != null) {
-      if (manager.isAnimating) {
-        manager.stopAnimation();
-        player.sendMessage('§e[nocterm] §fAnimation stopped.');
-        // Re-render static UI
-        _renderColorDemo(manager.screen!, World.overworld);
-      } else {
-        manager.startAnimation();
-        player.sendMessage('§a[nocterm] §f🌈 Rainbow wave animation started!');
-        player.sendMessage('§7Right-click again to stop, sneak+click to clear.');
-      }
+      // Switch to animated rainbow wave
+      player.sendMessage('§a[nocterm] §f🌈 Starting rainbow wave animation...');
+      manager.start(
+        manager.screen!,
+        RainbowWaveComponent(
+          gridWidth: manager.screen!.width,
+          gridHeight: manager.screen!.height,
+        ),
+      );
+      player.sendMessage('§7Using declarative nocterm components with setState');
       return ActionResult.success;
     }
 
-    // Create and render a demo screen
-    _createDemoScreen(player, x, y, z);
+    // Create new screen
+    _createScreen(player, x, y, z);
     return ActionResult.success;
   }
 
-  void _clearScreen(Player player) {
-    final manager = MinecraftScreenManager.instance;
-    if (manager.screen == null) {
-      player.sendMessage('§c[nocterm] §fNo active screen to clear.');
-      return;
-    }
-
-    manager.clearScreen();
-    manager.dispose();
-    player.sendMessage('§a[nocterm] §fScreen cleared!');
-  }
-
-  void _createDemoScreen(Player player, int blockX, int blockY, int blockZ) {
-    final world = World.overworld;
-
-    // Get player facing direction from yaw
+  void _createScreen(Player player, int blockX, int blockY, int blockZ) {
     final yaw = player.yaw;
-
-    // Determine which plane to use based on player facing
-    // Yaw: 0 = south (+Z), 90 = west (-X), 180 = north (-Z), 270 = east (+X)
     final bool facingX = (yaw > 45 && yaw <= 135) || (yaw > 225 && yaw <= 315);
 
-    // Screen dimensions
     const screenWidth = 21;
     const screenHeight = 16;
-    const distance = 5; // Blocks in front of player
+    const distance = 5;
 
     final BlockPos corner1;
     final BlockPos corner2;
 
     if (facingX) {
-      // Player facing along X axis - screen on Z plane
       final zOffset = (yaw > 45 && yaw <= 135) ? -distance : distance;
       final screenZ = blockZ + zOffset;
       corner1 = BlockPos(blockX - screenWidth ~/ 2, blockY + screenHeight, screenZ);
       corner2 = BlockPos(blockX + screenWidth ~/ 2, blockY + 1, screenZ);
     } else {
-      // Player facing along Z axis - screen on X plane
       final xOffset = (yaw <= 45 || yaw > 315) ? distance : -distance;
       final screenX = blockX + xOffset;
       corner1 = BlockPos(screenX, blockY + screenHeight, blockZ - screenWidth ~/ 2);
@@ -330,107 +315,22 @@ class NoctermDemoBlock extends CustomBlock {
 
     player.sendMessage('§b[nocterm] §fCreating ${screenWidth}x${screenHeight} screen...');
 
-    // Create the screen
-    final manager = MinecraftScreenManager.instance;
-    manager.createScreen(corner1, corner2);
+    try {
+      final screen = MinecraftScreen.fromCorners(corner1, corner2);
 
-    final screen = manager.screen;
-    final binding = manager.binding;
+      // Start with static UI
+      MinecraftScreenManager.instance.start(screen, StaticUIComponent());
 
-    if (screen == null || binding == null) {
-      player.sendMessage('§c[nocterm] §fFailed to create screen!');
-      return;
-    }
-
-    player.sendMessage('§a[nocterm] §fScreen created! Rendering demo UI...');
-
-    // Now we need to render the UI to the screen
-    // We'll directly render a color pattern since we don't have a full nocterm runtime
-    _renderColorDemo(screen, world);
-
-    player.sendMessage('§a[nocterm] §fDemo rendered! §7(${screen.width}x${screen.height} blocks)');
-    player.sendMessage('§7Right-click again for 🌈 animation, sneak+click to clear.');
-  }
-
-  /// Renders a colorful demo pattern directly to the screen.
-  void _renderColorDemo(MinecraftScreen screen, World world) {
-    // Color pattern: header, body with sidebars, footer
-    final colors = [
-      ColorMapper.getBlockFromArgb(0xFFE76170), // Red (header)
-      ColorMapper.getBlockFromArgb(0xFF8BB3F4), // Blue (sidebar)
-      ColorMapper.getBlockFromArgb(0xFF8BD598), // Green (main)
-      ColorMapper.getBlockFromArgb(0xFFF1D589), // Yellow (center box)
-      ColorMapper.getBlockFromArgb(0xFFC6A0F6), // Magenta (sidebar)
-      ColorMapper.getBlockFromArgb(0xFF8BD5CA), // Cyan (footer)
-    ];
-
-    for (int y = 0; y < screen.height; y++) {
-      for (int x = 0; x < screen.width; x++) {
-        final pos = screen.bufferToWorld(x, y);
-        Block block;
-
-        // Header (top 3 rows)
-        if (y < 3) {
-          block = colors[0]; // Red
-        }
-        // Footer (bottom 2 rows)
-        else if (y >= screen.height - 2) {
-          block = colors[5]; // Cyan
-        }
-        // Left sidebar (5 blocks wide)
-        else if (x < 5) {
-          block = colors[1]; // Blue
-        }
-        // Right sidebar (5 blocks wide)
-        else if (x >= screen.width - 5) {
-          block = colors[4]; // Magenta
-        }
-        // Center yellow box
-        else if (y >= screen.height ~/ 2 - 2 && y < screen.height ~/ 2 + 2 &&
-                 x >= screen.width ~/ 2 - 4 && x < screen.width ~/ 2 + 4) {
-          block = colors[3]; // Yellow
-        }
-        // Main area
-        else {
-          block = colors[2]; // Green
-        }
-
-        world.setBlock(pos, block);
-      }
+      player.sendMessage('§a[nocterm] §fScreen created with static UI!');
+      player.sendMessage('§7Right-click again for 🌈 rainbow animation');
+      player.sendMessage('§7Sneak + click to clear');
+    } catch (e) {
+      player.sendMessage('§c[nocterm] §fFailed: $e');
     }
   }
 }
 
-/// Call this from your onTick handler to update animations.
-/// Add to your Events.onTick: `noctermTick(tick);`
+/// Tick handler - not needed anymore since Timer.periodic handles animation
 void noctermTick(int tick) {
-  MinecraftScreenManager.instance.tick(tick);
-}
-
-/// Demo: Create a test screen and render a UI to it.
-/// Call this with player coordinates to create a screen nearby.
-void demoCreateTestScreen(int playerX, int playerY, int playerZ, int playerId) {
-  // Create a 20x15 screen on the X plane, 5 blocks in front of player
-  final corner1 = BlockPos(playerX + 5, playerY + 15, playerZ - 10);
-  final corner2 = BlockPos(playerX + 5, playerY, playerZ + 10);
-
-  Bridge.sendChatMessage(playerId, '§b[nocterm] §fCreating test screen...');
-
-  MinecraftScreenManager.instance.createScreen(corner1, corner2);
-
-  final screen = MinecraftScreenManager.instance.screen;
-  if (screen != null) {
-    Bridge.sendChatMessage(
-      playerId,
-      '§a[nocterm] §fScreen created: ${screen.width}x${screen.height} blocks',
-    );
-    Bridge.sendChatMessage(
-      playerId,
-      '§7Corner 1: (${corner1.x}, ${corner1.y}, ${corner1.z})',
-    );
-    Bridge.sendChatMessage(
-      playerId,
-      '§7Corner 2: (${corner2.x}, ${corner2.y}, ${corner2.z})',
-    );
-  }
+  // Animation is handled by Timer.periodic in StatefulComponents
 }

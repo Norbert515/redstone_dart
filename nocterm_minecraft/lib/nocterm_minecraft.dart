@@ -31,3 +31,4 @@ export 'src/minecraft_screen.dart' show MinecraftScreen;
 export 'src/color_mapper.dart' show ColorMapper;
 export 'src/block_renderer.dart' show BlockRenderer, BlockChange, RenderResult;
 export 'src/screen_corner_block.dart' show ScreenCornerBlock;
+export 'src/headless_backend.dart' show HeadlessBackend;
