@@ -489,4 +489,228 @@ JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onServerStopping(
     dispatch_server_stopping();
 }
 
+// ==========================================================================
+// Screen/GUI JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenInit
+ * Signature: (JII)V
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onScreenInit(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jint width, jint height) {
+    dispatch_screen_init(static_cast<int64_t>(screenId),
+                         static_cast<int32_t>(width),
+                         static_cast<int32_t>(height));
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenTick
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onScreenTick(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId) {
+    dispatch_screen_tick(static_cast<int64_t>(screenId));
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenRender
+ * Signature: (JIIF)V
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onScreenRender(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jint mouseX, jint mouseY, jfloat partialTick) {
+    dispatch_screen_render(static_cast<int64_t>(screenId),
+                           static_cast<int32_t>(mouseX),
+                           static_cast<int32_t>(mouseY),
+                           static_cast<float>(partialTick));
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenClose
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onScreenClose(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId) {
+    dispatch_screen_close(static_cast<int64_t>(screenId));
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenKeyPressed
+ * Signature: (JIII)Z
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onScreenKeyPressed(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jint keyCode, jint scanCode, jint modifiers) {
+    bool result = dispatch_screen_key_pressed(static_cast<int64_t>(screenId),
+                                               static_cast<int32_t>(keyCode),
+                                               static_cast<int32_t>(scanCode),
+                                               static_cast<int32_t>(modifiers));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenKeyReleased
+ * Signature: (JIII)Z
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onScreenKeyReleased(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jint keyCode, jint scanCode, jint modifiers) {
+    bool result = dispatch_screen_key_released(static_cast<int64_t>(screenId),
+                                                static_cast<int32_t>(keyCode),
+                                                static_cast<int32_t>(scanCode),
+                                                static_cast<int32_t>(modifiers));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenCharTyped
+ * Signature: (JII)Z
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onScreenCharTyped(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jint codePoint, jint modifiers) {
+    bool result = dispatch_screen_char_typed(static_cast<int64_t>(screenId),
+                                              static_cast<int32_t>(codePoint),
+                                              static_cast<int32_t>(modifiers));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenMouseClicked
+ * Signature: (JDDI)Z
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onScreenMouseClicked(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jdouble mouseX, jdouble mouseY, jint button) {
+    bool result = dispatch_screen_mouse_clicked(static_cast<int64_t>(screenId),
+                                                 static_cast<double>(mouseX),
+                                                 static_cast<double>(mouseY),
+                                                 static_cast<int32_t>(button));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenMouseReleased
+ * Signature: (JDDI)Z
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onScreenMouseReleased(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jdouble mouseX, jdouble mouseY, jint button) {
+    bool result = dispatch_screen_mouse_released(static_cast<int64_t>(screenId),
+                                                  static_cast<double>(mouseX),
+                                                  static_cast<double>(mouseY),
+                                                  static_cast<int32_t>(button));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenMouseDragged
+ * Signature: (JDDIDD)Z
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onScreenMouseDragged(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jdouble mouseX, jdouble mouseY,
+    jint button, jdouble dragX, jdouble dragY) {
+    bool result = dispatch_screen_mouse_dragged(static_cast<int64_t>(screenId),
+                                                 static_cast<double>(mouseX),
+                                                 static_cast<double>(mouseY),
+                                                 static_cast<int32_t>(button),
+                                                 static_cast<double>(dragX),
+                                                 static_cast<double>(dragY));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onScreenMouseScrolled
+ * Signature: (JDDDD)Z
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onScreenMouseScrolled(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jdouble mouseX, jdouble mouseY,
+    jdouble deltaX, jdouble deltaY) {
+    bool result = dispatch_screen_mouse_scrolled(static_cast<int64_t>(screenId),
+                                                  static_cast<double>(mouseX),
+                                                  static_cast<double>(mouseY),
+                                                  static_cast<double>(deltaX),
+                                                  static_cast<double>(deltaY));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// ==========================================================================
+// Widget JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onWidgetPressed
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onWidgetPressed(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jlong widgetId) {
+    dispatch_widget_pressed(static_cast<int64_t>(screenId), static_cast<int64_t>(widgetId));
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onWidgetTextChanged
+ * Signature: (JJLjava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onWidgetTextChanged(
+    JNIEnv* env, jclass /* cls */, jlong screenId, jlong widgetId, jstring text) {
+    const char* textStr = env->GetStringUTFChars(text, nullptr);
+    dispatch_widget_text_changed(static_cast<int64_t>(screenId), static_cast<int64_t>(widgetId), textStr);
+    env->ReleaseStringUTFChars(text, textStr);
+}
+
+// ==========================================================================
+// Container Screen JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onContainerScreenInit
+ * Signature: (JIIIIII)V
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onContainerScreenInit(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jint width, jint height,
+    jint leftPos, jint topPos, jint imageWidth, jint imageHeight) {
+    dispatch_container_screen_init(static_cast<int64_t>(screenId),
+                                   static_cast<int32_t>(width),
+                                   static_cast<int32_t>(height),
+                                   static_cast<int32_t>(leftPos),
+                                   static_cast<int32_t>(topPos),
+                                   static_cast<int32_t>(imageWidth),
+                                   static_cast<int32_t>(imageHeight));
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onContainerScreenRenderBg
+ * Signature: (JIIFII)V
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onContainerScreenRenderBg(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jint mouseX, jint mouseY,
+    jfloat partialTick, jint leftPos, jint topPos) {
+    dispatch_container_screen_render_bg(static_cast<int64_t>(screenId),
+                                        static_cast<int32_t>(mouseX),
+                                        static_cast<int32_t>(mouseY),
+                                        static_cast<float>(partialTick),
+                                        static_cast<int32_t>(leftPos),
+                                        static_cast<int32_t>(topPos));
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onContainerScreenClose
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onContainerScreenClose(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId) {
+    dispatch_container_screen_close(static_cast<int64_t>(screenId));
+}
+
 } // extern "C"
