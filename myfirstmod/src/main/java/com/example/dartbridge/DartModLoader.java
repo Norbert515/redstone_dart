@@ -1,0 +1,154 @@
+package com.example.dartbridge;
+
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.nio.file.Path;
+
+/**
+ * Fabric mod initializer that loads and manages the Dart VM.
+ *
+ * This class is responsible for:
+ * - Initializing the Dart VM when the server starts
+ * - Forwarding Minecraft events to Dart handlers
+ * - Shutting down the Dart VM when the server stops
+ */
+public class DartModLoader implements ModInitializer {
+    public static final String MOD_ID = "dart_bridge";
+    private static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+    private static long tickCounter = 0;
+    private static MinecraftServer serverInstance = null;
+
+    /**
+     * Get the path to the Dart script file.
+     */
+    private static String getScriptPath() {
+        // Look for dart_mod.dart in several locations
+        String[] searchPaths = {
+            "mods/dart_mod.dart",
+            "dart_mod.dart",
+            "config/dart_mod.dart"
+        };
+
+        String runDir = System.getProperty("user.dir");
+        for (String path : searchPaths) {
+            File f = new File(runDir, path);
+            if (f.exists()) {
+                return f.getAbsolutePath();
+            }
+        }
+
+        // Default path
+        return Path.of(runDir, "mods", "dart_mod.dart").toAbsolutePath().toString();
+    }
+
+    @Override
+    public void onInitialize() {
+        LOGGER.info("[{}] Initializing Dart Bridge mod...", MOD_ID);
+
+        if (!DartBridge.isLibraryLoaded()) {
+            LOGGER.error("[{}] Native library not loaded, Dart Bridge will be disabled", MOD_ID);
+            return;
+        }
+
+        // Initialize Dart VM when server starts
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+            serverInstance = server;
+            LOGGER.info("[{}] Server starting, initializing Dart VM...", MOD_ID);
+            String scriptPath = getScriptPath();
+            LOGGER.info("[{}] Script path: {}", MOD_ID, scriptPath);
+
+            File scriptFile = new File(scriptPath);
+            if (!scriptFile.exists()) {
+                LOGGER.error("[{}] Dart script not found at: {}", MOD_ID, scriptPath);
+                LOGGER.error("[{}] Please place your dart_mod.dart file in the mods folder", MOD_ID);
+                return;
+            }
+
+            // Register chat message handler before initializing Dart
+            DartBridge.setChatMessageHandler((playerId, message) -> {
+                if (serverInstance == null) return;
+
+                // Find player by entity ID
+                for (ServerPlayer player : serverInstance.getPlayerList().getPlayers()) {
+                    if (player.getId() == playerId) {
+                        player.sendSystemMessage(Component.literal(message));
+                        return;
+                    }
+                }
+                // If player not found, broadcast to all
+                LOGGER.warn("[{}] Player with ID {} not found, broadcasting message", MOD_ID, playerId);
+                serverInstance.getPlayerList().broadcastSystemMessage(Component.literal(message), false);
+            });
+
+            if (!DartBridge.safeInit(scriptPath)) {
+                LOGGER.error("[{}] Failed to initialize Dart VM!", MOD_ID);
+            }
+        });
+
+        // Shutdown Dart VM when server stops
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            LOGGER.info("[{}] Server stopped, shutting down Dart VM...", MOD_ID);
+            DartBridge.safeShutdown();
+            serverInstance = null;
+        });
+
+        // Register tick event - process Dart async tasks and dispatch tick
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (DartBridge.isInitialized()) {
+                DartBridge.dispatchTick(tickCounter++);
+                DartBridge.safeTick();
+            }
+        });
+
+        // Register block break event
+        PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, blockEntity) -> {
+            if (!DartBridge.isInitialized()) return true;
+
+            int result = DartBridge.dispatchBlockBreak(
+                pos.getX(),
+                pos.getY(),
+                pos.getZ(),
+                player.getId()
+            );
+
+            // Return true to allow break, false to cancel
+            return result != 0;
+        });
+
+        // Register block interact event
+        UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+            if (!DartBridge.isInitialized()) return InteractionResult.PASS;
+
+            var pos = hitResult.getBlockPos();
+            int handValue = (hand == InteractionHand.MAIN_HAND) ? 0 : 1;
+
+            int result = DartBridge.dispatchBlockInteract(
+                pos.getX(),
+                pos.getY(),
+                pos.getZ(),
+                player.getId(),
+                handValue
+            );
+
+            if (result == 0) {
+                return InteractionResult.FAIL;
+            } else {
+                return InteractionResult.PASS;
+            }
+        });
+
+        LOGGER.info("[{}] Dart Bridge mod initialized!", MOD_ID);
+    }
+}

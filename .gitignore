@@ -1,0 +1,97 @@
+# ====================
+# OS Generated Files
+# ====================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ====================
+# IDE / Editors
+# ====================
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+*.launch
+.classpath
+.project
+*.code-workspace
+.vs/
+
+# ====================
+# Gradle / Java
+# ====================
+.gradle/
+build/
+out/
+classes/
+bin/
+
+# JVM crash/debug logs
+hs_err_*.log
+replay_*.log
+*.hprof
+*.jfr
+
+# ====================
+# Dart / Flutter
+# ====================
+.dart_tool/
+.packages
+pubspec.lock
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# ====================
+# Native / C++ Build
+# ====================
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.lib
+
+# ====================
+# Minecraft Fabric
+# ====================
+run/
+mc-sources/
+
+# ====================
+# Project Specific
+# ====================
+# Claude Code local settings
+.claude/settings.local.json
+
+# Large vendored directories
+dart_shared_library/dart-sdk/
+dart_shared_library/depot_tools/
+dart_shared_library/.build/
+dart_shared_library/artifacts/
+dart_shared_library/out/
+
+# Native test binaries and dependencies
+dart_mc_bridge/native/test_dart_init
+dart_mc_bridge/native/test_with_callbacks
+dart_mc_bridge/native/deps/
+
+# ====================
+# Environment / Secrets
+# ====================
+.env
+.env.*
+!.env.example
+*.local
+secrets/
+credentials/

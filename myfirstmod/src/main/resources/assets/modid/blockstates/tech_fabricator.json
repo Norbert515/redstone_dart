@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "modid:block/tech_fabricator"
+    }
+  }
+}
