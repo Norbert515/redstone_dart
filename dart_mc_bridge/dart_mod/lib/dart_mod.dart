@@ -60,7 +60,8 @@ void main() {
 
   Events.onTick((tick) {
     // Called every game tick (20 times per second)
-    // Add your tick logic here
+    // Update nocterm animations
+    noctermTick(tick);
   });
 
   // ===========================================================================

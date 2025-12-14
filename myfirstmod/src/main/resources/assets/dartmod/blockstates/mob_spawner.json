@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "dartmod:block/mob_spawner"
+    }
+  }
+}

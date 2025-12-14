@@ -115,11 +115,16 @@ class MinecraftScreenManager {
   MinecraftBinding? _activeBinding;
   MinecraftScreen? _activeScreen;
 
+  /// Animation state
+  bool _animationRunning = false;
+  int _animationFrame = 0;
+
   /// Create and activate a screen at the given corners.
   /// Corners must be in the same vertical plane (same X or same Z).
   void createScreen(BlockPos corner1, BlockPos corner2) {
     // Dispose existing screen if any
     _activeBinding?.detach();
+    _animationRunning = false;
 
     try {
       _activeScreen = MinecraftScreen.fromCorners(corner1, corner2);
@@ -139,9 +144,40 @@ class MinecraftScreenManager {
   /// Get the active screen dimensions.
   MinecraftScreen? get screen => _activeScreen;
 
+  /// Whether animation is currently running.
+  bool get isAnimating => _animationRunning;
+
+  /// Current animation frame.
+  int get animationFrame => _animationFrame;
+
+  /// Start the animation loop.
+  void startAnimation() {
+    _animationRunning = true;
+    _animationFrame = 0;
+  }
+
+  /// Stop the animation loop.
+  void stopAnimation() {
+    _animationRunning = false;
+  }
+
+  /// Called every tick to update animation.
+  /// Returns true if a frame was rendered.
+  bool tick(int gameTick) {
+    if (!_animationRunning || _activeScreen == null) return false;
+
+    // Render every 4 ticks (5 FPS) to avoid overwhelming the server
+    if (gameTick % 4 != 0) return false;
+
+    _animationFrame++;
+    _renderAnimatedFrame(_activeScreen!, World.overworld, _animationFrame);
+    return true;
+  }
+
   /// Clear the screen (fill with air blocks).
   void clearScreen() {
     if (_activeScreen == null) return;
+    _animationRunning = false;
 
     final world = World.overworld;
     for (var y = 0; y < _activeScreen!.height; y++) {
@@ -158,6 +194,35 @@ class MinecraftScreenManager {
     _activeBinding?.detach();
     _activeBinding = null;
     _activeScreen = null;
+    _animationRunning = false;
+  }
+
+  /// Renders an animated frame with wave/rainbow effect.
+  void _renderAnimatedFrame(MinecraftScreen screen, World world, int frame) {
+    // Color palette for rainbow effect
+    final palette = [
+      Block('minecraft:red_concrete'),
+      Block('minecraft:orange_concrete'),
+      Block('minecraft:yellow_concrete'),
+      Block('minecraft:lime_concrete'),
+      Block('minecraft:cyan_concrete'),
+      Block('minecraft:blue_concrete'),
+      Block('minecraft:purple_concrete'),
+      Block('minecraft:magenta_concrete'),
+    ];
+
+    for (int y = 0; y < screen.height; y++) {
+      for (int x = 0; x < screen.width; x++) {
+        final pos = screen.bufferToWorld(x, y);
+
+        // Create a wave pattern that moves over time
+        // The wave moves diagonally across the screen
+        final wave = (x + y + frame) % palette.length;
+        final block = palette[wave];
+
+        world.setBlock(pos, block);
+      }
+    }
   }
 }
 
@@ -175,8 +240,9 @@ void registerNoctermMinecraftBlocks() {
 // =============================================================================
 
 /// Demo block that creates a nocterm screen and renders a test UI.
-/// Right-click to create a screen in front of you with a colorful demo UI.
-/// Sneak + right-click to clear the current screen.
+/// - Right-click: Create screen with static UI
+/// - Right-click again: Start rainbow wave animation
+/// - Sneak + right-click: Clear screen and stop animation
 class NoctermDemoBlock extends CustomBlock {
   NoctermDemoBlock()
       : super(
@@ -190,10 +256,26 @@ class NoctermDemoBlock extends CustomBlock {
   @override
   ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
     final player = Player(playerId);
+    final manager = MinecraftScreenManager.instance;
 
     // Check if sneaking - if so, clear the screen
     if (player.isSneaking) {
       _clearScreen(player);
+      return ActionResult.success;
+    }
+
+    // If screen exists, toggle animation
+    if (manager.screen != null) {
+      if (manager.isAnimating) {
+        manager.stopAnimation();
+        player.sendMessage('§e[nocterm] §fAnimation stopped.');
+        // Re-render static UI
+        _renderColorDemo(manager.screen!, World.overworld);
+      } else {
+        manager.startAnimation();
+        player.sendMessage('§a[nocterm] §f🌈 Rainbow wave animation started!');
+        player.sendMessage('§7Right-click again to stop, sneak+click to clear.');
+      }
       return ActionResult.success;
     }
 
@@ -267,7 +349,7 @@ class NoctermDemoBlock extends CustomBlock {
     _renderColorDemo(screen, world);
 
     player.sendMessage('§a[nocterm] §fDemo rendered! §7(${screen.width}x${screen.height} blocks)');
-    player.sendMessage('§7Sneak + right-click to clear the screen.');
+    player.sendMessage('§7Right-click again for 🌈 animation, sneak+click to clear.');
   }
 
   /// Renders a colorful demo pattern directly to the screen.
@@ -317,6 +399,12 @@ class NoctermDemoBlock extends CustomBlock {
       }
     }
   }
+}
+
+/// Call this from your onTick handler to update animations.
+/// Add to your Events.onTick: `noctermTick(tick);`
+void noctermTick(int tick) {
+  MinecraftScreenManager.instance.tick(tick);
 }
 
 /// Demo: Create a test screen and render a UI to it.

@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "dartmod:block/explosion_block"
+    }
+  }
+}

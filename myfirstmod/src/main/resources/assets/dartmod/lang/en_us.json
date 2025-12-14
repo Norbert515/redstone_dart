@@ -5,5 +5,18 @@
   "block.dartmod.terraformer": "Terraformer",
   "block.dartmod.inspector": "Block Inspector",
   "block.dartmod.tower_builder": "Tower Builder",
-  "block.dartmod.midas": "Midas Block"
+  "block.dartmod.midas": "Midas Block",
+  "block.dartmod.healer": "Healer Block",
+  "block.dartmod.launcher": "Launcher Block",
+  "block.dartmod.lightning_rod": "Lightning Rod",
+  "block.dartmod.mob_spawner": "Mob Spawner",
+  "block.dartmod.time_controller": "Time Controller",
+  "block.dartmod.weather_controller": "Weather Controller",
+  "block.dartmod.gift_box": "Gift Box",
+  "block.dartmod.explosion_block": "Explosion Block",
+  "block.dartmod.teleporter": "Teleporter",
+  "block.dartmod.party_block": "Party Block",
+  "block.dartmod.info_block": "Info Block",
+  "block.dartmod.screen_corner": "Screen Corner",
+  "block.dartmod.nocterm_demo": "Nocterm Demo"
 }
