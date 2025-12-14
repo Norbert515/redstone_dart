@@ -7,6 +7,10 @@ environment:
 
 dependencies:
   ffi: ^2.1.0
+  nocterm:
+    path: /Users/norbertkozsir/IdeaProjects/nocterm
+  nocterm_minecraft:
+    path: ../../nocterm_minecraft
 
 dev_dependencies:
   ffigen: ^9.0.0

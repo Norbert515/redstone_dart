@@ -1,0 +1,13 @@
+name: nocterm_minecraft
+description: Minecraft block-based rendering backend for nocterm
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  nocterm:
+    path: /Users/norbertkozsir/IdeaProjects/nocterm
+  dart_mc_mod:
+    path: ../dart_mc_bridge/dart_mod

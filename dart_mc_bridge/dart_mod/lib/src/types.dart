@@ -1,6 +1,8 @@
 /// Common type definitions for the Minecraft Dart mod.
 library;
 
+import 'dart:math' as math;
+
 /// Result of an event handler.
 ///
 /// Used to indicate whether an event should be allowed to proceed
@@ -61,6 +63,97 @@ enum Hand {
   static Hand fromValue(int value) {
     return value == 1 ? Hand.offHand : Hand.mainHand;
   }
+}
+
+/// Represents a precise position in 3D space with double precision.
+class Vec3 {
+  final double x;
+  final double y;
+  final double z;
+
+  const Vec3(this.x, this.y, this.z);
+
+  /// Create a Vec3 from a BlockPos (uses block center).
+  factory Vec3.fromBlockPos(BlockPos pos) {
+    return Vec3(pos.x + 0.5, pos.y.toDouble(), pos.z + 0.5);
+  }
+
+  /// Convert to BlockPos (floor of each coordinate).
+  BlockPos toBlockPos() => BlockPos(x.floor(), y.floor(), z.floor());
+
+  /// Vector addition.
+  Vec3 operator +(Vec3 other) => Vec3(x + other.x, y + other.y, z + other.z);
+
+  /// Vector subtraction.
+  Vec3 operator -(Vec3 other) => Vec3(x - other.x, y - other.y, z - other.z);
+
+  /// Scalar multiplication.
+  Vec3 operator *(double scalar) => Vec3(x * scalar, y * scalar, z * scalar);
+
+  /// Scalar division.
+  Vec3 operator /(double scalar) => Vec3(x / scalar, y / scalar, z / scalar);
+
+  /// Unary negation.
+  Vec3 operator -() => Vec3(-x, -y, -z);
+
+  /// Calculate distance to another Vec3.
+  double distanceTo(Vec3 other) {
+    final dx = x - other.x;
+    final dy = y - other.y;
+    final dz = z - other.z;
+    return math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  /// Calculate squared distance to another Vec3 (faster, no sqrt).
+  double distanceSquaredTo(Vec3 other) {
+    final dx = x - other.x;
+    final dy = y - other.y;
+    final dz = z - other.z;
+    return dx * dx + dy * dy + dz * dz;
+  }
+
+  /// Get the length (magnitude) of this vector.
+  double get length => math.sqrt(x * x + y * y + z * z);
+
+  /// Get the squared length (faster, no sqrt).
+  double get lengthSquared => x * x + y * y + z * z;
+
+  /// Normalize this vector (make it unit length).
+  Vec3 get normalized {
+    final len = length;
+    if (len == 0) return Vec3.zero;
+    return this / len;
+  }
+
+  /// Dot product with another vector.
+  double dot(Vec3 other) => x * other.x + y * other.y + z * other.z;
+
+  /// Cross product with another vector.
+  Vec3 cross(Vec3 other) => Vec3(
+        y * other.z - z * other.y,
+        z * other.x - x * other.z,
+        x * other.y - y * other.x,
+      );
+
+  /// Common vectors.
+  static const zero = Vec3(0, 0, 0);
+  static const one = Vec3(1, 1, 1);
+  static const up = Vec3(0, 1, 0);
+  static const down = Vec3(0, -1, 0);
+  static const north = Vec3(0, 0, -1);
+  static const south = Vec3(0, 0, 1);
+  static const east = Vec3(1, 0, 0);
+  static const west = Vec3(-1, 0, 0);
+
+  @override
+  String toString() => 'Vec3($x, $y, $z)';
+
+  @override
+  bool operator ==(Object other) =>
+      other is Vec3 && x == other.x && y == other.y && z == other.z;
+
+  @override
+  int get hashCode => Object.hash(x, y, z);
 }
 
 /// Direction/facing in Minecraft.
