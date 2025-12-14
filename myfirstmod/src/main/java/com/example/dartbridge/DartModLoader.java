@@ -4,16 +4,23 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
+import com.example.dartbridge.proxy.DartBlockProxy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,9 +70,14 @@ public class DartModLoader implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        System.out.println("===== DART BRIDGE INIT START =====");
         LOGGER.info("[{}] Initializing Dart Bridge mod...", MOD_ID);
 
-        if (!DartBridge.isLibraryLoaded()) {
+        boolean libLoaded = DartBridge.isLibraryLoaded();
+        System.out.println("===== Native library loaded: " + libLoaded + " =====");
+        LOGGER.info("[{}] Native library loaded: {}", MOD_ID, libLoaded);
+
+        if (!libLoaded) {
             LOGGER.error("[{}] Native library not loaded, Dart Bridge will be disabled", MOD_ID);
             return;
         }
@@ -73,21 +85,31 @@ public class DartModLoader implements ModInitializer {
         // Initialize Dart VM NOW during mod initialization (before registry freeze)
         // This is critical - block registration must happen during onInitialize()
         String scriptPath = getScriptPath();
+        System.out.println("===== Script path: " + scriptPath + " =====");
         LOGGER.info("[{}] Script path: {}", MOD_ID, scriptPath);
 
         File scriptFile = new File(scriptPath);
-        if (!scriptFile.exists()) {
+        boolean scriptExists = scriptFile.exists();
+        System.out.println("===== Script exists: " + scriptExists + " =====");
+        LOGGER.info("[{}] Script exists: {}", MOD_ID, scriptExists);
+
+        if (!scriptExists) {
             LOGGER.error("[{}] Dart script not found at: {}", MOD_ID, scriptPath);
             LOGGER.error("[{}] Please place your dart_mod.dart file in the mods folder", MOD_ID);
         } else {
             // Initialize Dart VM synchronously during mod init
             // This allows Dart to register blocks before the registry freezes
-            if (!DartBridge.safeInit(scriptPath)) {
+            System.out.println("===== Calling DartBridge.safeInit =====");
+            boolean initResult = DartBridge.safeInit(scriptPath);
+            System.out.println("===== Init result: " + initResult + " =====");
+            LOGGER.info("[{}] Init result: {}", MOD_ID, initResult);
+            if (!initResult) {
                 LOGGER.error("[{}] Failed to initialize Dart VM!", MOD_ID);
             } else {
                 LOGGER.info("[{}] Dart VM initialized successfully!", MOD_ID);
             }
         }
+        System.out.println("===== DART BRIDGE INIT END =====");
 
         // Set up server reference and chat handler when server starts
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
@@ -138,11 +160,16 @@ public class DartModLoader implements ModInitializer {
                 }));
         });
 
-        // Send welcome message when player joins
+        // Player join event - send welcome message and dispatch to Dart
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            ServerPlayer player = handler.getPlayer();
+
+            // Dispatch to Dart
             if (DartBridge.isInitialized()) {
+                DartBridge.dispatchPlayerJoin(player.getId());
+
+                // Send welcome message
                 String url = DartBridge.getServiceUrl();
-                ServerPlayer player = handler.getPlayer();
 
                 // Send Dart support message
                 Component dartMessage = Component.literal("[Dart] ")
@@ -162,6 +189,13 @@ public class DartModLoader implements ModInitializer {
 
                     player.sendSystemMessage(urlMessage);
                 }
+            }
+        });
+
+        // Player leave event
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            if (DartBridge.isInitialized()) {
+                DartBridge.dispatchPlayerLeave(handler.getPlayer().getId());
             }
         });
 
@@ -208,6 +242,14 @@ public class DartModLoader implements ModInitializer {
             if (!DartBridge.isInitialized()) return InteractionResult.PASS;
 
             var pos = hitResult.getBlockPos();
+
+            // Skip if this is a Dart proxy block - it has its own handler via DartBlockProxy.useWithoutItem()
+            // The proxy block returns ActionResult ordinals (0=success), not EventResult (0=cancel)
+            var blockState = world.getBlockState(pos);
+            if (blockState.getBlock() instanceof DartBlockProxy) {
+                return InteractionResult.PASS;
+            }
+
             int handValue = (hand == InteractionHand.MAIN_HAND) ? 0 : 1;
 
             int result = DartBridge.dispatchBlockInteract(
@@ -222,6 +264,63 @@ public class DartModLoader implements ModInitializer {
                 return InteractionResult.FAIL;
             } else {
                 return InteractionResult.PASS;
+            }
+        });
+
+        // Register player attack entity event
+        AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+            if (!DartBridge.isInitialized()) return InteractionResult.PASS;
+
+            boolean allow = DartBridge.dispatchPlayerAttackEntity(player.getId(), entity.getId());
+            return allow ? InteractionResult.PASS : InteractionResult.FAIL;
+        });
+
+        // Register item use event (right-click with item in air)
+        UseItemCallback.EVENT.register((player, world, hand) -> {
+            if (!DartBridge.isInitialized()) return InteractionResult.PASS;
+
+            ItemStack stack = player.getItemInHand(hand);
+            if (stack.isEmpty()) return InteractionResult.PASS;
+
+            String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+            int handValue = (hand == InteractionHand.MAIN_HAND) ? 0 : 1;
+
+            boolean allow = DartBridge.dispatchItemUse(player.getId(), itemId, stack.getCount(), handValue);
+            if (allow) {
+                return InteractionResult.PASS;
+            } else {
+                return InteractionResult.FAIL;
+            }
+        });
+
+        // Register item use on entity event
+        UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+            if (!DartBridge.isInitialized()) return InteractionResult.PASS;
+
+            ItemStack stack = player.getItemInHand(hand);
+            String itemId = stack.isEmpty() ? "minecraft:air" : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+            int handValue = (hand == InteractionHand.MAIN_HAND) ? 0 : 1;
+
+            int result = DartBridge.dispatchItemUseOnEntity(player.getId(), itemId, stack.getCount(), handValue, entity.getId());
+            return result == 0 ? InteractionResult.FAIL : InteractionResult.PASS;
+        });
+
+        // Register server lifecycle events
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+            if (DartBridge.isInitialized()) {
+                DartBridge.dispatchServerStarting();
+            }
+        });
+
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            if (DartBridge.isInitialized()) {
+                DartBridge.dispatchServerStarted();
+            }
+        });
+
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            if (DartBridge.isInitialized()) {
+                DartBridge.dispatchServerStopping();
             }
         });
 

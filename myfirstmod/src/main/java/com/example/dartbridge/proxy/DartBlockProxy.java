@@ -8,6 +8,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A Block proxy that delegates all behavior to Dart.
@@ -16,6 +18,7 @@ import net.minecraft.world.phys.BlockHitResult;
  * The dartHandlerId links to the Dart-side CustomBlock instance.
  */
 public class DartBlockProxy extends Block {
+    private static final Logger LOGGER = LoggerFactory.getLogger("DartBlockProxy");
     private final long dartHandlerId;
 
     public DartBlockProxy(Properties settings, long dartHandlerId) {
@@ -46,10 +49,20 @@ public class DartBlockProxy extends Block {
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos,
                                                 Player player, BlockHitResult hit) {
+        LOGGER.info("useWithoutItem called! pos={}, clientSide={}, dartInit={}",
+            pos, level.isClientSide(), DartBridge.isInitialized());
+
+        // Only run on server side
+        if (level.isClientSide()) {
+            return InteractionResult.SUCCESS;
+        }
+
         if (!DartBridge.isInitialized()) {
+            LOGGER.warn("DartBridge not initialized! libraryLoaded={}", DartBridge.isLibraryLoaded());
             return InteractionResult.PASS;
         }
 
+        LOGGER.info("Calling Dart onProxyBlockUse with handlerId={}", dartHandlerId);
         int result = DartBridge.onProxyBlockUse(
             dartHandlerId,
             level.hashCode(),
@@ -59,6 +72,7 @@ public class DartBlockProxy extends Block {
             player.getId(),
             0  // hand ordinal - simplified for now
         );
+        LOGGER.info("Dart returned result={}", result);
 
         // Map result ordinal to InteractionResult
         // In 1.21+, InteractionResult is simplified

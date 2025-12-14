@@ -315,4 +315,261 @@ const char* get_dart_service_url() {
     return nullptr;
 }
 
+// ==========================================================================
+// New Event Callback Registration (called from Dart via FFI)
+// ==========================================================================
+
+void register_player_join_handler(PlayerJoinCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setPlayerJoinHandler(cb);
+}
+
+void register_player_leave_handler(PlayerLeaveCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setPlayerLeaveHandler(cb);
+}
+
+void register_player_respawn_handler(PlayerRespawnCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setPlayerRespawnHandler(cb);
+}
+
+void register_player_death_handler(PlayerDeathCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setPlayerDeathHandler(cb);
+}
+
+void register_entity_damage_handler(EntityDamageCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setEntityDamageHandler(cb);
+}
+
+void register_entity_death_handler(EntityDeathCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setEntityDeathHandler(cb);
+}
+
+void register_player_attack_entity_handler(PlayerAttackEntityCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setPlayerAttackEntityHandler(cb);
+}
+
+void register_player_chat_handler(PlayerChatCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setPlayerChatHandler(cb);
+}
+
+void register_player_command_handler(PlayerCommandCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setPlayerCommandHandler(cb);
+}
+
+void register_item_use_handler(ItemUseCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setItemUseHandler(cb);
+}
+
+void register_item_use_on_block_handler(ItemUseOnBlockCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setItemUseOnBlockHandler(cb);
+}
+
+void register_item_use_on_entity_handler(ItemUseOnEntityCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setItemUseOnEntityHandler(cb);
+}
+
+void register_block_place_handler(BlockPlaceCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setBlockPlaceHandler(cb);
+}
+
+void register_player_pickup_item_handler(PlayerPickupItemCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setPlayerPickupItemHandler(cb);
+}
+
+void register_player_drop_item_handler(PlayerDropItemCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setPlayerDropItemHandler(cb);
+}
+
+void register_server_starting_handler(ServerStartingCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setServerStartingHandler(cb);
+}
+
+void register_server_started_handler(ServerStartedCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setServerStartedHandler(cb);
+}
+
+void register_server_stopping_handler(ServerStoppingCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setServerStoppingHandler(cb);
+}
+
+// ==========================================================================
+// New Event Dispatch (called from Java via JNI)
+// ==========================================================================
+
+void dispatch_player_join(int32_t player_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerJoin(player_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_player_leave(int32_t player_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerLeave(player_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_player_respawn(int32_t player_id, bool end_conquered) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerRespawn(player_id, end_conquered);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+char* dispatch_player_death(int32_t player_id, const char* damage_source) {
+    if (!g_initialized || g_isolate == nullptr) return nullptr;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    char* result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerDeath(player_id, damage_source);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_entity_damage(int32_t entity_id, const char* damage_source, double amount) {
+    if (!g_initialized || g_isolate == nullptr) return true;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchEntityDamage(entity_id, damage_source, amount);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+void dispatch_entity_death(int32_t entity_id, const char* damage_source) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchEntityDeath(entity_id, damage_source);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+bool dispatch_player_attack_entity(int32_t player_id, int32_t target_id) {
+    if (!g_initialized || g_isolate == nullptr) return true;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerAttackEntity(player_id, target_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+char* dispatch_player_chat(int32_t player_id, const char* message) {
+    if (!g_initialized || g_isolate == nullptr) return nullptr;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    char* result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerChat(player_id, message);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_player_command(int32_t player_id, const char* command) {
+    if (!g_initialized || g_isolate == nullptr) return true;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerCommand(player_id, command);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_item_use(int32_t player_id, const char* item_id, int32_t count, int32_t hand) {
+    if (!g_initialized || g_isolate == nullptr) return true;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchItemUse(player_id, item_id, count, hand);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+int32_t dispatch_item_use_on_block(int32_t player_id, const char* item_id, int32_t count, int32_t hand,
+                                    int32_t x, int32_t y, int32_t z, int32_t face) {
+    if (!g_initialized || g_isolate == nullptr) return 1;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchItemUseOnBlock(
+        player_id, item_id, count, hand, x, y, z, face);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+int32_t dispatch_item_use_on_entity(int32_t player_id, const char* item_id, int32_t count, int32_t hand,
+                                     int32_t target_id) {
+    if (!g_initialized || g_isolate == nullptr) return 1;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchItemUseOnEntity(
+        player_id, item_id, count, hand, target_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_block_place(int32_t player_id, int32_t x, int32_t y, int32_t z, const char* block_id) {
+    if (!g_initialized || g_isolate == nullptr) return true;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchBlockPlace(player_id, x, y, z, block_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_player_pickup_item(int32_t player_id, int32_t item_entity_id) {
+    if (!g_initialized || g_isolate == nullptr) return true;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerPickupItem(player_id, item_entity_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_player_drop_item(int32_t player_id, const char* item_id, int32_t count) {
+    if (!g_initialized || g_isolate == nullptr) return true;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerDropItem(player_id, item_id, count);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+void dispatch_server_starting() {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchServerStarting();
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_server_started() {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchServerStarted();
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_server_stopping() {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchServerStopping();
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
 } // extern "C"
