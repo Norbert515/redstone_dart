@@ -41,6 +41,7 @@ public class DartModLoader implements ModInitializer {
         // Look for dart_mod in several locations
         // Prefer the package structure (dart_mod/lib/dart_mod.dart) over single file
         String[] searchPaths = {
+            "../../dart_mc_bridge/dart_mod/lib/dart_mod.dart",  // Source location (for hot reload)
             "mods/dart_mod/lib/dart_mod.dart",  // Package structure
             "mods/dart_mod.dart",                // Single file
             "dart_mod/lib/dart_mod.dart",
@@ -91,6 +92,7 @@ public class DartModLoader implements ModInitializer {
         // Set up server reference and chat handler when server starts
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             serverInstance = server;
+            DartBridge.setServerInstance(server);
             LOGGER.info("[{}] Server starting, setting up chat handler...", MOD_ID);
 
             // Register chat message handler
@@ -114,6 +116,7 @@ public class DartModLoader implements ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             LOGGER.info("[{}] Server stopped, shutting down Dart VM...", MOD_ID);
             DartBridge.safeShutdown();
+            DartBridge.setServerInstance(null);
             serverInstance = null;
         });
 

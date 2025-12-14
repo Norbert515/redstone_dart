@@ -84,6 +84,10 @@ run: build mc
 # Quick iteration: copy dart changes and restart MC
 iterate: dart-install mc
 
+# Start Minecraft with hot reload CLI (press 'r' to reload)
+dev:
+    cd dart_mc_bridge/cli && dart run bin/mc.dart
+
 # Watch Dart files and copy on change (requires entr)
 watch:
     find dart_mc_bridge/dart_mod -name "*.dart" | entr -r just dart-install

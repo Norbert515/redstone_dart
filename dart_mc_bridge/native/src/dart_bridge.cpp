@@ -9,16 +9,60 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <mutex>
+#include <thread>
 
 // Dart VM state
 static Dart_Isolate g_isolate = nullptr;
 static bool g_initialized = false;
+
+// Thread synchronization for isolate access
+static std::mutex g_isolate_mutex;
+static std::thread::id g_isolate_owner_thread;
+static int g_isolate_entry_count = 0;  // For re-entrant calls from same thread
 
 // JVM reference for cleanup operations
 static JavaVM* g_jvm_ref = nullptr;
 
 // Java callback for sending chat messages
 static SendChatMessageCallback g_send_chat_callback = nullptr;
+
+// Helper to safely enter isolate with thread synchronization
+// Returns true if we entered (and thus need to exit), false if already entered by this thread
+static bool safe_enter_isolate() {
+    std::thread::id this_thread = std::this_thread::get_id();
+
+    // Check if we already own the isolate on this thread (re-entrant call)
+    {
+        std::lock_guard<std::mutex> lock(g_isolate_mutex);
+        if (g_isolate_owner_thread == this_thread && g_isolate_entry_count > 0) {
+            // Already entered on this thread, just bump the count
+            g_isolate_entry_count++;
+            return false;  // Don't need to exit later
+        }
+    }
+
+    // Need to acquire the isolate - lock and enter
+    g_isolate_mutex.lock();
+    Dart_EnterIsolate(g_isolate);
+    g_isolate_owner_thread = this_thread;
+    g_isolate_entry_count = 1;
+    return true;  // Will need to exit
+}
+
+static void safe_exit_isolate(bool did_enter) {
+    if (did_enter) {
+        // We actually entered, so exit and release
+        g_isolate_entry_count = 0;
+        g_isolate_owner_thread = std::thread::id();  // Reset to default
+        Dart_ExitIsolate();
+        g_isolate_mutex.unlock();
+    } else {
+        // Re-entrant call - we already own the mutex, just decrement count
+        // No lock needed since we're the owning thread
+        g_isolate_entry_count--;
+    }
+}
 
 extern "C" {
 
@@ -135,6 +179,7 @@ void dart_bridge_shutdown() {
 
     // Shutdown Dart
     if (g_isolate != nullptr) {
+        std::lock_guard<std::mutex> lock(g_isolate_mutex);
         Dart_EnterIsolate(g_isolate);
         Dart_ShutdownIsolate();
         g_isolate = nullptr;
@@ -156,9 +201,9 @@ void dart_bridge_set_jvm(JavaVM* jvm) {
 void dart_bridge_tick() {
     if (!g_initialized || g_isolate == nullptr) return;
 
-    Dart_EnterIsolate(g_isolate);
+    bool did_enter = safe_enter_isolate();
     DartDll_DrainMicrotaskQueue();
-    Dart_ExitIsolate();
+    safe_exit_isolate(did_enter);
 }
 
 // Callback registration (called from Dart via FFI)
@@ -187,34 +232,34 @@ void register_proxy_block_use_handler(ProxyBlockUseCallback cb) {
 int32_t dispatch_block_break(int32_t x, int32_t y, int32_t z, int64_t player_id) {
     if (!g_initialized || g_isolate == nullptr) return 1;
 
-    Dart_EnterIsolate(g_isolate);
+    bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
     int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchBlockBreak(x, y, z, player_id);
     Dart_ExitScope();
-    Dart_ExitIsolate();
+    safe_exit_isolate(did_enter);
     return result;
 }
 
 int32_t dispatch_block_interact(int32_t x, int32_t y, int32_t z, int64_t player_id, int32_t hand) {
     if (!g_initialized || g_isolate == nullptr) return 1;
 
-    Dart_EnterIsolate(g_isolate);
+    bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
     int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchBlockInteract(x, y, z, player_id, hand);
     Dart_ExitScope();
-    Dart_ExitIsolate();
+    safe_exit_isolate(did_enter);
     return result;
 }
 
 void dispatch_tick(int64_t tick) {
     if (!g_initialized || g_isolate == nullptr) return;
 
-    Dart_EnterIsolate(g_isolate);
+    bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
     dart_mc_bridge::CallbackRegistry::instance().dispatchTick(tick);
     DartDll_DrainMicrotaskQueue(); // Process async tasks while we're in the isolate
     Dart_ExitScope();
-    Dart_ExitIsolate();
+    safe_exit_isolate(did_enter);
 }
 
 // Proxy block dispatch (called from Java proxy classes via JNI)
@@ -223,12 +268,12 @@ bool dispatch_proxy_block_break(int64_t handler_id, int64_t world_id,
                                  int32_t x, int32_t y, int32_t z, int64_t player_id) {
     if (!g_initialized || g_isolate == nullptr) return true; // Allow break if not initialized
 
-    Dart_EnterIsolate(g_isolate);
+    bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
     bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockBreak(
         handler_id, world_id, x, y, z, player_id);
     Dart_ExitScope();
-    Dart_ExitIsolate();
+    safe_exit_isolate(did_enter);
     return result;
 }
 
@@ -237,12 +282,12 @@ int32_t dispatch_proxy_block_use(int64_t handler_id, int64_t world_id,
                                   int64_t player_id, int32_t hand) {
     if (!g_initialized || g_isolate == nullptr) return 3; // ActionResult.pass
 
-    Dart_EnterIsolate(g_isolate);
+    bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
     int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockUse(
         handler_id, world_id, x, y, z, player_id, hand);
     Dart_ExitScope();
-    Dart_ExitIsolate();
+    safe_exit_isolate(did_enter);
     return result;
 }
 

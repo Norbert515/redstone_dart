@@ -1,5 +1,15 @@
 package com.example.dartbridge;
 
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.File;
@@ -19,6 +29,7 @@ public class DartBridge {
     private static final Logger LOGGER = LoggerFactory.getLogger("DartBridge");
     private static boolean initialized = false;
     private static boolean libraryLoaded = false;
+    private static MinecraftServer serverInstance = null;
 
     static {
         try {
@@ -276,5 +287,86 @@ public class DartBridge {
         } catch (Exception e) {
             LOGGER.error("Exception during tick dispatch: {}", e.getMessage());
         }
+    }
+
+    // ==========================================================================
+    // Server Instance Management
+    // ==========================================================================
+
+    /**
+     * Set the server instance. Should be called when the server starts.
+     */
+    public static void setServerInstance(MinecraftServer server) {
+        serverInstance = server;
+    }
+
+    /**
+     * Get the server instance.
+     */
+    public static MinecraftServer getServerInstance() {
+        return serverInstance;
+    }
+
+    // ==========================================================================
+    // World Block Manipulation APIs
+    // ==========================================================================
+
+    /**
+     * Get the block ID at a position in the world.
+     * @param dimension Dimension ID (e.g., "minecraft:overworld")
+     * @param x, y, z Block position coordinates
+     * @return Block ID string (e.g., "minecraft:stone") or "minecraft:air" if invalid
+     */
+    public static String getBlockId(String dimension, int x, int y, int z) {
+        if (serverInstance == null) return "minecraft:air";
+
+        ServerLevel level = getServerLevel(dimension);
+        if (level == null) return "minecraft:air";
+
+        BlockPos pos = new BlockPos(x, y, z);
+        BlockState state = level.getBlockState(pos);
+        return state.getBlock().builtInRegistryHolder().key().identifier().toString();
+    }
+
+    /**
+     * Set a block at a position in the world.
+     * @param dimension Dimension ID
+     * @param x, y, z Block position coordinates
+     * @param blockId Block ID string (e.g., "minecraft:stone")
+     * @return true if successful
+     */
+    public static boolean setBlock(String dimension, int x, int y, int z, String blockId) {
+        if (serverInstance == null) return false;
+
+        ServerLevel level = getServerLevel(dimension);
+        if (level == null) return false;
+
+        BlockPos pos = new BlockPos(x, y, z);
+        Block block = BuiltInRegistries.BLOCK.getValue(Identifier.parse(blockId));
+        return level.setBlock(pos, block.defaultBlockState(), 3);
+    }
+
+    /**
+     * Check if a position contains air.
+     */
+    public static boolean isAirBlock(String dimension, int x, int y, int z) {
+        if (serverInstance == null) return true;
+
+        ServerLevel level = getServerLevel(dimension);
+        if (level == null) return true;
+
+        BlockPos pos = new BlockPos(x, y, z);
+        return level.getBlockState(pos).isAir();
+    }
+
+    /**
+     * Helper to get ServerLevel by dimension ID.
+     */
+    private static ServerLevel getServerLevel(String dimension) {
+        if (serverInstance == null) return null;
+
+        Identifier dimId = Identifier.parse(dimension);
+        ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, dimId);
+        return serverInstance.getLevel(key);
     }
 }

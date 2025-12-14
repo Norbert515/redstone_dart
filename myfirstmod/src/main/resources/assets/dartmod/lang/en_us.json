@@ -1,0 +1,9 @@
+{
+  "block.dartmod.example_block": "Example Block",
+  "block.dartmod.counter_block": "Counter Block",
+  "block.dartmod.unbreakable_block": "Unbreakable Block",
+  "block.dartmod.terraformer": "Terraformer",
+  "block.dartmod.inspector": "Block Inspector",
+  "block.dartmod.tower_builder": "Tower Builder",
+  "block.dartmod.midas": "Midas Block"
+}

@@ -1,6 +1,10 @@
 /// World API for interacting with the Minecraft world.
 library;
 
+import '../src/jni/generic_bridge.dart';
+import '../src/types.dart';
+import 'block.dart';
+
 /// Represents a Minecraft world/dimension.
 class World {
   /// The dimension identifier.
@@ -21,6 +25,44 @@ class World {
 
   @override
   int get hashCode => dimensionId.hashCode;
+
+  // ==========================================================================
+  // Block Manipulation APIs
+  // ==========================================================================
+
+  /// Get the block at a position in this world.
+  /// Returns the block, or [Block.air] if the position is invalid/unloaded.
+  Block getBlock(BlockPos pos) {
+    final blockId = GenericJniBridge.callStaticStringMethod(
+      'com/example/dartbridge/DartBridge',
+      'getBlockId',
+      '(Ljava/lang/String;III)Ljava/lang/String;',
+      [dimensionId, pos.x, pos.y, pos.z],
+    );
+    if (blockId == null) return Block.air;
+    return Block(blockId);
+  }
+
+  /// Set a block at a position in this world.
+  /// Returns true if successful.
+  bool setBlock(BlockPos pos, Block block) {
+    return GenericJniBridge.callStaticBoolMethod(
+      'com/example/dartbridge/DartBridge',
+      'setBlock',
+      '(Ljava/lang/String;IIILjava/lang/String;)Z',
+      [dimensionId, pos.x, pos.y, pos.z, block.id],
+    );
+  }
+
+  /// Check if a position contains air.
+  bool isAir(BlockPos pos) {
+    return GenericJniBridge.callStaticBoolMethod(
+      'com/example/dartbridge/DartBridge',
+      'isAirBlock',
+      '(Ljava/lang/String;III)Z',
+      [dimensionId, pos.x, pos.y, pos.z],
+    );
+  }
 }
 
 /// Time of day in Minecraft.
@@ -52,15 +94,3 @@ enum Weather {
   rain,
   thunder,
 }
-
-// TODO: Add methods to interact with the world via native bridge
-// These will require additional JNI functions
-//
-// Example future API:
-// class WorldApi {
-//   static BlockState? getBlock(World world, BlockPos pos) { ... }
-//   static void setBlock(World world, BlockPos pos, Block block) { ... }
-//   static GameTime getTime(World world) { ... }
-//   static Weather getWeather(World world) { ... }
-//   static void spawnParticle(World world, BlockPos pos, String particle) { ... }
-// }
