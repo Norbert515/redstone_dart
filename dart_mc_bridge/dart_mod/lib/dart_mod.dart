@@ -7,6 +7,8 @@ library dart_mod;
 import 'src/bridge.dart';
 import 'src/events.dart';
 import 'src/types.dart';
+import 'api/block_registry.dart';
+import 'examples/example_blocks.dart';
 
 export 'src/bridge.dart';
 export 'src/events.dart';
@@ -14,6 +16,8 @@ export 'src/types.dart';
 export 'api/block.dart';
 export 'api/player.dart';
 export 'api/world.dart';
+export 'api/custom_block.dart';
+export 'api/block_registry.dart';
 
 /// Main entry point called when the Dart VM is initialized.
 void main() {
@@ -21,6 +25,18 @@ void main() {
 
   // Initialize the native bridge
   Bridge.initialize();
+
+  // Register proxy block handlers (for Dart-defined custom blocks)
+  Events.registerProxyBlockHandlers();
+
+  // =========================================================================
+  // Register custom blocks defined in Dart
+  // This MUST happen before the registry freezes (during mod initialization)
+  // =========================================================================
+  registerExampleBlocks();
+
+  // Freeze the block registry (no more blocks can be registered after this)
+  BlockRegistry.freeze();
 
   // Register event handlers
   Events.onBlockBreak((x, y, z, playerId) {
@@ -39,4 +55,5 @@ void main() {
   });
 
   print('Event handlers registered!');
+  print('Dart mod ready with ${BlockRegistry.blockCount} custom blocks!');
 }

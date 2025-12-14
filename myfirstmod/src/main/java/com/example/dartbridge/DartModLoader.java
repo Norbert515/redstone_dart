@@ -34,9 +34,12 @@ public class DartModLoader implements ModInitializer {
      * Get the path to the Dart script file.
      */
     private static String getScriptPath() {
-        // Look for dart_mod.dart in several locations
+        // Look for dart_mod in several locations
+        // Prefer the package structure (dart_mod/lib/dart_mod.dart) over single file
         String[] searchPaths = {
-            "mods/dart_mod.dart",
+            "mods/dart_mod/lib/dart_mod.dart",  // Package structure
+            "mods/dart_mod.dart",                // Single file
+            "dart_mod/lib/dart_mod.dart",
             "dart_mod.dart",
             "config/dart_mod.dart"
         };
@@ -50,7 +53,7 @@ public class DartModLoader implements ModInitializer {
         }
 
         // Default path
-        return Path.of(runDir, "mods", "dart_mod.dart").toAbsolutePath().toString();
+        return Path.of(runDir, "mods", "dart_mod", "lib", "dart_mod.dart").toAbsolutePath().toString();
     }
 
     @Override
@@ -62,21 +65,31 @@ public class DartModLoader implements ModInitializer {
             return;
         }
 
-        // Initialize Dart VM when server starts
+        // Initialize Dart VM NOW during mod initialization (before registry freeze)
+        // This is critical - block registration must happen during onInitialize()
+        String scriptPath = getScriptPath();
+        LOGGER.info("[{}] Script path: {}", MOD_ID, scriptPath);
+
+        File scriptFile = new File(scriptPath);
+        if (!scriptFile.exists()) {
+            LOGGER.error("[{}] Dart script not found at: {}", MOD_ID, scriptPath);
+            LOGGER.error("[{}] Please place your dart_mod.dart file in the mods folder", MOD_ID);
+        } else {
+            // Initialize Dart VM synchronously during mod init
+            // This allows Dart to register blocks before the registry freezes
+            if (!DartBridge.safeInit(scriptPath)) {
+                LOGGER.error("[{}] Failed to initialize Dart VM!", MOD_ID);
+            } else {
+                LOGGER.info("[{}] Dart VM initialized successfully!", MOD_ID);
+            }
+        }
+
+        // Set up server reference and chat handler when server starts
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             serverInstance = server;
-            LOGGER.info("[{}] Server starting, initializing Dart VM...", MOD_ID);
-            String scriptPath = getScriptPath();
-            LOGGER.info("[{}] Script path: {}", MOD_ID, scriptPath);
+            LOGGER.info("[{}] Server starting, setting up chat handler...", MOD_ID);
 
-            File scriptFile = new File(scriptPath);
-            if (!scriptFile.exists()) {
-                LOGGER.error("[{}] Dart script not found at: {}", MOD_ID, scriptPath);
-                LOGGER.error("[{}] Please place your dart_mod.dart file in the mods folder", MOD_ID);
-                return;
-            }
-
-            // Register chat message handler before initializing Dart
+            // Register chat message handler
             DartBridge.setChatMessageHandler((playerId, message) -> {
                 if (serverInstance == null) return;
 
@@ -91,10 +104,6 @@ public class DartModLoader implements ModInitializer {
                 LOGGER.warn("[{}] Player with ID {} not found, broadcasting message", MOD_ID, playerId);
                 serverInstance.getPlayerList().broadcastSystemMessage(Component.literal(message), false);
             });
-
-            if (!DartBridge.safeInit(scriptPath)) {
-                LOGGER.error("[{}] Failed to initialize Dart VM!", MOD_ID);
-            }
         });
 
         // Shutdown Dart VM when server stops
@@ -116,6 +125,21 @@ public class DartModLoader implements ModInitializer {
         PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, blockEntity) -> {
             if (!DartBridge.isInitialized()) return true;
 
+            // Check if this is a Dart proxy block
+            if (state.getBlock() instanceof com.example.dartbridge.proxy.DartBlockProxy proxyBlock) {
+                // Call the proxy-specific handler which returns whether to allow the break
+                boolean allowBreak = DartBridge.onProxyBlockBreak(
+                    proxyBlock.getDartHandlerId(),
+                    world.hashCode(),
+                    pos.getX(),
+                    pos.getY(),
+                    pos.getZ(),
+                    player.getId()
+                );
+                return allowBreak;
+            }
+
+            // For non-proxy blocks, use the generic dispatch
             int result = DartBridge.dispatchBlockBreak(
                 pos.getX(),
                 pos.getY(),

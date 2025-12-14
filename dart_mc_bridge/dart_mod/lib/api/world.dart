@@ -1,10 +1,6 @@
 /// World API for interacting with the Minecraft world.
 library;
 
-// Imports for future API expansion:
-// import '../src/types.dart';
-// import 'block.dart';
-
 /// Represents a Minecraft world/dimension.
 class World {
   /// The dimension identifier.

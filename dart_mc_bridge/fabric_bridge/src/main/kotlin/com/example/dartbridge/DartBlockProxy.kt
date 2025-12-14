@@ -5,7 +5,6 @@ import net.minecraft.block.BlockState
 import net.minecraft.block.Blocks
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.util.ActionResult
-import net.minecraft.util.Hand
 import net.minecraft.util.hit.BlockHitResult
 import net.minecraft.util.math.BlockPos
 import net.minecraft.world.World
@@ -13,45 +12,52 @@ import net.minecraft.world.World
 /**
  * A proxy block that delegates its behavior to Dart code.
  *
- * This block can be used to create custom blocks where the logic
- * is implemented in Dart rather than Kotlin/Java.
+ * Each instance of this class represents a single Dart-defined block type.
+ * The dartHandlerId links to the Dart-side CustomBlock instance, allowing
+ * multiple different block types with different behaviors.
  *
  * Usage:
- * 1. Register this block with a unique identifier
- * 2. In Dart, register handlers for this block's events
- * 3. When players interact with the block, Dart handlers are called
+ * 1. Create block via ProxyRegistry.createBlock() which assigns a handler ID
+ * 2. Register the block via ProxyRegistry.registerBlock()
+ * 3. In Dart, register handlers for this block's events using the handler ID
+ * 4. When players interact with the block, Dart handlers are called
  */
-class DartBlockProxy(settings: Settings) : Block(settings) {
+class DartBlockProxy(
+    settings: Settings,
+    val dartHandlerId: Long
+) : Block(settings) {
 
     companion object {
         /**
-         * Create a DartBlockProxy with default settings.
+         * Create a DartBlockProxy with default settings and a handler ID.
          */
-        fun create(): DartBlockProxy {
+        fun create(dartHandlerId: Long): DartBlockProxy {
             return DartBlockProxy(
                 Settings.copy(Blocks.STONE)
-                    .strength(2.0f, 6.0f)
+                    .strength(2.0f, 6.0f),
+                dartHandlerId
             )
         }
 
         /**
          * Create a DartBlockProxy copying settings from another block.
          */
-        fun copyOf(block: Block): DartBlockProxy {
-            return DartBlockProxy(Settings.copy(block))
+        fun copyOf(block: Block, dartHandlerId: Long): DartBlockProxy {
+            return DartBlockProxy(Settings.copy(block), dartHandlerId)
         }
     }
 
-    // TODO: Add block ID for Dart to identify which block is being interacted with
-    // This could be used to have multiple different Dart-controlled blocks
-
-    @Deprecated("Deprecated in Java")
+    /**
+     * Called when the block is used (right-clicked) by a player.
+     * Delegates to Dart via the native bridge.
+     *
+     * Note: In Minecraft 1.21+, the onUse signature changed to not include Hand.
+     */
     override fun onUse(
         state: BlockState,
         world: World,
         pos: BlockPos,
         player: PlayerEntity,
-        hand: Hand,
         hit: BlockHitResult
     ): ActionResult {
         if (world.isClient) {
@@ -62,39 +68,68 @@ class DartBlockProxy(settings: Settings) : Block(settings) {
             return ActionResult.PASS
         }
 
-        val handValue = if (hand == Hand.MAIN_HAND) 0 else 1
-        val result = DartBridge.onBlockInteract(
+        val result = DartBridge.onProxyBlockUse(
+            dartHandlerId,
+            world.hashCode().toLong(),
             pos.x,
             pos.y,
             pos.z,
             player.id.toLong(),
-            handValue
+            0 // Hand is not available in new API, default to main hand
         )
 
-        return if (result != 0) {
-            ActionResult.SUCCESS
-        } else {
-            ActionResult.FAIL
-        }
+        // ActionResult values: SUCCESS=0, CONSUME=1, CONSUME_PARTIAL=2, PASS=3, FAIL=4
+        return ActionResult.entries.getOrElse(result) { ActionResult.PASS }
     }
 
+    /**
+     * Called when the block is broken by a player.
+     * Delegates to Dart via the native bridge.
+     */
     override fun onBreak(world: World, pos: BlockPos, state: BlockState, player: PlayerEntity): BlockState {
         if (!world.isClient && DartBridge.isInitialized()) {
-            val result = DartBridge.onBlockBreak(
+            DartBridge.onProxyBlockBreak(
+                dartHandlerId,
+                world.hashCode().toLong(),
                 pos.x,
                 pos.y,
                 pos.z,
                 player.id.toLong()
             )
-
-            if (result == 0) {
-                // Dart cancelled the break - we can't actually prevent it here
-                // since onBreak is called after the break is confirmed,
-                // but we could add visual/audio feedback
-                println("[DartBlockProxy] Block break was marked as cancelled by Dart")
-            }
         }
 
         return super.onBreak(world, pos, state, player)
     }
+
+    // Additional lifecycle methods that can be overridden to delegate to Dart:
+
+    /**
+     * Called when an entity steps on this block.
+     */
+    // override fun onSteppedOn(world: World, pos: BlockPos, state: BlockState, entity: Entity) {
+    //     if (!world.isClient && DartBridge.isInitialized()) {
+    //         DartBridge.onProxyBlockSteppedOn(dartHandlerId, ...)
+    //     }
+    //     super.onSteppedOn(world, pos, state, entity)
+    // }
+
+    /**
+     * Called when an entity lands on this block.
+     */
+    // override fun onLandedUpon(world: World, state: BlockState, pos: BlockPos, entity: Entity, fallDistance: Float) {
+    //     if (!world.isClient && DartBridge.isInitialized()) {
+    //         DartBridge.onProxyBlockLandedUpon(dartHandlerId, ...)
+    //     }
+    //     super.onLandedUpon(world, state, pos, entity, fallDistance)
+    // }
+
+    /**
+     * Called when a neighbor block changes.
+     */
+    // override fun neighborUpdate(state: BlockState, world: World, pos: BlockPos, sourceBlock: Block, sourcePos: BlockPos, notify: Boolean) {
+    //     if (!world.isClient && DartBridge.isInitialized()) {
+    //         DartBridge.onProxyBlockNeighborUpdate(dartHandlerId, ...)
+    //     }
+    //     super.neighborUpdate(state, world, pos, sourceBlock, sourcePos, notify)
+    // }
 }

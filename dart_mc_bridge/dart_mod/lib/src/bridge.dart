@@ -6,12 +6,22 @@ library;
 import 'dart:ffi';
 import 'dart:io';
 
+import 'jni/generic_bridge.dart';
+
 /// Callback type definitions matching the native side
 typedef BlockBreakCallbackNative = Int32 Function(
     Int32 x, Int32 y, Int32 z, Int64 playerId);
 typedef BlockInteractCallbackNative = Int32 Function(
     Int32 x, Int32 y, Int32 z, Int64 playerId, Int32 hand);
 typedef TickCallbackNative = Void Function(Int64 tick);
+
+/// Proxy block callback types (for custom Dart-defined blocks)
+/// Returns Bool: true to allow break, false to cancel
+typedef ProxyBlockBreakCallbackNative = Bool Function(
+    Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z, Int64 playerId);
+typedef ProxyBlockUseCallbackNative = Int32 Function(
+    Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z,
+    Int64 playerId, Int32 hand);
 
 /// Native function signatures
 typedef RegisterBlockBreakHandlerNative = Void Function(
@@ -29,6 +39,17 @@ typedef RegisterTickHandlerNative = Void Function(
 typedef RegisterTickHandler = void Function(
     Pointer<NativeFunction<TickCallbackNative>> callback);
 
+/// Proxy block handler registration signatures
+typedef RegisterProxyBlockBreakHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyBlockBreakCallbackNative>> callback);
+typedef RegisterProxyBlockBreakHandler = void Function(
+    Pointer<NativeFunction<ProxyBlockBreakCallbackNative>> callback);
+
+typedef RegisterProxyBlockUseHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback);
+typedef RegisterProxyBlockUseHandler = void Function(
+    Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback);
+
 /// Bridge to the native library.
 class Bridge {
   static DynamicLibrary? _lib;
@@ -43,6 +64,10 @@ class Bridge {
     _lib = _loadLibrary();
     _initialized = true;
     print('Bridge: Native library loaded');
+
+    // Initialize the generic JNI bridge
+    GenericJniBridge.init();
+    print('Bridge: Generic JNI bridge initialized');
   }
 
   static DynamicLibrary _loadLibrary() {
@@ -119,6 +144,24 @@ class Bridge {
       Pointer<NativeFunction<TickCallbackNative>> callback) {
     final register = library.lookupFunction<RegisterTickHandlerNative,
         RegisterTickHandler>('register_tick_handler');
+    register(callback);
+  }
+
+  /// Register a proxy block break handler.
+  /// This is called when a Dart-defined custom block is broken.
+  static void registerProxyBlockBreakHandler(
+      Pointer<NativeFunction<ProxyBlockBreakCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyBlockBreakHandlerNative,
+        RegisterProxyBlockBreakHandler>('register_proxy_block_break_handler');
+    register(callback);
+  }
+
+  /// Register a proxy block use handler.
+  /// This is called when a Dart-defined custom block is right-clicked.
+  static void registerProxyBlockUseHandler(
+      Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyBlockUseHandlerNative,
+        RegisterProxyBlockUseHandler>('register_proxy_block_use_handler');
     register(callback);
   }
 }

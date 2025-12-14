@@ -73,6 +73,12 @@ extern "C" {
 JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_init(
     JNIEnv* env, jclass /* cls */, jstring kernel_path) {
 
+    // Capture JVM reference early for object registry cleanup
+    if (g_jvm == nullptr) {
+        env->GetJavaVM(&g_jvm);
+        dart_bridge_set_jvm(g_jvm);
+    }
+
     const char* path = env->GetStringUTFChars(kernel_path, nullptr);
     if (!path) {
         std::cerr << "JNI: Failed to get kernel path string" << std::endl;
@@ -153,6 +159,8 @@ JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_setSendChatCallbac
     // Get JVM reference
     if (g_jvm == nullptr) {
         env->GetJavaVM(&g_jvm);
+        // Also set JVM reference for dart bridge (needed for object registry cleanup)
+        dart_bridge_set_jvm(g_jvm);
     }
 
     // Create global reference to DartBridge class
@@ -172,6 +180,40 @@ JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_setSendChatCallbac
     // Register the callback with the native bridge
     set_send_chat_message_callback(jni_send_chat_message);
     std::cout << "JNI: Chat message callback set up successfully" << std::endl;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onProxyBlockBreak
+ * Signature: (JJIIIJ)Z
+ *
+ * Called from Java proxy blocks when they are broken.
+ * Routes to Dart's BlockRegistry.dispatchBlockBreak().
+ * Returns true if break should be allowed, false to cancel.
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onProxyBlockBreak(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z, jlong player_id) {
+
+    return dispatch_proxy_block_break(handler_id, world_id, x, y, z, player_id) ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onProxyBlockUse
+ * Signature: (JJIIIJI)I
+ *
+ * Called from Java proxy blocks when they are used (right-clicked).
+ * Routes to Dart's BlockRegistry.dispatchBlockUse().
+ * Returns ActionResult ordinal.
+ */
+JNIEXPORT jint JNICALL Java_com_example_dartbridge_DartBridge_onProxyBlockUse(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z, jlong player_id, jint hand) {
+
+    return dispatch_proxy_block_use(handler_id, world_id, x, y, z, player_id, hand);
 }
 
 } // extern "C"

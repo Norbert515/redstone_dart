@@ -110,6 +110,10 @@ public class DartBridge {
     private static native void onTick(long tick);
     private static native void setSendChatCallback();
 
+    // Proxy block native methods - called by DartBlockProxy
+    public static native boolean onProxyBlockBreak(long handlerId, long worldId, int x, int y, int z, long playerId);
+    public static native int onProxyBlockUse(long handlerId, long worldId, int x, int y, int z, long playerId, int hand);
+
     // Chat message handler (called from native code)
     private static ChatMessageHandler chatHandler = null;
 

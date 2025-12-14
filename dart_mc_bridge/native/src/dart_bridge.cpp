@@ -1,8 +1,11 @@
 #include "dart_bridge.h"
 #include "callback_registry.h"
+#include "object_registry.h"
+#include "generic_jni.h"
 #include "dart_dll.h"  // From dart_shared_library
 #include "dart_api.h"  // Dart SDK header
 
+#include <jni.h>
 #include <iostream>
 #include <string>
 #include <cstring>
@@ -10,6 +13,9 @@
 // Dart VM state
 static Dart_Isolate g_isolate = nullptr;
 static bool g_initialized = false;
+
+// JVM reference for cleanup operations
+static JavaVM* g_jvm_ref = nullptr;
 
 // Java callback for sending chat messages
 static SendChatMessageCallback g_send_chat_callback = nullptr;
@@ -30,15 +36,28 @@ bool dart_bridge_init(const char* script_path) {
     // Initialize VM
     DartDll_Initialize(config);
 
-    // Build package config path (same directory as script)
+    // Build package config path (at package root, which is parent of lib/)
+    // Script is typically at: package_root/lib/dart_mod.dart
+    // Package config is at: package_root/.dart_tool/package_config.json
     std::string script_str(script_path);
     std::string package_config;
     size_t last_slash = script_str.find_last_of("/\\");
     if (last_slash != std::string::npos) {
-        package_config = script_str.substr(0, last_slash) + "/.dart_tool/package_config.json";
+        std::string script_dir = script_str.substr(0, last_slash);
+        // Check if we're in a lib/ directory
+        size_t lib_pos = script_dir.rfind("/lib");
+        if (lib_pos != std::string::npos && lib_pos == script_dir.length() - 4) {
+            // Script is in lib/, go up to package root
+            package_config = script_dir.substr(0, lib_pos) + "/.dart_tool/package_config.json";
+        } else {
+            // Script is at package root
+            package_config = script_dir + "/.dart_tool/package_config.json";
+        }
     } else {
         package_config = ".dart_tool/package_config.json";
     }
+
+    std::cout << "Package config path: " << package_config << std::endl;
 
     // Load the Dart script
     g_isolate = DartDll_LoadScript(script_path, package_config.c_str());
@@ -88,6 +107,32 @@ void dart_bridge_shutdown() {
     // Clear all callbacks
     dart_mc_bridge::CallbackRegistry::instance().clear();
 
+    // Shutdown generic JNI system (clears class/method caches)
+    generic_jni_shutdown();
+
+    // Release all object handles
+    if (g_jvm_ref != nullptr) {
+        JNIEnv* env = nullptr;
+        bool needs_detach = false;
+
+        int status = g_jvm_ref->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_8);
+        if (status == JNI_EDETACHED) {
+            if (g_jvm_ref->AttachCurrentThread(reinterpret_cast<void**>(&env), nullptr) == JNI_OK) {
+                needs_detach = true;
+            } else {
+                std::cerr << "Failed to attach thread for object cleanup" << std::endl;
+            }
+        }
+
+        if (env != nullptr) {
+            dart_mc_bridge::ObjectRegistry::instance().releaseAll(env);
+        }
+
+        if (needs_detach) {
+            g_jvm_ref->DetachCurrentThread();
+        }
+    }
+
     // Shutdown Dart
     if (g_isolate != nullptr) {
         Dart_EnterIsolate(g_isolate);
@@ -97,8 +142,15 @@ void dart_bridge_shutdown() {
 
     DartDll_Shutdown();
     g_initialized = false;
+    g_jvm_ref = nullptr;
 
     std::cout << "Dart bridge shutdown complete" << std::endl;
+}
+
+void dart_bridge_set_jvm(JavaVM* jvm) {
+    g_jvm_ref = jvm;
+    // Initialize generic JNI system with JVM reference
+    generic_jni_init(jvm);
 }
 
 void dart_bridge_tick() {
@@ -120,6 +172,14 @@ void register_block_interact_handler(BlockInteractCallback cb) {
 
 void register_tick_handler(TickCallback cb) {
     dart_mc_bridge::CallbackRegistry::instance().setTickHandler(cb);
+}
+
+void register_proxy_block_break_handler(ProxyBlockBreakCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyBlockBreakHandler(cb);
+}
+
+void register_proxy_block_use_handler(ProxyBlockUseCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyBlockUseHandler(cb);
 }
 
 // Event dispatch (called from Java via JNI)
@@ -155,6 +215,35 @@ void dispatch_tick(int64_t tick) {
     DartDll_DrainMicrotaskQueue(); // Process async tasks while we're in the isolate
     Dart_ExitScope();
     Dart_ExitIsolate();
+}
+
+// Proxy block dispatch (called from Java proxy classes via JNI)
+// Returns true if break should be allowed, false to cancel
+bool dispatch_proxy_block_break(int64_t handler_id, int64_t world_id,
+                                 int32_t x, int32_t y, int32_t z, int64_t player_id) {
+    if (!g_initialized || g_isolate == nullptr) return true; // Allow break if not initialized
+
+    Dart_EnterIsolate(g_isolate);
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockBreak(
+        handler_id, world_id, x, y, z, player_id);
+    Dart_ExitScope();
+    Dart_ExitIsolate();
+    return result;
+}
+
+int32_t dispatch_proxy_block_use(int64_t handler_id, int64_t world_id,
+                                  int32_t x, int32_t y, int32_t z,
+                                  int64_t player_id, int32_t hand) {
+    if (!g_initialized || g_isolate == nullptr) return 3; // ActionResult.pass
+
+    Dart_EnterIsolate(g_isolate);
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockUse(
+        handler_id, world_id, x, y, z, player_id, hand);
+    Dart_ExitScope();
+    Dart_ExitIsolate();
+    return result;
 }
 
 // Dart -> Java communication

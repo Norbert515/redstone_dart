@@ -8,6 +8,11 @@ import 'dart:ffi';
 
 import 'bridge.dart';
 import 'types.dart';
+import '../api/block_registry.dart';
+import '../api/custom_block.dart' show ActionResult;
+
+/// Default return value for block use events (ActionResult.pass ordinal)
+const int _actionResultPassOrdinal = 3;
 
 /// Dart callback types
 typedef BlockBreakHandler = EventResult Function(
@@ -20,6 +25,7 @@ typedef TickHandler = void Function(int tick);
 BlockBreakHandler? _blockBreakHandler;
 BlockInteractHandler? _blockInteractHandler;
 TickHandler? _tickHandler;
+bool _proxyHandlersRegistered = false;
 
 /// Native callback trampolines - these are called from native code
 @pragma('vm:entry-point')
@@ -41,6 +47,18 @@ int _onBlockInteract(int x, int y, int z, int playerId, int hand) {
 @pragma('vm:entry-point')
 void _onTick(int tick) {
   _tickHandler?.call(tick);
+}
+
+/// Proxy block callback trampolines - route to BlockRegistry
+/// Returns true to allow break, false to cancel
+@pragma('vm:entry-point')
+bool _onProxyBlockBreak(int handlerId, int worldId, int x, int y, int z, int playerId) {
+  return BlockRegistry.dispatchBlockBreak(handlerId, worldId, x, y, z, playerId);
+}
+
+@pragma('vm:entry-point')
+int _onProxyBlockUse(int handlerId, int worldId, int x, int y, int z, int playerId, int hand) {
+  return BlockRegistry.dispatchBlockUse(handlerId, worldId, x, y, z, playerId, hand);
 }
 
 /// Event registration API.
@@ -77,5 +95,27 @@ class Events {
     _tickHandler = handler;
     final callback = Pointer.fromFunction<TickCallbackNative>(_onTick);
     Bridge.registerTickHandler(callback);
+  }
+
+  /// Register proxy block handlers for custom Dart-defined blocks.
+  ///
+  /// This is called automatically during Bridge initialization.
+  /// It routes proxy block events to BlockRegistry which dispatches
+  /// to the appropriate CustomBlock instances.
+  static void registerProxyBlockHandlers() {
+    if (_proxyHandlersRegistered) return;
+    _proxyHandlersRegistered = true;
+
+    // Default return value true = allow break
+    final breakCallback = Pointer.fromFunction<ProxyBlockBreakCallbackNative>(
+        _onProxyBlockBreak, true);
+    Bridge.registerProxyBlockBreakHandler(breakCallback);
+
+    // Default: pass (no interaction)
+    final useCallback = Pointer.fromFunction<ProxyBlockUseCallbackNative>(
+        _onProxyBlockUse, _actionResultPassOrdinal);
+    Bridge.registerProxyBlockUseHandler(useCallback);
+
+    print('Events: Proxy block handlers registered');
   }
 }

@@ -15,6 +15,8 @@ set(DART_DLL_PATH "${CMAKE_SOURCE_DIR}/deps/dart_dll" CACHE PATH "Path to dart_s
 set(SOURCES
     src/dart_bridge.cpp
     src/jni_interface.cpp
+    src/object_registry.cpp
+    src/generic_jni.cpp
 )
 
 # Create shared library

@@ -68,6 +68,54 @@ object DartBridge {
      */
     external fun onTick(tick: Long)
 
+    // ============================================================
+    // Proxy Block Callbacks
+    // These are called by DartBlockProxy to delegate behavior to Dart
+    // ============================================================
+
+    /**
+     * Called when a proxy block is broken.
+     * Notifies Dart of the break event for the specific block handler.
+     *
+     * @param handlerId The Dart handler ID for this block type
+     * @param worldId Identifier for the world (hash code)
+     * @param x Block X coordinate
+     * @param y Block Y coordinate
+     * @param z Block Z coordinate
+     * @param playerId The entity ID of the player breaking the block
+     */
+    external fun onProxyBlockBreak(
+        handlerId: Long,
+        worldId: Long,
+        x: Int,
+        y: Int,
+        z: Int,
+        playerId: Long
+    )
+
+    /**
+     * Called when a proxy block is used (right-clicked).
+     * Notifies Dart of the use event for the specific block handler.
+     *
+     * @param handlerId The Dart handler ID for this block type
+     * @param worldId Identifier for the world (hash code)
+     * @param x Block X coordinate
+     * @param y Block Y coordinate
+     * @param z Block Z coordinate
+     * @param playerId The entity ID of the player
+     * @param hand 0 for main hand, 1 for off hand
+     * @return ActionResult ordinal (0=SUCCESS, 1=CONSUME, 2=CONSUME_PARTIAL, 3=PASS, 4=FAIL)
+     */
+    external fun onProxyBlockUse(
+        handlerId: Long,
+        worldId: Long,
+        x: Int,
+        y: Int,
+        z: Int,
+        playerId: Long,
+        hand: Int
+    ): Int
+
     /**
      * Check if the bridge is initialized.
      */
