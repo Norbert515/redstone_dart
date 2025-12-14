@@ -6,6 +6,8 @@ library;
 import 'dart:ffi';
 import 'dart:io';
 
+import 'package:ffi/ffi.dart';
+
 import 'jni/generic_bridge.dart';
 
 /// Callback type definitions matching the native side
@@ -49,6 +51,10 @@ typedef RegisterProxyBlockUseHandlerNative = Void Function(
     Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback);
 typedef RegisterProxyBlockUseHandler = void Function(
     Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback);
+
+/// Chat message function signature
+typedef SendChatMessageNative = Void Function(Int64 playerId, Pointer<Utf8> message);
+typedef SendChatMessage = void Function(int playerId, Pointer<Utf8> message);
 
 /// Bridge to the native library.
 class Bridge {
@@ -163,5 +169,20 @@ class Bridge {
     final register = library.lookupFunction<RegisterProxyBlockUseHandlerNative,
         RegisterProxyBlockUseHandler>('register_proxy_block_use_handler');
     register(callback);
+  }
+
+  /// Send a chat message to a player.
+  ///
+  /// [playerId] is the entity ID of the player (or 0 to broadcast to all).
+  /// [message] is the text to send.
+  static void sendChatMessage(int playerId, String message) {
+    final send = library.lookupFunction<SendChatMessageNative, SendChatMessage>(
+        'send_chat_message');
+    final messagePtr = message.toNativeUtf8();
+    try {
+      send(playerId, messagePtr);
+    } finally {
+      calloc.free(messagePtr);
+    }
   }
 }

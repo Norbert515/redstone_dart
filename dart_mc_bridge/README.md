@@ -8,8 +8,8 @@ A bridge that allows writing Minecraft mod logic in Dart, running inside a Fabri
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Minecraft (JVM)                          │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │                   Fabric Mod (Kotlin)                    │   │
-│  │  DartModLoader.kt  DartBridge.kt  DartBlockProxy.kt     │   │
+│  │                    Fabric Mod (Java)                     │   │
+│  │       DartModLoader.java       DartBridge.java          │   │
 │  └───────────────────────────┬─────────────────────────────┘   │
 │                              │ JNI                              │
 │  ┌───────────────────────────▼─────────────────────────────┐   │
@@ -50,13 +50,13 @@ dart_mc_bridge/
 │   │       └── world.dart     # World API
 │   └── bin/
 │       └── compile.dart   # Compilation script
-├── fabric_bridge/         # Kotlin Fabric mod code
-│   └── src/main/kotlin/com/example/dartbridge/
-│       ├── DartBridge.kt      # JNI interface
-│       ├── DartModLoader.kt   # Mod initializer
-│       └── DartBlockProxy.kt  # Dart-controlled block
 ├── build.gradle.kts       # Build orchestration
 └── README.md              # This file
+
+myfirstmod/                # Java Fabric mod (separate project)
+└── src/main/java/com/example/dartbridge/
+    ├── DartBridge.java        # JNI interface
+    └── DartModLoader.java     # Mod initializer
 ```
 
 ## Prerequisites
@@ -111,7 +111,7 @@ Copy `build/dart_mod.dill` to your Minecraft `mods/` directory.
 
 ### 3. Add to Fabric Mod
 
-Add the Kotlin files from `fabric_bridge/` to your Fabric mod and register `DartModLoader` as an entrypoint in `fabric.mod.json`:
+Add the Java files from `myfirstmod/src/main/java/com/example/dartbridge/` to your Fabric mod and register `DartModLoader` as an entrypoint in `fabric.mod.json`:
 
 ```json
 {
@@ -122,6 +122,10 @@ Add the Kotlin files from `fabric_bridge/` to your Fabric mod and register `Dart
   }
 }
 ```
+
+The Java implementation includes:
+- `DartBridge.java` - JNI interface to the native Dart bridge, handles library loading and event dispatch
+- `DartModLoader.java` - Fabric mod initializer that loads the Dart VM and forwards Minecraft events
 
 ### 4. Write Dart Mod Logic
 

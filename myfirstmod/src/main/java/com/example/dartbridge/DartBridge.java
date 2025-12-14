@@ -114,6 +114,9 @@ public class DartBridge {
     public static native boolean onProxyBlockBreak(long handlerId, long worldId, int x, int y, int z, long playerId);
     public static native int onProxyBlockUse(long handlerId, long worldId, int x, int y, int z, long playerId, int hand);
 
+    // Service URL for hot reload/debugging
+    private static native String getDartServiceUrl();
+
     // Chat message handler (called from native code)
     private static ChatMessageHandler chatHandler = null;
 
@@ -216,6 +219,21 @@ public class DartBridge {
      */
     public static boolean isLibraryLoaded() {
         return libraryLoaded;
+    }
+
+    /**
+     * Get the Dart VM service URL for hot reload/debugging.
+     *
+     * @return The service URL (e.g., "http://127.0.0.1:5858/") or null if not initialized.
+     */
+    public static String getServiceUrl() {
+        if (!initialized) return null;
+        try {
+            return getDartServiceUrl();
+        } catch (Exception e) {
+            LOGGER.error("Exception getting Dart service URL: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**

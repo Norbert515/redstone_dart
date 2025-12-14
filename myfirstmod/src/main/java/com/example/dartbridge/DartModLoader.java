@@ -1,11 +1,15 @@
 package com.example.dartbridge;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
@@ -111,6 +115,51 @@ public class DartModLoader implements ModInitializer {
             LOGGER.info("[{}] Server stopped, shutting down Dart VM...", MOD_ID);
             DartBridge.safeShutdown();
             serverInstance = null;
+        });
+
+        // Register /darturl command to show service URL
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            dispatcher.register(Commands.literal("darturl")
+                .executes(context -> {
+                    String url = DartBridge.getServiceUrl();
+                    if (url != null) {
+                        Component message = Component.literal("[Dart] VM Service URL: ")
+                            .withStyle(Style.EMPTY.withColor(0x00AAFF))
+                            .append(Component.literal(url)
+                                .withStyle(Style.EMPTY.withColor(0x55FF55)));
+                        context.getSource().sendSuccess(() -> message, false);
+                    } else {
+                        context.getSource().sendFailure(Component.literal("[Dart] VM not initialized"));
+                    }
+                    return 1;
+                }));
+        });
+
+        // Send welcome message when player joins
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            if (DartBridge.isInitialized()) {
+                String url = DartBridge.getServiceUrl();
+                ServerPlayer player = handler.getPlayer();
+
+                // Send Dart support message
+                Component dartMessage = Component.literal("[Dart] ")
+                    .withStyle(Style.EMPTY.withColor(0x00AAFF))
+                    .append(Component.literal("Running with Dart support!")
+                        .withStyle(Style.EMPTY.withColor(0xFFFFFF)));
+
+                player.sendSystemMessage(dartMessage);
+
+                if (url != null) {
+                    Component urlMessage = Component.literal("[Dart] ")
+                        .withStyle(Style.EMPTY.withColor(0x00AAFF))
+                        .append(Component.literal("Service URL: ")
+                            .withStyle(Style.EMPTY.withColor(0xFFFFFF)))
+                        .append(Component.literal(url)
+                            .withStyle(Style.EMPTY.withColor(0x55FF55)));
+
+                    player.sendSystemMessage(urlMessage);
+                }
+            }
         });
 
         // Register tick event - process Dart async tasks and dispatch tick

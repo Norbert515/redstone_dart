@@ -260,4 +260,14 @@ void send_chat_message(int64_t player_id, const char* message) {
     }
 }
 
+// Service URL for hot reload/debugging
+static const char* DART_SERVICE_URL = "http://127.0.0.1:5858/";
+
+const char* get_dart_service_url() {
+    if (g_initialized) {
+        return DART_SERVICE_URL;
+    }
+    return nullptr;
+}
+
 } // extern "C"

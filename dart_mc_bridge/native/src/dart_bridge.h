@@ -47,4 +47,8 @@ extern "C" {
     typedef void (*SendChatMessageCallback)(int64_t player_id, const char* message);
     void set_send_chat_message_callback(SendChatMessageCallback cb);
     void send_chat_message(int64_t player_id, const char* message);
+
+    // Get the Dart VM service URL for hot reload/debugging
+    // Returns the URL string (e.g., "http://127.0.0.1:5858/")
+    const char* get_dart_service_url();
 }

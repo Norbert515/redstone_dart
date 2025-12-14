@@ -216,4 +216,21 @@ JNIEXPORT jint JNICALL Java_com_example_dartbridge_DartBridge_onProxyBlockUse(
     return dispatch_proxy_block_use(handler_id, world_id, x, y, z, player_id, hand);
 }
 
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    getDartServiceUrl
+ * Signature: ()Ljava/lang/String;
+ *
+ * Returns the Dart VM service URL for hot reload/debugging.
+ */
+JNIEXPORT jstring JNICALL Java_com_example_dartbridge_DartBridge_getDartServiceUrl(
+    JNIEnv* env, jclass /* cls */) {
+
+    const char* url = get_dart_service_url();
+    if (url != nullptr) {
+        return env->NewStringUTF(url);
+    }
+    return nullptr;
+}
+
 } // extern "C"
