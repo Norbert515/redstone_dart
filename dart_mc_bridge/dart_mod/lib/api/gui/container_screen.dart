@@ -214,6 +214,9 @@ abstract class ContainerScreen {
   static void handleRenderBg(int screenId, int mouseX, int mouseY,
       double partialTick, int leftPos, int topPos) {
     final screen = _screens[screenId];
+    if (screen == null) {
+      print('ContainerScreen.handleRenderBg: screenId=$screenId NOT FOUND in $_screens');
+    }
     if (screen != null) {
       screen._leftPos = leftPos;
       screen._topPos = topPos;

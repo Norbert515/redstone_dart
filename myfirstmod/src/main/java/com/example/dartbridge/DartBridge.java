@@ -41,7 +41,9 @@ import java.io.FileOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -58,6 +60,9 @@ public class DartBridge {
     private static boolean initialized = false;
     private static boolean libraryLoaded = false;
     private static MinecraftServer serverInstance = null;
+
+    // Container type definitions registered from Dart
+    private static final Map<String, ContainerDef> containerDefinitions = new HashMap<>();
 
     static {
         try {
@@ -598,6 +603,90 @@ public class DartBridge {
      */
     public static MinecraftServer getServerInstance() {
         return serverInstance;
+    }
+
+    // ==========================================================================
+    // Container Registry APIs
+    // ==========================================================================
+
+    /**
+     * Register a container type from Dart.
+     *
+     * Called from Dart via JNI when a container type is registered
+     * with the ContainerRegistry.
+     *
+     * @param containerId Unique container type ID (e.g., "mymod:diamond_chest")
+     * @param title Display title for the container
+     * @param rows Number of rows in the container
+     * @param columns Number of columns in the container
+     */
+    public static void registerContainerType(String containerId, String title, int rows, int columns) {
+        ContainerDef def = new ContainerDef(title, rows, columns);
+        containerDefinitions.put(containerId, def);
+        LOGGER.info("Registered container type: {} ({}x{})", containerId, rows, columns);
+    }
+
+    /**
+     * Get a container definition by ID.
+     *
+     * @param containerId The container type ID
+     * @return The container definition, or null if not registered
+     */
+    public static ContainerDef getContainerDef(String containerId) {
+        return containerDefinitions.get(containerId);
+    }
+
+    /**
+     * Open a container for a player.
+     *
+     * Called from Dart via JNI to open a registered container type for a specific player.
+     * This looks up the ContainerDef and opens a DartContainerMenu for the player.
+     *
+     * @param playerId The entity ID of the player
+     * @param containerId The container type ID (e.g., "mymod:diamond_chest")
+     * @return true if the container was opened successfully
+     */
+    public static boolean openContainerForPlayer(int playerId, String containerId) {
+        ServerPlayer player = getPlayerById(playerId);
+        if (player == null) {
+            LOGGER.warn("openContainerForPlayer: Player {} not found", playerId);
+            return false;
+        }
+
+        ContainerDef def = containerDefinitions.get(containerId);
+        if (def == null) {
+            LOGGER.warn("openContainerForPlayer: Container type '{}' not registered", containerId);
+            return false;
+        }
+
+        LOGGER.info("Opening container '{}' for player {} ({}x{})", containerId, playerId, def.rows, def.columns);
+
+        // Open the container menu using SimpleMenuProvider
+        player.openMenu(new net.minecraft.world.SimpleMenuProvider(
+            (syncId, playerInv, p) -> new DartContainerMenu(syncId, playerInv, def, containerId),
+            net.minecraft.network.chat.Component.literal(def.title)
+        ));
+
+        return true;
+    }
+
+    /**
+     * Check if a container type is registered.
+     *
+     * @param containerId The container type ID
+     * @return true if the container type is registered
+     */
+    public static boolean hasContainerType(String containerId) {
+        return containerDefinitions.containsKey(containerId);
+    }
+
+    /**
+     * Get all registered container type IDs.
+     *
+     * @return Set of container type IDs
+     */
+    public static Set<String> getContainerTypeIds() {
+        return containerDefinitions.keySet();
     }
 
     // ==========================================================================
@@ -2494,4 +2583,93 @@ public class DartBridge {
     private static native void onContainerScreenRenderBg(long screenId, int mouseX, int mouseY,
                                                           float partialTick, int leftPos, int topPos);
     private static native void onContainerScreenClose(long screenId);
+
+    // ==========================================================================
+    // Container Menu Slot Callbacks (called from Java -> Native -> Dart)
+    // ==========================================================================
+
+    // --------------------------------------------------------------------------
+    // Container Menu Native Method Declarations
+    // --------------------------------------------------------------------------
+
+    private static native int onContainerSlotClick(long menuId, int slotIndex, int button, int clickType, String carriedItem);
+    private static native String onContainerQuickMove(long menuId, int slotIndex);
+    private static native boolean onContainerMayPlace(long menuId, int slotIndex, String itemData);
+    private static native boolean onContainerMayPickup(long menuId, int slotIndex);
+
+    // --------------------------------------------------------------------------
+    // Container Menu Event Dispatch Methods
+    // --------------------------------------------------------------------------
+
+    /**
+     * Dispatch container slot click event to Dart handlers.
+     * @return -1 to skip default handling, 0+ for custom result
+     */
+    public static int dispatchContainerSlotClick(long menuId, int slotIndex, int button, int clickType, String carriedItem) {
+        if (!initialized) return 0;
+        try {
+            return onContainerSlotClick(menuId, slotIndex, button, clickType, carriedItem);
+        } catch (Exception e) {
+            LOGGER.error("Exception during container slot click dispatch: {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Dispatch container quick move event to Dart handlers.
+     * @return Custom ItemStack string or null for default behavior
+     */
+    public static String dispatchContainerQuickMove(long menuId, int slotIndex) {
+        if (!initialized) return null;
+        try {
+            return onContainerQuickMove(menuId, slotIndex);
+        } catch (Exception e) {
+            LOGGER.error("Exception during container quick move dispatch: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Dispatch container may place event to Dart handlers.
+     * @return true to allow placement, false to deny
+     */
+    public static boolean dispatchContainerMayPlace(long menuId, int slotIndex, String itemData) {
+        if (!initialized) return true;
+        try {
+            return onContainerMayPlace(menuId, slotIndex, itemData);
+        } catch (Exception e) {
+            LOGGER.error("Exception during container may place dispatch: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    /**
+     * Dispatch container may pickup event to Dart handlers.
+     * @return true to allow pickup, false to deny
+     */
+    public static boolean dispatchContainerMayPickup(long menuId, int slotIndex) {
+        if (!initialized) return true;
+        try {
+            return onContainerMayPickup(menuId, slotIndex);
+        } catch (Exception e) {
+            LOGGER.error("Exception during container may pickup dispatch: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    // --------------------------------------------------------------------------
+    // Container Item Access Helper Methods (called from native code)
+    // --------------------------------------------------------------------------
+
+    /**
+     * Serialize an ItemStack to a string format.
+     * @return "itemId:count:damage:maxDamage" or empty string if empty
+     */
+    public static String serializeItemStack(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return "";
+        String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+        int damage = stack.isDamageableItem() ? stack.getDamageValue() : 0;
+        int maxDamage = stack.getMaxDamage();
+        return itemId + ":" + stack.getCount() + ":" + damage + ":" + maxDamage;
+    }
 }

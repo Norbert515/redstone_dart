@@ -13,6 +13,7 @@ import 'api/player.dart';
 import 'api/world.dart';
 import 'api/item.dart';
 import 'api/inventory.dart';
+import 'api/inventory/container_registry.dart';
 import 'examples/example_blocks.dart';
 import 'examples/nocterm_minecraft_example.dart';
 import 'examples/demo_container_screen.dart';
@@ -24,11 +25,17 @@ export 'api/block.dart';
 export 'api/player.dart';
 export 'api/world.dart';
 export 'api/entity.dart';
-export 'api/item.dart';
+export 'api/item.dart' hide ItemStack;
 export 'api/inventory.dart';
 export 'api/custom_block.dart';
 export 'api/block_registry.dart';
 export 'api/gui/screen.dart';
+export 'api/inventory/item_stack.dart';
+export 'api/inventory/slot.dart';
+export 'api/inventory/dart_container.dart';
+export 'api/inventory/container_manager.dart';
+export 'api/inventory/container_callbacks.dart' show ClickType;
+export 'api/inventory/container_registry.dart';
 
 /// Main entry point called when the Dart VM is initialized.
 void main() {
@@ -45,6 +52,9 @@ void main() {
 
   // Register container screen callbacks (for Dart-defined container screens)
   initDemoContainerScreen();
+
+  // Initialize container registry for Dart-defined container types
+  ContainerRegistry.init();
 
   // =========================================================================
   // Register custom blocks defined in Dart

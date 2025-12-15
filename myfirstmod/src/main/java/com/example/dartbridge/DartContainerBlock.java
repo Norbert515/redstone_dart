@@ -39,10 +39,10 @@ public class DartContainerBlock extends Block {
             // Create a new container for this interaction
             SimpleContainer container = new SimpleContainer(SLOT_COUNT);
 
-            // Open the menu
+            // Open the menu with 3 rows x 3 columns (9 slots)
             serverPlayer.openMenu(new SimpleMenuProvider(
                 (containerId, playerInventory, p) ->
-                    new DartContainerMenu(containerId, playerInventory, container, SLOT_COUNT),
+                    new DartContainerMenu(containerId, playerInventory, container, 3, 3, null),
                 Component.literal("Dart Container")
             ));
         }

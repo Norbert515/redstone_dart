@@ -815,4 +815,272 @@ void dispatch_container_screen_close(int64_t screen_id) {
     safe_exit_isolate(did_enter);
 }
 
+// ==========================================================================
+// Container Menu Callback Registration (called from Dart via FFI)
+// ==========================================================================
+
+void register_container_slot_click_callback(ContainerSlotClickCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setContainerSlotClickHandler(callback);
+}
+
+void register_container_quick_move_callback(ContainerQuickMoveCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setContainerQuickMoveHandler(callback);
+}
+
+void register_container_may_place_callback(ContainerMayPlaceCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setContainerMayPlaceHandler(callback);
+}
+
+void register_container_may_pickup_callback(ContainerMayPickupCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setContainerMayPickupHandler(callback);
+}
+
+// ==========================================================================
+// Container Menu Event Dispatch (called from Java via JNI)
+// ==========================================================================
+
+int32_t dispatch_container_slot_click(int64_t menu_id, int32_t slot_index,
+                                       int32_t button, int32_t click_type, const char* carried_item) {
+    if (!g_initialized || g_isolate == nullptr) return 0;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchContainerSlotClick(
+        menu_id, slot_index, button, click_type, carried_item);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+const char* dispatch_container_quick_move(int64_t menu_id, int32_t slot_index) {
+    if (!g_initialized || g_isolate == nullptr) return nullptr;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    const char* result = dart_mc_bridge::CallbackRegistry::instance().dispatchContainerQuickMove(
+        menu_id, slot_index);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_container_may_place(int64_t menu_id, int32_t slot_index, const char* item_data) {
+    if (!g_initialized || g_isolate == nullptr) return true;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchContainerMayPlace(
+        menu_id, slot_index, item_data);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_container_may_pickup(int64_t menu_id, int32_t slot_index) {
+    if (!g_initialized || g_isolate == nullptr) return true;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchContainerMayPickup(
+        menu_id, slot_index);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+// ==========================================================================
+// Container Item Access APIs (Dart -> Java via C++)
+// These functions call into Java to get/set container items
+// ==========================================================================
+
+// Helper to get JNIEnv from stored JVM
+static JNIEnv* get_jni_env_for_container() {
+    if (g_jvm_ref == nullptr) return nullptr;
+    JNIEnv* env = nullptr;
+    int status = g_jvm_ref->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_8);
+    if (status == JNI_EDETACHED) {
+        if (g_jvm_ref->AttachCurrentThread(reinterpret_cast<void**>(&env), nullptr) != JNI_OK) {
+            return nullptr;
+        }
+    }
+    return env;
+}
+
+// Cached method IDs for container item access
+static jclass g_dart_container_menu_class = nullptr;
+static jmethodID g_get_container_item_impl = nullptr;
+static jmethodID g_set_container_item_impl = nullptr;
+static jmethodID g_get_container_slot_count_impl = nullptr;
+static jmethodID g_clear_container_slot_impl = nullptr;
+
+static bool init_container_jni_cache(JNIEnv* env) {
+    if (g_dart_container_menu_class != nullptr) return true;
+
+    jclass localClass = env->FindClass("com/example/dartbridge/DartContainerMenu");
+    if (localClass == nullptr) {
+        std::cerr << "Failed to find DartContainerMenu class" << std::endl;
+        env->ExceptionClear();
+        return false;
+    }
+    g_dart_container_menu_class = static_cast<jclass>(env->NewGlobalRef(localClass));
+    env->DeleteLocalRef(localClass);
+
+    g_get_container_item_impl = env->GetStaticMethodID(g_dart_container_menu_class,
+        "getContainerItemImpl", "(JI)Ljava/lang/String;");
+    g_set_container_item_impl = env->GetStaticMethodID(g_dart_container_menu_class,
+        "setContainerItemImpl", "(JILjava/lang/String;I)V");
+    g_get_container_slot_count_impl = env->GetStaticMethodID(g_dart_container_menu_class,
+        "getContainerSlotCountImpl", "(J)I");
+    g_clear_container_slot_impl = env->GetStaticMethodID(g_dart_container_menu_class,
+        "clearContainerSlotImpl", "(JI)V");
+
+    if (g_get_container_item_impl == nullptr || g_set_container_item_impl == nullptr ||
+        g_get_container_slot_count_impl == nullptr || g_clear_container_slot_impl == nullptr) {
+        std::cerr << "Failed to find container item methods" << std::endl;
+        env->ExceptionClear();
+        return false;
+    }
+
+    return true;
+}
+
+const char* dart_get_container_item(int64_t menu_id, int32_t slot_index) {
+    JNIEnv* env = get_jni_env_for_container();
+    if (env == nullptr) return strdup("");
+
+    if (!init_container_jni_cache(env)) return strdup("");
+
+    jstring result = (jstring)env->CallStaticObjectMethod(g_dart_container_menu_class,
+        g_get_container_item_impl, static_cast<jlong>(menu_id), static_cast<jint>(slot_index));
+
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        return strdup("");
+    }
+
+    if (result == nullptr) return strdup("");
+
+    const char* str = env->GetStringUTFChars(result, nullptr);
+    char* copy = strdup(str);
+    env->ReleaseStringUTFChars(result, str);
+    env->DeleteLocalRef(result);
+
+    return copy;
+}
+
+void dart_set_container_item(int64_t menu_id, int32_t slot_index, const char* item_id, int32_t count) {
+    JNIEnv* env = get_jni_env_for_container();
+    if (env == nullptr) return;
+
+    if (!init_container_jni_cache(env)) return;
+
+    jstring jItemId = env->NewStringUTF(item_id);
+    env->CallStaticVoidMethod(g_dart_container_menu_class, g_set_container_item_impl,
+        static_cast<jlong>(menu_id), static_cast<jint>(slot_index), jItemId, static_cast<jint>(count));
+    env->DeleteLocalRef(jItemId);
+
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+    }
+}
+
+int32_t dart_get_container_slot_count(int64_t menu_id) {
+    JNIEnv* env = get_jni_env_for_container();
+    if (env == nullptr) return 0;
+
+    if (!init_container_jni_cache(env)) return 0;
+
+    jint result = env->CallStaticIntMethod(g_dart_container_menu_class,
+        g_get_container_slot_count_impl, static_cast<jlong>(menu_id));
+
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        return 0;
+    }
+
+    return static_cast<int32_t>(result);
+}
+
+void dart_clear_container_slot(int64_t menu_id, int32_t slot_index) {
+    JNIEnv* env = get_jni_env_for_container();
+    if (env == nullptr) return;
+
+    if (!init_container_jni_cache(env)) return;
+
+    env->CallStaticVoidMethod(g_dart_container_menu_class, g_clear_container_slot_impl,
+        static_cast<jlong>(menu_id), static_cast<jint>(slot_index));
+
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+    }
+}
+
+// Free a string allocated by dart_get_container_item
+void dart_free_string(const char* str) {
+    if (str != nullptr) {
+        free(const_cast<char*>(str));
+    }
+}
+
+// ==========================================================================
+// Container Opening API (Dart -> Java via C++)
+// ==========================================================================
+
+// Cached method ID for openContainerForPlayer
+static jmethodID g_open_container_for_player = nullptr;
+
+bool dart_open_container_for_player(int32_t player_id, const char* container_id) {
+    JNIEnv* env = get_jni_env_for_container();
+    if (env == nullptr) {
+        std::cerr << "dart_open_container_for_player: Failed to get JNI environment" << std::endl;
+        return false;
+    }
+
+    // Find DartBridge class if not cached
+    static jclass dart_bridge_class = nullptr;
+    if (dart_bridge_class == nullptr) {
+        jclass localClass = env->FindClass("com/example/dartbridge/DartBridge");
+        if (localClass == nullptr) {
+            std::cerr << "dart_open_container_for_player: Failed to find DartBridge class" << std::endl;
+            env->ExceptionClear();
+            return false;
+        }
+        dart_bridge_class = static_cast<jclass>(env->NewGlobalRef(localClass));
+        env->DeleteLocalRef(localClass);
+    }
+
+    // Get method ID if not cached
+    if (g_open_container_for_player == nullptr) {
+        g_open_container_for_player = env->GetStaticMethodID(
+            dart_bridge_class, "openContainerForPlayer", "(ILjava/lang/String;)Z");
+        if (g_open_container_for_player == nullptr) {
+            std::cerr << "dart_open_container_for_player: Failed to find openContainerForPlayer method" << std::endl;
+            env->ExceptionClear();
+            return false;
+        }
+    }
+
+    // Create Java string for container ID
+    jstring jContainerId = env->NewStringUTF(container_id);
+    if (jContainerId == nullptr) {
+        std::cerr << "dart_open_container_for_player: Failed to create container ID string" << std::endl;
+        return false;
+    }
+
+    // Call the Java method
+    jboolean result = env->CallStaticBooleanMethod(
+        dart_bridge_class, g_open_container_for_player,
+        static_cast<jint>(player_id), jContainerId);
+
+    env->DeleteLocalRef(jContainerId);
+
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        return false;
+    }
+
+    return result == JNI_TRUE;
+}
+
 } // extern "C"

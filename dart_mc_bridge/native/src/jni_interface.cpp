@@ -713,4 +713,79 @@ JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onContainerScreenC
     dispatch_container_screen_close(static_cast<int64_t>(screenId));
 }
 
+// ==========================================================================
+// Container Menu JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onContainerSlotClick
+ * Signature: (JIIILjava/lang/String;)I
+ *
+ * Called when a slot is clicked in a container menu.
+ * Returns -1 to skip default handling, 0+ for custom result.
+ */
+JNIEXPORT jint JNICALL Java_com_example_dartbridge_DartBridge_onContainerSlotClick(
+    JNIEnv* env, jclass /* cls */, jlong menuId, jint slotIndex,
+    jint button, jint clickType, jstring carriedItem) {
+    const char* item = env->GetStringUTFChars(carriedItem, nullptr);
+    int32_t result = dispatch_container_slot_click(
+        static_cast<int64_t>(menuId), static_cast<int32_t>(slotIndex),
+        static_cast<int32_t>(button), static_cast<int32_t>(clickType), item);
+    env->ReleaseStringUTFChars(carriedItem, item);
+    return static_cast<jint>(result);
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onContainerQuickMove
+ * Signature: (JI)Ljava/lang/String;
+ *
+ * Called when shift-click is used on a slot.
+ * Returns custom ItemStack string or null for default behavior.
+ */
+JNIEXPORT jstring JNICALL Java_com_example_dartbridge_DartBridge_onContainerQuickMove(
+    JNIEnv* env, jclass /* cls */, jlong menuId, jint slotIndex) {
+    const char* result = dispatch_container_quick_move(
+        static_cast<int64_t>(menuId), static_cast<int32_t>(slotIndex));
+
+    if (result != nullptr && result[0] != '\0') {
+        jstring jresult = env->NewStringUTF(result);
+        return jresult;
+    }
+    return nullptr;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onContainerMayPlace
+ * Signature: (JILjava/lang/String;)Z
+ *
+ * Called to check if an item may be placed in a slot.
+ * Returns true to allow, false to deny.
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onContainerMayPlace(
+    JNIEnv* env, jclass /* cls */, jlong menuId, jint slotIndex, jstring itemData) {
+    const char* item = env->GetStringUTFChars(itemData, nullptr);
+    bool result = dispatch_container_may_place(
+        static_cast<int64_t>(menuId), static_cast<int32_t>(slotIndex), item);
+    env->ReleaseStringUTFChars(itemData, item);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onContainerMayPickup
+ * Signature: (JI)Z
+ *
+ * Called to check if an item may be picked up from a slot.
+ * Returns true to allow, false to deny.
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onContainerMayPickup(
+    JNIEnv* env, jclass /* cls */, jlong menuId, jint slotIndex) {
+    bool result = dispatch_container_may_pickup(
+        static_cast<int64_t>(menuId), static_cast<int32_t>(slotIndex));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
 } // extern "C"

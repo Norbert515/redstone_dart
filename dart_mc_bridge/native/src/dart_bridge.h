@@ -213,4 +213,54 @@ extern "C" {
     void dispatch_container_screen_render_bg(int64_t screen_id, int32_t mouse_x, int32_t mouse_y,
                                              float partial_tick, int32_t left_pos, int32_t top_pos);
     void dispatch_container_screen_close(int64_t screen_id);
+
+    // ==========================================================================
+    // Container Menu Callbacks (for slot interaction)
+    // ==========================================================================
+
+    // Container menu callbacks (called from Dart via FFI)
+    // SlotClick: returns -1 to skip default handling, 0+ for custom result
+    typedef int32_t (*ContainerSlotClickCallback)(int64_t menu_id, int32_t slot_index,
+                                                   int32_t button, int32_t click_type, const char* carried_item);
+    // QuickMove: returns serialized ItemStack or nullptr/empty for default
+    typedef const char* (*ContainerQuickMoveCallback)(int64_t menu_id, int32_t slot_index);
+    // MayPlace: returns true to allow placement, false to deny
+    typedef bool (*ContainerMayPlaceCallback)(int64_t menu_id, int32_t slot_index, const char* item_data);
+    // MayPickup: returns true to allow pickup, false to deny
+    typedef bool (*ContainerMayPickupCallback)(int64_t menu_id, int32_t slot_index);
+
+    // Container menu callback registration (called from Dart via FFI)
+    void register_container_slot_click_callback(ContainerSlotClickCallback callback);
+    void register_container_quick_move_callback(ContainerQuickMoveCallback callback);
+    void register_container_may_place_callback(ContainerMayPlaceCallback callback);
+    void register_container_may_pickup_callback(ContainerMayPickupCallback callback);
+
+    // Container menu dispatch functions (called from Java via JNI)
+    int32_t dispatch_container_slot_click(int64_t menu_id, int32_t slot_index,
+                                           int32_t button, int32_t click_type, const char* carried_item);
+    const char* dispatch_container_quick_move(int64_t menu_id, int32_t slot_index);
+    bool dispatch_container_may_place(int64_t menu_id, int32_t slot_index, const char* item_data);
+    bool dispatch_container_may_pickup(int64_t menu_id, int32_t slot_index);
+
+    // ==========================================================================
+    // Container Item Access APIs (Dart -> Java via C++)
+    // ==========================================================================
+
+    // Get container item - returns "itemId:count:damage:maxDamage" (Dart must free)
+    const char* dart_get_container_item(int64_t menu_id, int32_t slot_index);
+    // Set container item
+    void dart_set_container_item(int64_t menu_id, int32_t slot_index, const char* item_id, int32_t count);
+    // Get container slot count
+    int32_t dart_get_container_slot_count(int64_t menu_id);
+    // Clear container slot
+    void dart_clear_container_slot(int64_t menu_id, int32_t slot_index);
+    // Free a string allocated by dart_get_container_item
+    void dart_free_string(const char* str);
+
+    // ==========================================================================
+    // Container Opening API (Dart -> Java via C++)
+    // ==========================================================================
+
+    // Open a container for a player - returns true if successful
+    bool dart_open_container_for_player(int32_t player_id, const char* container_id);
 }

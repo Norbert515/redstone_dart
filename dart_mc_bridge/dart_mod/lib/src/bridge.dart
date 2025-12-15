@@ -157,6 +157,60 @@ typedef ContainerScreenRenderBgCallbackNative = Void Function(
 /// Container screen close callback - called when container screen is closed
 typedef ContainerScreenCloseCallbackNative = Void Function(Int64 screenId);
 
+// =============================================================================
+// Container Menu Slot Callback Types
+// =============================================================================
+
+/// Container slot click callback - returns -1 to skip default handling, 0+ for custom result
+typedef ContainerSlotClickCallbackNative = Int32 Function(
+    Int64 menuId, Int32 slotIndex, Int32 button, Int32 clickType, Pointer<Utf8> carriedItem);
+
+/// Container quick move callback - returns serialized ItemStack or nullptr for default
+typedef ContainerQuickMoveCallbackNative = Pointer<Utf8> Function(
+    Int64 menuId, Int32 slotIndex);
+
+/// Container may place callback - returns true to allow, false to deny
+typedef ContainerMayPlaceCallbackNative = Bool Function(
+    Int64 menuId, Int32 slotIndex, Pointer<Utf8> itemData);
+
+/// Container may pickup callback - returns true to allow, false to deny
+typedef ContainerMayPickupCallbackNative = Bool Function(
+    Int64 menuId, Int32 slotIndex);
+
+// =============================================================================
+// Container Item Access API Types (Dart -> Java)
+// =============================================================================
+
+/// Get container item - returns "itemId:count:damage:maxDamage"
+typedef GetContainerItemNative = Pointer<Utf8> Function(Int64 menuId, Int32 slotIndex);
+typedef GetContainerItem = Pointer<Utf8> Function(int menuId, int slotIndex);
+
+/// Set container item
+typedef SetContainerItemNative = Void Function(
+    Int64 menuId, Int32 slotIndex, Pointer<Utf8> itemId, Int32 count);
+typedef SetContainerItemDart = void Function(
+    int menuId, int slotIndex, Pointer<Utf8> itemId, int count);
+
+/// Get container slot count
+typedef GetContainerSlotCountNative = Int32 Function(Int64 menuId);
+typedef GetContainerSlotCount = int Function(int menuId);
+
+/// Clear container slot
+typedef ClearContainerSlotNative = Void Function(Int64 menuId, Int32 slotIndex);
+typedef ClearContainerSlotDart = void Function(int menuId, int slotIndex);
+
+/// Free a string allocated by native code
+typedef FreeStringNative = Void Function(Pointer<Utf8> str);
+typedef FreeStringDart = void Function(Pointer<Utf8> str);
+
+// =============================================================================
+// Container Opening API Types (Dart -> Java)
+// =============================================================================
+
+/// Open a container for a player - returns true if successful
+typedef OpenContainerForPlayerNative = Bool Function(Int32 playerId, Pointer<Utf8> containerId);
+typedef OpenContainerForPlayerDart = bool Function(int playerId, Pointer<Utf8> containerId);
+
 /// Native function signatures
 typedef RegisterBlockBreakHandlerNative = Void Function(
     Pointer<NativeFunction<BlockBreakCallbackNative>> callback);
@@ -363,6 +417,30 @@ typedef RegisterContainerScreenCloseHandlerNative = Void Function(
     Pointer<NativeFunction<ContainerScreenCloseCallbackNative>> callback);
 typedef RegisterContainerScreenCloseHandler = void Function(
     Pointer<NativeFunction<ContainerScreenCloseCallbackNative>> callback);
+
+// =============================================================================
+// Container Menu Slot Callback Registration Signatures
+// =============================================================================
+
+typedef RegisterContainerSlotClickHandlerNative = Void Function(
+    Pointer<NativeFunction<ContainerSlotClickCallbackNative>> callback);
+typedef RegisterContainerSlotClickHandler = void Function(
+    Pointer<NativeFunction<ContainerSlotClickCallbackNative>> callback);
+
+typedef RegisterContainerQuickMoveHandlerNative = Void Function(
+    Pointer<NativeFunction<ContainerQuickMoveCallbackNative>> callback);
+typedef RegisterContainerQuickMoveHandler = void Function(
+    Pointer<NativeFunction<ContainerQuickMoveCallbackNative>> callback);
+
+typedef RegisterContainerMayPlaceHandlerNative = Void Function(
+    Pointer<NativeFunction<ContainerMayPlaceCallbackNative>> callback);
+typedef RegisterContainerMayPlaceHandler = void Function(
+    Pointer<NativeFunction<ContainerMayPlaceCallbackNative>> callback);
+
+typedef RegisterContainerMayPickupHandlerNative = Void Function(
+    Pointer<NativeFunction<ContainerMayPickupCallbackNative>> callback);
+typedef RegisterContainerMayPickupHandler = void Function(
+    Pointer<NativeFunction<ContainerMayPickupCallbackNative>> callback);
 
 /// Bridge to the native library.
 class Bridge {
@@ -780,5 +858,112 @@ class Bridge {
     final register = library.lookupFunction<RegisterContainerScreenCloseHandlerNative,
         RegisterContainerScreenCloseHandler>('register_container_screen_close_callback');
     register(callback);
+  }
+
+  // ===========================================================================
+  // Container Menu Slot Callback Registration Methods
+  // ===========================================================================
+
+  /// Register a container slot click handler.
+  static void registerContainerSlotClickHandler(
+      Pointer<NativeFunction<ContainerSlotClickCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterContainerSlotClickHandlerNative,
+        RegisterContainerSlotClickHandler>('register_container_slot_click_callback');
+    register(callback);
+  }
+
+  /// Register a container quick move handler.
+  static void registerContainerQuickMoveHandler(
+      Pointer<NativeFunction<ContainerQuickMoveCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterContainerQuickMoveHandlerNative,
+        RegisterContainerQuickMoveHandler>('register_container_quick_move_callback');
+    register(callback);
+  }
+
+  /// Register a container may place handler.
+  static void registerContainerMayPlaceHandler(
+      Pointer<NativeFunction<ContainerMayPlaceCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterContainerMayPlaceHandlerNative,
+        RegisterContainerMayPlaceHandler>('register_container_may_place_callback');
+    register(callback);
+  }
+
+  /// Register a container may pickup handler.
+  static void registerContainerMayPickupHandler(
+      Pointer<NativeFunction<ContainerMayPickupCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterContainerMayPickupHandlerNative,
+        RegisterContainerMayPickupHandler>('register_container_may_pickup_callback');
+    register(callback);
+  }
+
+  // ===========================================================================
+  // Container Item Access APIs (Dart -> Java via C++)
+  // ===========================================================================
+
+  /// Get item from container slot.
+  /// Returns "itemId:count:damage:maxDamage" or empty string.
+  static String getContainerItem(int menuId, int slotIndex) {
+    final fn = library.lookupFunction<GetContainerItemNative, GetContainerItem>(
+        'dart_get_container_item');
+    final result = fn(menuId, slotIndex);
+    if (result == nullptr) return '';
+    final str = result.toDartString();
+    // Free the native string
+    _freeNativeString(result);
+    return str;
+  }
+
+  /// Set item in container slot.
+  static void setContainerItem(int menuId, int slotIndex, String itemId, int count) {
+    final fn = library.lookupFunction<SetContainerItemNative, SetContainerItemDart>(
+        'dart_set_container_item');
+    final itemIdPtr = itemId.toNativeUtf8();
+    try {
+      fn(menuId, slotIndex, itemIdPtr, count);
+    } finally {
+      calloc.free(itemIdPtr);
+    }
+  }
+
+  /// Get total slot count for a container menu.
+  static int getContainerSlotCount(int menuId) {
+    final fn = library.lookupFunction<GetContainerSlotCountNative, GetContainerSlotCount>(
+        'dart_get_container_slot_count');
+    return fn(menuId);
+  }
+
+  /// Clear a container slot.
+  static void clearContainerSlot(int menuId, int slotIndex) {
+    final fn = library.lookupFunction<ClearContainerSlotNative, ClearContainerSlotDart>(
+        'dart_clear_container_slot');
+    fn(menuId, slotIndex);
+  }
+
+  /// Free a string allocated by native code.
+  static void _freeNativeString(Pointer<Utf8> str) {
+    final fn = library.lookupFunction<FreeStringNative, FreeStringDart>(
+        'dart_free_string');
+    fn(str);
+  }
+
+  // ===========================================================================
+  // Container Opening API (Dart -> Java via C++)
+  // ===========================================================================
+
+  /// Open a container for a player.
+  ///
+  /// [playerId] is the entity ID of the player.
+  /// [containerId] is the registered container type ID (e.g., "mymod:diamond_chest").
+  ///
+  /// Returns true if the container was opened successfully.
+  static bool openContainerForPlayer(int playerId, String containerId) {
+    final fn = library.lookupFunction<OpenContainerForPlayerNative, OpenContainerForPlayerDart>(
+        'dart_open_container_for_player');
+    final containerIdPtr = containerId.toNativeUtf8();
+    try {
+      return fn(playerId, containerIdPtr);
+    } finally {
+      calloc.free(containerIdPtr);
+    }
   }
 }

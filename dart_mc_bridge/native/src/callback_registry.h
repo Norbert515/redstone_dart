@@ -527,6 +527,61 @@ public:
         }
     }
 
+    // Container menu callback setters
+    void setContainerSlotClickHandler(ContainerSlotClickCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        container_slot_click_handler_ = cb;
+    }
+
+    void setContainerQuickMoveHandler(ContainerQuickMoveCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        container_quick_move_handler_ = cb;
+    }
+
+    void setContainerMayPlaceHandler(ContainerMayPlaceCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        container_may_place_handler_ = cb;
+    }
+
+    void setContainerMayPickupHandler(ContainerMayPickupCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        container_may_pickup_handler_ = cb;
+    }
+
+    // Container menu event dispatch methods
+    int32_t dispatchContainerSlotClick(int64_t menu_id, int32_t slot_index,
+                                        int32_t button, int32_t click_type, const char* carried_item) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (container_slot_click_handler_) {
+            return container_slot_click_handler_(menu_id, slot_index, button, click_type, carried_item);
+        }
+        return 0; // Default: continue with default handling
+    }
+
+    const char* dispatchContainerQuickMove(int64_t menu_id, int32_t slot_index) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (container_quick_move_handler_) {
+            return container_quick_move_handler_(menu_id, slot_index);
+        }
+        return nullptr; // Default: use default behavior
+    }
+
+    bool dispatchContainerMayPlace(int64_t menu_id, int32_t slot_index, const char* item_data) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (container_may_place_handler_) {
+            return container_may_place_handler_(menu_id, slot_index, item_data);
+        }
+        return true; // Default: allow placement
+    }
+
+    bool dispatchContainerMayPickup(int64_t menu_id, int32_t slot_index) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (container_may_pickup_handler_) {
+            return container_may_pickup_handler_(menu_id, slot_index);
+        }
+        return true; // Default: allow pickup
+    }
+
     // Clear all handlers
     void clear() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -573,6 +628,11 @@ public:
         container_screen_init_handler_ = nullptr;
         container_screen_render_bg_handler_ = nullptr;
         container_screen_close_handler_ = nullptr;
+        // Container menu handlers
+        container_slot_click_handler_ = nullptr;
+        container_quick_move_handler_ = nullptr;
+        container_may_place_handler_ = nullptr;
+        container_may_pickup_handler_ = nullptr;
     }
 
 private:
@@ -630,6 +690,12 @@ private:
     ContainerScreenInitCallback container_screen_init_handler_ = nullptr;
     ContainerScreenRenderBgCallback container_screen_render_bg_handler_ = nullptr;
     ContainerScreenCloseCallback container_screen_close_handler_ = nullptr;
+
+    // Container menu handlers
+    ContainerSlotClickCallback container_slot_click_handler_ = nullptr;
+    ContainerQuickMoveCallback container_quick_move_handler_ = nullptr;
+    ContainerMayPlaceCallback container_may_place_handler_ = nullptr;
+    ContainerMayPickupCallback container_may_pickup_handler_ = nullptr;
 };
 
 } // namespace dart_mc_bridge

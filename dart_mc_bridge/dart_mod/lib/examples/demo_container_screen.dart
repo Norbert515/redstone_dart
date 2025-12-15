@@ -58,10 +58,17 @@ class DemoContainerScreen extends ContainerScreen {
       shadow: false,
     );
 
-    // Draw slot backgrounds for the 3x3 grid (must match Java slot positions)
+    // Draw slot backgrounds for the 3x3 grid
+    // Java slot positions: startX = (176 - 3*18)/2 = 61, startY = 17
+    // Slot sprite should be drawn 1 pixel before the slot position
+    const int containerStartX = 61;
+    const int containerStartY = 17;
     for (int row = 0; row < 3; row++) {
       for (int col = 0; col < 3; col++) {
-        graphics.drawSlot(leftPos + 61 + col * 18, topPos + 16 + row * 18);
+        graphics.drawSlot(
+          leftPos + containerStartX + col * 18 - 1,
+          topPos + containerStartY + row * 18 - 1,
+        );
       }
     }
 
@@ -69,21 +76,32 @@ class DemoContainerScreen extends ContainerScreen {
     graphics.drawString(
       'Inventory',
       leftPos + 8,
-      topPos + 73,
+      topPos + 71,
       color: 0xFF404040,
       shadow: false,
     );
 
     // Draw slot backgrounds for player inventory (3 rows of 9)
+    // Java: playerInvY = 17 + 3*18 + 14 = 85, startX = 8
+    const int playerInvStartX = 8;
+    const int playerInvStartY = 85;
     for (int row = 0; row < 3; row++) {
       for (int col = 0; col < 9; col++) {
-        graphics.drawSlot(leftPos + 7 + col * 18, topPos + 83 + row * 18);
+        graphics.drawSlot(
+          leftPos + playerInvStartX + col * 18 - 1,
+          topPos + playerInvStartY + row * 18 - 1,
+        );
       }
     }
 
     // Draw hotbar slots (1 row of 9)
+    // Java: hotbar = playerInvY + 58 = 143
+    const int hotbarY = 143;
     for (int col = 0; col < 9; col++) {
-      graphics.drawSlot(leftPos + 7 + col * 18, topPos + 141);
+      graphics.drawSlot(
+        leftPos + playerInvStartX + col * 18 - 1,
+        topPos + hotbarY - 1,
+      );
     }
   }
 
