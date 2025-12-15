@@ -7,7 +7,7 @@ library;
 import '../../src/jni/generic_bridge.dart';
 
 /// The Java class name for DartBridgeClient (client-side).
-const _dartBridgeClient = 'com/example/dartbridge/DartBridgeClient';
+const _dartBridgeClient = 'com/redstone/DartBridgeClient';
 
 /// Drawing context for rendering on screens.
 ///

@@ -9,7 +9,7 @@ import 'player.dart';
 import 'world.dart';
 
 /// The Java class name for DartBridge.
-const _dartBridge = 'com/example/dartbridge/DartBridge';
+const _dartBridge = 'com/redstone/DartBridge';
 
 /// Player inventory access.
 ///

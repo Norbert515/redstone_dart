@@ -102,7 +102,7 @@ class ContainerRegistry {
   static void _registerWithJava(ContainerDefinition definition) {
     try {
       GenericJniBridge.callStaticVoidMethod(
-        'com/example/dartbridge/DartBridge',
+        'com/redstone/DartBridge',
         'registerContainerType',
         '(Ljava/lang/String;Ljava/lang/String;II)V',
         [definition.id, definition.title, definition.rows, definition.columns],

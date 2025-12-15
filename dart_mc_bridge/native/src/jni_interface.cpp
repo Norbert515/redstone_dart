@@ -788,4 +788,110 @@ JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onContainerMay
     return result ? JNI_TRUE : JNI_FALSE;
 }
 
+// ==========================================================================
+// Entity Proxy JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onProxyEntitySpawn
+ * Signature: (JIJ)V
+ *
+ * Called when a Dart-defined entity is spawned.
+ * Routes to Dart's EntityRegistry.dispatchSpawn().
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onProxyEntitySpawn(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handlerId, jint entityId, jlong worldId) {
+    dispatch_proxy_entity_spawn(static_cast<int64_t>(handlerId),
+                                 static_cast<int32_t>(entityId),
+                                 static_cast<int64_t>(worldId));
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onProxyEntityTick
+ * Signature: (JI)V
+ *
+ * Called every tick for a Dart-defined entity.
+ * Routes to Dart's EntityRegistry.dispatchTick().
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onProxyEntityTick(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handlerId, jint entityId) {
+    dispatch_proxy_entity_tick(static_cast<int64_t>(handlerId),
+                                static_cast<int32_t>(entityId));
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onProxyEntityDeath
+ * Signature: (JILjava/lang/String;)V
+ *
+ * Called when a Dart-defined entity dies.
+ * Routes to Dart's EntityRegistry.dispatchDeath().
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onProxyEntityDeath(
+    JNIEnv* env, jclass /* cls */,
+    jlong handlerId, jint entityId, jstring damageSource) {
+    const char* source = env->GetStringUTFChars(damageSource, nullptr);
+    dispatch_proxy_entity_death(static_cast<int64_t>(handlerId),
+                                 static_cast<int32_t>(entityId),
+                                 source);
+    env->ReleaseStringUTFChars(damageSource, source);
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onProxyEntityDamage
+ * Signature: (JILjava/lang/String;F)Z
+ *
+ * Called when a Dart-defined entity takes damage.
+ * Routes to Dart's EntityRegistry.dispatchDamage().
+ * Returns true to allow damage, false to cancel.
+ */
+JNIEXPORT jboolean JNICALL Java_com_example_dartbridge_DartBridge_onProxyEntityDamage(
+    JNIEnv* env, jclass /* cls */,
+    jlong handlerId, jint entityId, jstring damageSource, jfloat amount) {
+    const char* source = env->GetStringUTFChars(damageSource, nullptr);
+    bool result = dispatch_proxy_entity_damage(static_cast<int64_t>(handlerId),
+                                                static_cast<int32_t>(entityId),
+                                                source,
+                                                static_cast<double>(amount));
+    env->ReleaseStringUTFChars(damageSource, source);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onProxyEntityAttack
+ * Signature: (JII)V
+ *
+ * Called when a Dart-defined entity attacks another entity.
+ * Routes to Dart's EntityRegistry.dispatchAttack().
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onProxyEntityAttack(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handlerId, jint entityId, jint targetId) {
+    dispatch_proxy_entity_attack(static_cast<int64_t>(handlerId),
+                                  static_cast<int32_t>(entityId),
+                                  static_cast<int32_t>(targetId));
+}
+
+/*
+ * Class:     com_example_dartbridge_DartBridge
+ * Method:    onProxyEntityTarget
+ * Signature: (JII)V
+ *
+ * Called when a Dart-defined entity targets another entity.
+ * Routes to Dart's EntityRegistry.dispatchTargetAcquired().
+ */
+JNIEXPORT void JNICALL Java_com_example_dartbridge_DartBridge_onProxyEntityTarget(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handlerId, jint entityId, jint targetId) {
+    dispatch_proxy_entity_target(static_cast<int64_t>(handlerId),
+                                  static_cast<int32_t>(entityId),
+                                  static_cast<int32_t>(targetId));
+}
+
 } // extern "C"

@@ -8,7 +8,7 @@ library;
 
 import '../../src/jni/generic_bridge.dart';
 
-const _dartBridgeClient = 'com/example/dartbridge/DartBridgeClient';
+const _dartBridgeClient = 'com/redstone/DartBridgeClient';
 
 /// Base class for native Minecraft widgets.
 ///

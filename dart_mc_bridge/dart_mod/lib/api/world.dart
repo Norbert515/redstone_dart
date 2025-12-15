@@ -8,7 +8,7 @@ import 'entity.dart';
 import 'player.dart';
 
 /// The Java class name for DartBridge.
-const _dartBridge = 'com/example/dartbridge/DartBridge';
+const _dartBridge = 'com/redstone/DartBridge';
 
 /// Sound categories for audio playback.
 enum SoundCategory {

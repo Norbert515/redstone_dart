@@ -17,6 +17,8 @@ import 'api/inventory/container_registry.dart';
 import 'examples/example_blocks.dart';
 import 'examples/nocterm_minecraft_example.dart';
 import 'examples/demo_container_screen.dart';
+import 'examples/example_entities.dart';
+import 'api/entity_registry.dart';
 
 export 'src/bridge.dart';
 export 'src/events.dart';
@@ -47,6 +49,9 @@ void main() {
   // Register proxy block handlers (for Dart-defined custom blocks)
   Events.registerProxyBlockHandlers();
 
+  // Register proxy entity handlers (for Dart-defined custom entities)
+  Events.registerProxyEntityHandlers();
+
   // Register screen callbacks (for Dart-defined GUI screens)
   initScreenCallbacks();
 
@@ -65,6 +70,15 @@ void main() {
 
   // Freeze the block registry (no more blocks can be registered after this)
   BlockRegistry.freeze();
+
+  // =========================================================================
+  // Register custom entities defined in Dart
+  // This MUST happen before the registry freezes (during mod initialization)
+  // =========================================================================
+  registerExampleEntities();
+
+  // Freeze the entity registry (no more entities can be registered after this)
+  EntityRegistry.freeze();
 
   // Register event handlers
   Events.onBlockBreak((x, y, z, playerId) {
@@ -185,6 +199,7 @@ void main() {
     print('═══════════════════════════════════════════════════');
     print('   Dart Minecraft Mod - Server Ready!');
     print('   ${BlockRegistry.blockCount} custom blocks loaded');
+    print('   ${EntityRegistry.entityCount} custom entities loaded');
     print('   All APIs initialized and ready');
     print('═══════════════════════════════════════════════════');
   });

@@ -161,4 +161,118 @@ Use Minecraft formatting codes in chat messages:
 - Dart SDK 3.0+
 - CMake 3.16+
 - Fabric Loader 0.18+
-- Minecraft 1.21.11
+- Minecraft 1.21.1
+
+## Dependencies
+
+### Dart Runtime Library (dart_dll)
+
+The native bridge requires `libdart_dll` - a shared library that embeds the Dart VM. This is provided by [dart_shared_library](https://github.com/fuzzybinary/dart_shared_library).
+
+**The library must be placed at:** `dart_mc_bridge/native/deps/dart_dll/`
+
+```
+dart_mc_bridge/native/deps/dart_dll/
+├── include/
+│   ├── dart_api.h
+│   ├── dart_api_dl.h
+│   ├── dart_dll.h
+│   ├── dart_native_api.h
+│   ├── dart_tools_api.h
+│   └── isolate_setup.h
+└── lib/
+    └── libdart_dll.dylib  (or .so / .dll)
+```
+
+### Option 1: Download Pre-built (x64 only)
+
+For **Windows x64**, **Linux x64**, or **macOS x64 (Intel)**, download from [GitHub Releases](https://github.com/fuzzybinary/dart_shared_library/releases):
+
+```bash
+# Example for macOS x64
+curl -L https://github.com/fuzzybinary/dart_shared_library/releases/download/0.2.0/lib-macos.zip -o dart_dll.zip
+unzip dart_dll.zip -d dart_mc_bridge/native/deps/dart_dll/
+```
+
+### Option 2: Download from CI (includes ARM)
+
+The GitHub Actions CI builds universal macOS binaries (x64 + ARM). Download artifacts from:
+https://github.com/fuzzybinary/dart_shared_library/actions
+
+Look for the latest successful run and download the `lib-macos` artifact.
+
+### Option 3: Build from Source (ARM / Custom)
+
+Required for **macOS ARM (M1/M2/M3)** or if you need a specific Dart version.
+
+#### Prerequisites
+
+- git
+- Dart SDK 3.0+
+- CMake
+- C++ build tools (Xcode on macOS, Visual Studio on Windows, gcc on Linux)
+- ~15GB disk space
+- ~30-60 minutes build time
+
+#### Build Steps
+
+```bash
+# 1. Clone dart_shared_library
+git clone https://github.com/fuzzybinary/dart_shared_library.git
+cd dart_shared_library
+
+# 2. Install build helper dependencies
+cd scripts/build_helpers
+dart pub get
+cd ../..
+
+# 3. Build Dart VM (downloads Dart SDK source, patches, and compiles)
+#    This takes 30-60 minutes and requires ~15GB disk space
+dart ./scripts/build_helpers/bin/build_dart.dart -v
+
+# 4. Build the shared library with CMake
+cmake -B .build .
+cmake --build .build --config release
+
+# 5. Copy to your project
+mkdir -p /path/to/vide_mc/dart_mc_bridge/native/deps/dart_dll/{include,lib}
+cp .build/src/libdart_dll.dylib /path/to/vide_mc/dart_mc_bridge/native/deps/dart_dll/lib/
+cp src/dart_dll.h /path/to/vide_mc/dart_mc_bridge/native/deps/dart_dll/include/
+cp dart-sdk/sdk/runtime/include/*.h /path/to/vide_mc/dart_mc_bridge/native/deps/dart_dll/include/
+```
+
+#### What the Build Does
+
+1. Downloads Google's `depot_tools`
+2. Clones the Dart SDK source (~5GB)
+3. Patches Dart build files to create a statically linkable `libdart`
+4. Compiles the Dart VM (this is the slow part)
+5. Wraps it in `libdart_dll` shared library
+
+#### Troubleshooting
+
+**macOS ARM**: Make sure you're using native ARM tools, not Rosetta. Check with:
+```bash
+uname -m  # Should show "arm64"
+```
+
+**Linux - Unresolved externals**:
+- Uninstall Flutter snap package if installed
+- Put `depot_tools` at the front of your PATH
+
+**Disk space**: The build requires ~15GB. Clean up with:
+```bash
+rm -rf dart-sdk/sdk/out  # Remove build artifacts
+rm -rf depot_tools       # Remove if not needed elsewhere
+```
+
+### Dart Version Compatibility
+
+The Dart VM is **fully embedded** in `libdart_dll` - users don't need Dart installed to run your mod. The embedded version depends on when the library was built:
+
+| Release | Dart Version |
+|---------|-------------|
+| v0.2.0  | 3.8.2       |
+| v0.1.0  | 3.5.x       |
+
+Your Dart mod code should be compatible with the embedded version.

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "test_mod",
+  "version": "${version}",
+  "name": "Test Mod",
+  "description": "A Minecraft mod built with Redstone",
+  "authors": ["Norbert515"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/test_mod/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.redstone.DartModLoader"
+    ],
+    "client": []
+  },
+  "mixins": [
+    "test_mod.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

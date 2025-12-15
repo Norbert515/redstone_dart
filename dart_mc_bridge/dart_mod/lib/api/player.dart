@@ -5,7 +5,7 @@ import '../src/jni/generic_bridge.dart';
 import '../src/types.dart';
 
 /// The Java class name for DartBridge.
-const _dartBridge = 'com/example/dartbridge/DartBridge';
+const _dartBridge = 'com/redstone/DartBridge';
 
 /// Game mode for players.
 enum GameMode {

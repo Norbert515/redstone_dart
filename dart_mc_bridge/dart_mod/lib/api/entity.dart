@@ -3,10 +3,11 @@ library;
 
 import '../src/jni/generic_bridge.dart';
 import '../src/types.dart';
+import 'entity_registry.dart';
 import 'world.dart';
 
 /// The Java class name for DartBridge.
-const _dartBridge = 'com/example/dartbridge/DartBridge';
+const _dartBridge = 'com/redstone/DartBridge';
 
 /// Status effects that can be applied to living entities.
 enum StatusEffect {
@@ -738,7 +739,26 @@ class Entities {
   }
 
   /// Spawn an entity in the world.
+  ///
+  /// Supports both vanilla entity types (e.g., "minecraft:zombie") and
+  /// custom Dart-defined entities (e.g., "mymod:custom_zombie").
   static Entity? spawn(World world, String entityType, Vec3 position) {
+    // Check if it's a custom Dart entity
+    for (final custom in EntityRegistry.allEntities) {
+      if (custom.id == entityType) {
+        // Spawn via custom entity system
+        final entityId = GenericJniBridge.callStaticIntMethod(
+          _dartBridge,
+          'spawnDartEntity',
+          '(Ljava/lang/String;JDDD)I',
+          [world.dimensionId, custom.handlerId, position.x, position.y, position.z],
+        );
+        if (entityId < 0) return null;
+        return getTypedEntity(entityId);
+      }
+    }
+
+    // Fall back to vanilla spawn
     final entityId = GenericJniBridge.callStaticIntMethod(
       _dartBridge,
       'spawnEntity',
