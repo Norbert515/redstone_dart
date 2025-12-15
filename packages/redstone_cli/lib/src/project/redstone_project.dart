@@ -36,6 +36,16 @@ class RedstoneProject {
   /// Directory for bridge code
   String get bridgeDir => p.join(redstoneDir, 'bridge');
 
+  /// Directory containing user assets (textures, etc.)
+  String get assetsDir => p.join(rootDir, 'assets');
+
+  /// Path to generated asset manifest (written by Dart mod at runtime)
+  String get manifestPath => p.join(minecraftDir, 'run', '.redstone', 'manifest.json');
+
+  /// Get Minecraft assets directory for a namespace
+  String minecraftAssetsDir(String namespace) =>
+      p.join(minecraftDir, 'src', 'main', 'resources', 'assets', namespace);
+
   /// Find a Redstone project by searching up from current directory
   static RedstoneProject? find([String? startDir]) {
     var dir = Directory(startDir ?? Directory.current.path);

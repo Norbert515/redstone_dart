@@ -1,6 +1,8 @@
 /// API for defining custom blocks in Dart.
 library;
 
+import 'block_model.dart';
+
 /// Result of a block interaction.
 enum ActionResult {
   success, // 0 - Interaction succeeded, arm swings
@@ -49,12 +51,21 @@ abstract class CustomBlock {
   /// Block settings (hardness, resistance, etc.).
   final BlockSettings settings;
 
+  /// Optional block model for texture configuration.
+  final BlockModel? model;
+
+  /// The item ID this block drops when mined (e.g., 'mymod:dart_item').
+  /// If null, drops itself (as a BlockItem).
+  final String? drops;
+
   /// Internal handler ID assigned during registration.
   int? _handlerId;
 
   CustomBlock({
     required this.id,
     required this.settings,
+    this.model,
+    this.drops,
   });
 
   /// Get the handler ID (only available after registration).

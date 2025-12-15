@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 import 'package:path/path.dart' as p;
 
+import '../assets/asset_generator.dart';
 import '../project/redstone_project.dart';
 import '../util/logger.dart';
 
@@ -34,6 +35,12 @@ class BuildCommand extends Command<int> {
     Logger.newLine();
 
     try {
+      // Generate assets (blockstates, models, textures)
+      Logger.progress('Generating assets');
+      final generator = AssetGenerator(project);
+      await generator.generate();
+      Logger.progressDone();
+
       // Copy Dart mod to minecraft/run/mods/
       Logger.progress('Copying Dart mod');
       await _copyDartMod(project);

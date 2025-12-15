@@ -17,28 +17,35 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Registry for Dart-defined proxy blocks.
+ * Registry for Dart-defined proxy blocks and items.
  *
- * This registry manages the lifecycle of proxy blocks and provides
- * methods for registering new blocks from Dart code.
+ * This registry manages the lifecycle of proxy blocks/items and provides
+ * methods for registering new blocks and items from Dart code.
  *
  * The registration process is two-phase:
- * 1. createBlock() - Called from Dart to reserve a handler ID and store block settings
- * 2. registerBlock() - Called from Dart to register the block with Minecraft's registry
+ * 1. createBlock()/createItem() - Called from Dart to reserve a handler ID and store settings
+ * 2. registerBlock()/registerItem() - Called from Dart to register with Minecraft's registry
  *
  * This two-phase approach is needed because Minecraft requires a ResourceKey during
- * block construction, but we don't know the block's namespace:path until registration.
+ * block/item construction, but we don't know the namespace:path until registration.
  */
 public class ProxyRegistry {
     private static final Logger LOGGER = LoggerFactory.getLogger("ProxyRegistry");
     private static final Map<Long, DartBlockProxy> blocks = new HashMap<>();
     private static final Map<Long, BlockSettings> pendingSettings = new HashMap<>();
+    private static final Map<Long, Item> items = new HashMap<>();
+    private static final Map<Long, ItemSettings> pendingItemSettings = new HashMap<>();
     private static long nextHandlerId = 1;
 
     /**
      * Holds block settings between createBlock() and registerBlock() calls.
      */
     private record BlockSettings(float hardness, float resistance, boolean requiresTool) {}
+
+    /**
+     * Holds item settings between createItem() and registerItem() calls.
+     */
+    private record ItemSettings(int maxStackSize, int maxDamage, boolean fireResistant) {}
 
     /**
      * Create a new DartBlockProxy with the given settings.
@@ -144,5 +151,92 @@ public class ProxyRegistry {
      */
     public static int getBlockCount() {
         return blocks.size();
+    }
+
+    // ==================== ITEM REGISTRATION ====================
+
+    /**
+     * Create a new item with the given settings.
+     * Called from Dart via JNI.
+     *
+     * @param maxStackSize Maximum stack size (1-64)
+     * @param maxDamage Maximum durability (0 for non-damageable)
+     * @param fireResistant Whether item survives fire/lava
+     * @return Handler ID for this item
+     */
+    public static long createItem(int maxStackSize, int maxDamage, boolean fireResistant) {
+        long handlerId = nextHandlerId++;
+        pendingItemSettings.put(handlerId, new ItemSettings(maxStackSize, maxDamage, fireResistant));
+        LOGGER.info("Created item settings with handler ID: {}", handlerId);
+        return handlerId;
+    }
+
+    /**
+     * Register an item with Minecraft's registry.
+     * Called from Dart via JNI.
+     *
+     * @param handlerId The handler ID from createItem
+     * @param namespace The mod namespace (e.g., "mymod")
+     * @param path The item path (e.g., "dart_item")
+     * @return true if registration succeeded
+     */
+    public static boolean registerItem(long handlerId, String namespace, String path) {
+        ItemSettings settings = pendingItemSettings.remove(handlerId);
+        if (settings == null) {
+            LOGGER.error("No pending item settings for handler ID: {}", handlerId);
+            return false;
+        }
+
+        try {
+            Identifier itemId = Identifier.fromNamespaceAndPath(namespace, path);
+            ResourceKey<Item> itemKey = ResourceKey.create(Registries.ITEM, itemId);
+
+            Item.Properties props = new Item.Properties()
+                .setId(itemKey)
+                .stacksTo(settings.maxStackSize());
+
+            if (settings.maxDamage() > 0) {
+                props = props.durability(settings.maxDamage());
+            }
+            if (settings.fireResistant()) {
+                props = props.fireResistant();
+            }
+
+            // Create proxy item that routes callbacks to Dart
+            DartItemProxy item = new DartItemProxy(props, handlerId);
+            Registry.register(BuiltInRegistries.ITEM, itemKey, item);
+            items.put(handlerId, item);
+
+            // Add to creative tab (Ingredients)
+            ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.INGREDIENTS)
+                .register(entries -> entries.accept(item));
+
+            LOGGER.info("Registered item: {}:{} with handler ID: {}", namespace, path, handlerId);
+            return true;
+        } catch (Exception e) {
+            LOGGER.error("Failed to register item: {}:{}", namespace, path, e);
+            return false;
+        }
+    }
+
+    /**
+     * Get an item by handler ID.
+     */
+    public static Item getItem(long handlerId) {
+        return items.get(handlerId);
+    }
+
+    /**
+     * Get all registered item handler IDs.
+     */
+    public static long[] getAllItemHandlerIds() {
+        return items.keySet().stream().mapToLong(Long::longValue).toArray();
+    }
+
+    /**
+     * Get the number of registered items.
+     */
+    public static int getItemCount() {
+        return items.size();
     }
 }

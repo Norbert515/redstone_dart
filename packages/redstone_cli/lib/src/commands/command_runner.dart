@@ -1,10 +1,11 @@
 import 'package:args/command_runner.dart';
 
-import 'create_command.dart';
-import 'run_command.dart';
 import 'build_command.dart';
+import 'create_command.dart';
 import 'devices_command.dart';
 import 'doctor_command.dart';
+import 'generate_command.dart';
+import 'run_command.dart';
 import 'upgrade_command.dart';
 
 const String version = '0.1.0';
@@ -28,11 +29,12 @@ class RedstoneCommandRunner extends CommandRunner<int> {
       help: 'Enable verbose logging.',
     );
 
-    addCommand(CreateCommand());
-    addCommand(RunCommand());
     addCommand(BuildCommand());
+    addCommand(CreateCommand());
     addCommand(DevicesCommand());
     addCommand(DoctorCommand());
+    addCommand(GenerateCommand());
+    addCommand(RunCommand());
     addCommand(UpgradeCommand());
   }
 

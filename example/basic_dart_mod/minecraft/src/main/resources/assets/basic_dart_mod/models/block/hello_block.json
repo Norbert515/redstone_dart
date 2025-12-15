@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "basic_dart_mod:block/hello_block"
+  }
+}

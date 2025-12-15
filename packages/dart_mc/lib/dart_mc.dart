@@ -48,9 +48,13 @@ export 'api/entity.dart';
 export 'api/item.dart' hide ItemStack;
 export 'api/inventory.dart';
 export 'api/custom_block.dart';
+export 'api/block_model.dart';
 export 'api/block_registry.dart';
 export 'api/custom_entity.dart';
 export 'api/entity_registry.dart';
+export 'api/custom_item.dart';
+export 'api/item_model.dart';
+export 'api/item_registry.dart';
 
 // GUI
 export 'api/gui/screen.dart';

@@ -1,0 +1,9 @@
+{
+  "block.basic_dart_mod.hello_block": "Hello Block",
+  "block.basic_dart_mod.terraformer": "Terraformer",
+  "block.basic_dart_mod.midas": "Midas",
+  "block.basic_dart_mod.lightning_rod": "Lightning Rod",
+  "block.basic_dart_mod.mob_spawner": "Mob Spawner",
+  "block.basic_dart_mod.party_block": "Party Block",
+  "item.basic_dart_mod.dart_item": "Dart Item"
+}

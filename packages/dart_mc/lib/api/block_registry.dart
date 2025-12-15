@@ -1,6 +1,9 @@
 /// Registry for Dart-defined blocks.
 library;
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'custom_block.dart';
 import '../src/jni/generic_bridge.dart';
 
@@ -83,8 +86,61 @@ class BlockRegistry {
     block.setHandlerId(handlerId);
     _blocks[handlerId] = block;
 
+    // Write manifest after each registration
+    _writeManifest();
+
     print('BlockRegistry: Registered ${block.id} with handler ID $handlerId');
     return handlerId;
+  }
+
+  /// Write the block manifest to `.redstone/manifest.json`.
+  ///
+  /// This file is read by the CLI to generate Minecraft resource files.
+  static void _writeManifest() {
+    final blocks = <Map<String, dynamic>>[];
+
+    for (final block in _blocks.values) {
+      final blockEntry = <String, dynamic>{
+        'id': block.id,
+      };
+
+      // Only include model if present
+      if (block.model != null) {
+        blockEntry['model'] = block.model!.toJson();
+      }
+
+      // Include drops if specified
+      if (block.drops != null) {
+        blockEntry['drops'] = block.drops;
+      }
+
+      blocks.add(blockEntry);
+    }
+
+    // Read existing manifest to preserve items
+    Map<String, dynamic> manifest = {};
+    final manifestFile = File('.redstone/manifest.json');
+    if (manifestFile.existsSync()) {
+      try {
+        manifest = jsonDecode(manifestFile.readAsStringSync()) as Map<String, dynamic>;
+      } catch (_) {
+        // Ignore parse errors
+      }
+    }
+
+    manifest['blocks'] = blocks;
+
+    // Create .redstone directory if it doesn't exist
+    final redstoneDir = Directory('.redstone');
+    if (!redstoneDir.existsSync()) {
+      redstoneDir.createSync(recursive: true);
+    }
+
+    // Write manifest with pretty formatting
+    final encoder = JsonEncoder.withIndent('  ');
+    manifestFile.writeAsStringSync(encoder.convert(manifest));
+
+    print('BlockRegistry: Wrote manifest with ${blocks.length} blocks');
   }
 
   /// Get a block by its handler ID.

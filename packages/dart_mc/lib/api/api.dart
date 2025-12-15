@@ -35,12 +35,16 @@
 library;
 
 export 'block.dart';
+export 'block_model.dart';
 export 'block_registry.dart';
 export 'custom_block.dart';
 export 'custom_entity.dart';
+export 'custom_item.dart';
 export 'entity.dart';
 export 'entity_registry.dart';
 export 'inventory.dart';
 export 'item.dart';
+export 'item_model.dart';
+export 'item_registry.dart';
 export 'player.dart';
 export 'world.dart';

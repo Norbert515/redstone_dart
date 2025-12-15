@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "basic_dart_mod:block/hello_block"
+    }
+  }
+}

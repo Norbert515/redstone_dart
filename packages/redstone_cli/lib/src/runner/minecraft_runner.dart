@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../assets/asset_generator.dart';
 import '../project/redstone_project.dart';
 import '../util/logger.dart';
 
@@ -68,11 +69,19 @@ class MinecraftRunner {
 
   /// Prepare files before running
   Future<void> _prepareFiles() async {
+    // Generate assets first (blockstates, models, textures)
+    await _generateAssets();
+
     // Copy Dart mod to run/mods/
     await _copyDartMod();
 
     // Copy native libs to run/natives/
     await _copyNativeLibs();
+  }
+
+  Future<void> _generateAssets() async {
+    final generator = AssetGenerator(project);
+    await generator.generate();
   }
 
   Future<void> _copyDartMod() async {
