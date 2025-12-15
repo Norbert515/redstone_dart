@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
-  "id": "test_mod",
+  "id": "basic_dart_mod",
   "version": "${version}",
-  "name": "Test Mod",
+  "name": "Basic Dart Mod",
   "description": "A Minecraft mod built with Redstone",
   "authors": ["Norbert515"],
   "contact": {},
   "license": "MIT",
-  "icon": "assets/test_mod/icon.png",
+  "icon": "assets/basic_dart_mod/icon.png",
   "environment": "*",
   "entrypoints": {
     "main": [
-      "com.redstone.core.DartModLoader"
+      "com.redstone.DartModLoader"
     ],
     "client": []
   },
   "mixins": [
-    "test_mod.mixins.json"
+    "basic_dart_mod.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",

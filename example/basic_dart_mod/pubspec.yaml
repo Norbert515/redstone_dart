@@ -1,4 +1,4 @@
-name: test_mod
+name: basic_dart_mod
 description: A Minecraft mod built with Redstone
 version: 1.0.0
 publish_to: none
@@ -8,8 +8,8 @@ environment:
 
 dependencies:
   ffi: ^2.1.0
-  dart_mod:
-    path: .redstone/dart_mod
+  dart_mc:
+    path: /Users/norbertkozsir/IdeaProjects/vide_mc/packages/dart_mc
 
 # Redstone configuration
 redstone:

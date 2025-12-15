@@ -1,4 +1,4 @@
-# Test Mod
+# Basic Dart Mod
 
 A Minecraft mod built with Redstone
 

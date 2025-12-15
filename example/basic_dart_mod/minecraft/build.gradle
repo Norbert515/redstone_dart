@@ -18,7 +18,7 @@ loom {
     splitEnvironmentSourceSets()
 
     mods {
-        "test_mod" {
+        "basic_dart_mod" {
             sourceSet sourceSets.main
             sourceSet sourceSets.client
         }
