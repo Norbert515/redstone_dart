@@ -158,6 +158,14 @@ public class DartBridge {
     public static native boolean onProxyBlockBreak(long handlerId, long worldId, int x, int y, int z, long playerId);
     public static native int onProxyBlockUse(long handlerId, long worldId, int x, int y, int z, long playerId, int hand);
 
+    // Entity proxy native methods - called by DartEntityProxy
+    public static native void onProxyEntitySpawn(long handlerId, int entityId, long worldId);
+    public static native void onProxyEntityTick(long handlerId, int entityId);
+    public static native void onProxyEntityDeath(long handlerId, int entityId, String damageSource);
+    public static native boolean onProxyEntityDamage(long handlerId, int entityId, String damageSource, float amount);
+    public static native void onProxyEntityAttack(long handlerId, int entityId, int targetId);
+    public static native void onProxyEntityTarget(long handlerId, int entityId, int targetId);
+
     // Service URL for hot reload/debugging
     private static native String getDartServiceUrl();
 
@@ -1480,6 +1488,60 @@ public class DartBridge {
 
         entity.setPos(x, y, z);
         level.addFreshEntity(entity);
+        return entity.getId();
+    }
+
+    /**
+     * Spawn a Dart-defined custom entity at the specified position.
+     *
+     * This method spawns entities that were registered via EntityProxyRegistry.
+     * The handlerId links to the Dart CustomEntity definition.
+     *
+     * @param dimensionId Dimension ID string (e.g., "minecraft:overworld")
+     * @param handlerId Handler ID from EntityProxyRegistry.createEntity()
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @param z Z coordinate
+     * @return Entity ID on success, -1 on failure
+     */
+    public static int spawnDartEntity(String dimensionId, long handlerId, double x, double y, double z) {
+        if (serverInstance == null) {
+            LOGGER.warn("spawnDartEntity: Server not initialized");
+            return -1;
+        }
+
+        ServerLevel level = getServerLevel(dimensionId);
+        if (level == null) {
+            LOGGER.warn("spawnDartEntity: Invalid dimension '{}'", dimensionId);
+            return -1;
+        }
+
+        // Get the EntityType from the registry using the handler ID
+        EntityType<com.example.dartbridge.proxy.DartEntityProxy> entityType =
+            com.example.dartbridge.proxy.EntityProxyRegistry.getEntityType(handlerId);
+        if (entityType == null) {
+            LOGGER.warn("spawnDartEntity: No entity type registered for handler ID {}", handlerId);
+            return -1;
+        }
+
+        // Create the entity
+        Entity entity = entityType.create(level, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+        if (entity == null) {
+            LOGGER.warn("spawnDartEntity: Failed to create entity for handler ID {}", handlerId);
+            return -1;
+        }
+
+        // Set position and spawn
+        entity.setPos(x, y, z);
+        level.addFreshEntity(entity);
+
+        // Call the onProxyEntitySpawn callback to notify Dart
+        if (initialized) {
+            onProxyEntitySpawn(handlerId, entity.getId(), level.hashCode());
+        }
+
+        LOGGER.debug("Spawned Dart entity with handler ID {} at ({}, {}, {}), entity ID: {}",
+            handlerId, x, y, z, entity.getId());
         return entity.getId();
     }
 

@@ -4,7 +4,7 @@ library;
 import '../src/jni/generic_bridge.dart';
 
 /// The Java class name for DartBridge.
-const _dartBridge = 'com/example/dartbridge/DartBridge';
+const _dartBridge = 'com/redstone/DartBridge';
 
 /// Item type (like Block, represents an item type).
 class Item {

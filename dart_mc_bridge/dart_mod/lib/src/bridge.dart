@@ -26,6 +26,34 @@ typedef ProxyBlockUseCallbackNative = Int32 Function(
     Int64 playerId, Int32 hand);
 
 // =============================================================================
+// Proxy Entity Callback Types (for custom Dart-defined entities)
+// =============================================================================
+
+/// Entity spawn callback - called when a custom entity spawns
+typedef ProxyEntitySpawnCallbackNative = Void Function(
+    Int64 handlerId, Int32 entityId, Int64 worldId);
+
+/// Entity tick callback - called every game tick
+typedef ProxyEntityTickCallbackNative = Void Function(
+    Int64 handlerId, Int32 entityId);
+
+/// Entity death callback - called when entity dies
+typedef ProxyEntityDeathCallbackNative = Void Function(
+    Int64 handlerId, Int32 entityId, Pointer<Utf8> damageSource);
+
+/// Entity damage callback - returns true to allow damage, false to cancel
+typedef ProxyEntityDamageCallbackNative = Bool Function(
+    Int64 handlerId, Int32 entityId, Pointer<Utf8> damageSource, Double amount);
+
+/// Entity attack callback - called when entity attacks another
+typedef ProxyEntityAttackCallbackNative = Void Function(
+    Int64 handlerId, Int32 entityId, Int32 targetId);
+
+/// Entity target acquired callback - called when entity acquires a target
+typedef ProxyEntityTargetCallbackNative = Void Function(
+    Int64 handlerId, Int32 entityId, Int32 targetId);
+
+// =============================================================================
 // New Event Callback Types
 // =============================================================================
 
@@ -237,6 +265,40 @@ typedef RegisterProxyBlockUseHandlerNative = Void Function(
     Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback);
 typedef RegisterProxyBlockUseHandler = void Function(
     Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback);
+
+// =============================================================================
+// Proxy Entity Handler Registration Signatures
+// =============================================================================
+
+typedef RegisterProxyEntitySpawnHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyEntitySpawnCallbackNative>> callback);
+typedef RegisterProxyEntitySpawnHandler = void Function(
+    Pointer<NativeFunction<ProxyEntitySpawnCallbackNative>> callback);
+
+typedef RegisterProxyEntityTickHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyEntityTickCallbackNative>> callback);
+typedef RegisterProxyEntityTickHandler = void Function(
+    Pointer<NativeFunction<ProxyEntityTickCallbackNative>> callback);
+
+typedef RegisterProxyEntityDeathHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyEntityDeathCallbackNative>> callback);
+typedef RegisterProxyEntityDeathHandler = void Function(
+    Pointer<NativeFunction<ProxyEntityDeathCallbackNative>> callback);
+
+typedef RegisterProxyEntityDamageHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyEntityDamageCallbackNative>> callback);
+typedef RegisterProxyEntityDamageHandler = void Function(
+    Pointer<NativeFunction<ProxyEntityDamageCallbackNative>> callback);
+
+typedef RegisterProxyEntityAttackHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyEntityAttackCallbackNative>> callback);
+typedef RegisterProxyEntityAttackHandler = void Function(
+    Pointer<NativeFunction<ProxyEntityAttackCallbackNative>> callback);
+
+typedef RegisterProxyEntityTargetHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyEntityTargetCallbackNative>> callback);
+typedef RegisterProxyEntityTargetHandler = void Function(
+    Pointer<NativeFunction<ProxyEntityTargetCallbackNative>> callback);
 
 /// Chat message function signature
 typedef SendChatMessageNative = Void Function(Int64 playerId, Pointer<Utf8> message);
@@ -554,6 +616,65 @@ class Bridge {
       Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback) {
     final register = library.lookupFunction<RegisterProxyBlockUseHandlerNative,
         RegisterProxyBlockUseHandler>('register_proxy_block_use_handler');
+    register(callback);
+  }
+
+  // ===========================================================================
+  // Proxy Entity Handler Registration Methods
+  // ===========================================================================
+
+  /// Register a proxy entity spawn handler.
+  /// This is called when a Dart-defined custom entity spawns.
+  static void registerProxyEntitySpawnHandler(
+      Pointer<NativeFunction<ProxyEntitySpawnCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyEntitySpawnHandlerNative,
+        RegisterProxyEntitySpawnHandler>('register_proxy_entity_spawn_handler');
+    register(callback);
+  }
+
+  /// Register a proxy entity tick handler.
+  /// This is called every game tick for Dart-defined custom entities.
+  static void registerProxyEntityTickHandler(
+      Pointer<NativeFunction<ProxyEntityTickCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyEntityTickHandlerNative,
+        RegisterProxyEntityTickHandler>('register_proxy_entity_tick_handler');
+    register(callback);
+  }
+
+  /// Register a proxy entity death handler.
+  /// This is called when a Dart-defined custom entity dies.
+  static void registerProxyEntityDeathHandler(
+      Pointer<NativeFunction<ProxyEntityDeathCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyEntityDeathHandlerNative,
+        RegisterProxyEntityDeathHandler>('register_proxy_entity_death_handler');
+    register(callback);
+  }
+
+  /// Register a proxy entity damage handler.
+  /// This is called when a Dart-defined custom entity takes damage.
+  /// The callback should return true to allow the damage, false to cancel.
+  static void registerProxyEntityDamageHandler(
+      Pointer<NativeFunction<ProxyEntityDamageCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyEntityDamageHandlerNative,
+        RegisterProxyEntityDamageHandler>('register_proxy_entity_damage_handler');
+    register(callback);
+  }
+
+  /// Register a proxy entity attack handler.
+  /// This is called when a Dart-defined custom entity attacks another entity.
+  static void registerProxyEntityAttackHandler(
+      Pointer<NativeFunction<ProxyEntityAttackCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyEntityAttackHandlerNative,
+        RegisterProxyEntityAttackHandler>('register_proxy_entity_attack_handler');
+    register(callback);
+  }
+
+  /// Register a proxy entity target handler.
+  /// This is called when a Dart-defined custom entity acquires a target.
+  static void registerProxyEntityTargetHandler(
+      Pointer<NativeFunction<ProxyEntityTargetCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyEntityTargetHandlerNative,
+        RegisterProxyEntityTargetHandler>('register_proxy_entity_target_handler');
     register(callback);
   }
 

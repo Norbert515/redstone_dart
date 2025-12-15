@@ -1,0 +1,13 @@
+# Gradle
+.gradle/
+build/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Loom cache (MC sources are generated here - NOT checked in)
+# Run ./gradlew genSources to regenerate

@@ -1,0 +1,54 @@
+plugins {
+    id 'java-library'
+    id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+}
+
+version = '1.0.0'
+group = 'com.redstone'
+
+base {
+    archivesName = 'java_mc_bridge'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Minecraft + mappings (this is what gives us MC source access)
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+
+    // Fabric loader (needed for @Environment annotations, mod loading APIs)
+    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+
+    // Fabric API (for registry, events, etc.)
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+}
+
+// Minimal loom config - we don't need split source sets for a library
+loom {
+    // No mods block needed - this is a library, not a mod
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+// Task to generate MC sources for IDE navigation
+tasks.register('setupSources') {
+    dependsOn 'genSources'
+    doLast {
+        println ''
+        println '=========================================='
+        println 'MC sources generated successfully!'
+        println 'Refresh your IDE to get code completion.'
+        println '=========================================='
+    }
+}

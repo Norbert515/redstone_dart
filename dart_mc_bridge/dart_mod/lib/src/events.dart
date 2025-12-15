@@ -11,6 +11,7 @@ import 'package:ffi/ffi.dart';
 import 'bridge.dart';
 import 'types.dart';
 import '../api/block_registry.dart';
+import '../api/entity_registry.dart';
 import '../api/player.dart';
 import '../api/entity.dart';
 import '../api/item.dart';
@@ -31,6 +32,7 @@ BlockBreakHandler? _blockBreakHandler;
 BlockInteractHandler? _blockInteractHandler;
 TickHandler? _tickHandler;
 bool _proxyHandlersRegistered = false;
+bool _proxyEntityHandlersRegistered = false;
 
 // New event handlers
 void Function(Player player)? _playerJoinHandler;
@@ -213,6 +215,42 @@ int _onProxyBlockUse(int handlerId, int worldId, int x, int y, int z, int player
   return BlockRegistry.dispatchBlockUse(handlerId, worldId, x, y, z, playerId, hand);
 }
 
+// =============================================================================
+// Proxy Entity Callback Trampolines - route to EntityRegistry
+// =============================================================================
+
+@pragma('vm:entry-point')
+void _onProxyEntitySpawn(int handlerId, int entityId, int worldId) {
+  EntityRegistry.dispatchSpawn(handlerId, entityId, worldId);
+}
+
+@pragma('vm:entry-point')
+void _onProxyEntityTick(int handlerId, int entityId) {
+  EntityRegistry.dispatchTick(handlerId, entityId);
+}
+
+@pragma('vm:entry-point')
+void _onProxyEntityDeath(int handlerId, int entityId, Pointer<Utf8> damageSourcePtr) {
+  final damageSource = damageSourcePtr.toDartString();
+  EntityRegistry.dispatchDeath(handlerId, entityId, damageSource);
+}
+
+@pragma('vm:entry-point')
+bool _onProxyEntityDamage(int handlerId, int entityId, Pointer<Utf8> damageSourcePtr, double amount) {
+  final damageSource = damageSourcePtr.toDartString();
+  return EntityRegistry.dispatchDamage(handlerId, entityId, damageSource, amount);
+}
+
+@pragma('vm:entry-point')
+void _onProxyEntityAttack(int handlerId, int entityId, int targetId) {
+  EntityRegistry.dispatchAttack(handlerId, entityId, targetId);
+}
+
+@pragma('vm:entry-point')
+void _onProxyEntityTarget(int handlerId, int entityId, int targetId) {
+  EntityRegistry.dispatchTargetAcquired(handlerId, entityId, targetId);
+}
+
 /// Event registration API.
 class Events {
   Events._();
@@ -269,6 +307,48 @@ class Events {
     Bridge.registerProxyBlockUseHandler(useCallback);
 
     print('Events: Proxy block handlers registered');
+  }
+
+  /// Register proxy entity handlers for custom Dart-defined entities.
+  ///
+  /// This is called automatically during Bridge initialization.
+  /// It routes proxy entity events to EntityRegistry which dispatches
+  /// to the appropriate CustomEntity instances.
+  static void registerProxyEntityHandlers() {
+    if (_proxyEntityHandlersRegistered) return;
+    _proxyEntityHandlersRegistered = true;
+
+    // Spawn callback (no return value)
+    final spawnCallback = Pointer.fromFunction<ProxyEntitySpawnCallbackNative>(
+        _onProxyEntitySpawn);
+    Bridge.registerProxyEntitySpawnHandler(spawnCallback);
+
+    // Tick callback (no return value)
+    final tickCallback = Pointer.fromFunction<ProxyEntityTickCallbackNative>(
+        _onProxyEntityTick);
+    Bridge.registerProxyEntityTickHandler(tickCallback);
+
+    // Death callback (no return value)
+    final deathCallback = Pointer.fromFunction<ProxyEntityDeathCallbackNative>(
+        _onProxyEntityDeath);
+    Bridge.registerProxyEntityDeathHandler(deathCallback);
+
+    // Damage callback - default: allow damage (return true)
+    final damageCallback = Pointer.fromFunction<ProxyEntityDamageCallbackNative>(
+        _onProxyEntityDamage, true);
+    Bridge.registerProxyEntityDamageHandler(damageCallback);
+
+    // Attack callback (no return value)
+    final attackCallback = Pointer.fromFunction<ProxyEntityAttackCallbackNative>(
+        _onProxyEntityAttack);
+    Bridge.registerProxyEntityAttackHandler(attackCallback);
+
+    // Target callback (no return value)
+    final targetCallback = Pointer.fromFunction<ProxyEntityTargetCallbackNative>(
+        _onProxyEntityTarget);
+    Bridge.registerProxyEntityTargetHandler(targetCallback);
+
+    print('Events: Proxy entity handlers registered');
   }
 
   // ==========================================================================

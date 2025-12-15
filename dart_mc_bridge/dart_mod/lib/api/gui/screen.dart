@@ -14,7 +14,7 @@ import 'gui_graphics.dart';
 import 'widgets.dart';
 
 /// The Java class name for DartBridgeClient (client-side).
-const _dartBridgeClient = 'com/example/dartbridge/DartBridgeClient';
+const _dartBridgeClient = 'com/redstone/DartBridgeClient';
 
 /// Base class for custom Minecraft screens.
 ///

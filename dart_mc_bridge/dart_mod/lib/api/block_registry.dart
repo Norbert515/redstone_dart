@@ -53,7 +53,7 @@ class BlockRegistry {
 
     // Create the proxy block in Java
     final handlerId = GenericJniBridge.callStaticLongMethod(
-      'com/example/dartbridge/proxy/ProxyRegistry',
+      'com/redstone/proxy/ProxyRegistry',
       'createBlock',
       '(FFZ)J',
       [
@@ -69,7 +69,7 @@ class BlockRegistry {
 
     // Register with Minecraft's registry
     final success = GenericJniBridge.callStaticBoolMethod(
-      'com/example/dartbridge/proxy/ProxyRegistry',
+      'com/redstone/proxy/ProxyRegistry',
       'registerBlock',
       '(JLjava/lang/String;Ljava/lang/String;)Z',
       [handlerId, namespace, path],

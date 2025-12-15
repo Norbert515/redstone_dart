@@ -4,6 +4,8 @@ library;
 export 'block.dart';
 export 'custom_block.dart';
 export 'block_registry.dart';
+export 'custom_entity.dart';
+export 'entity_registry.dart';
 export 'entity.dart';
 export 'gui/gui.dart';
 export 'inventory.dart';
