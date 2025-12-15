@@ -1,4 +1,4 @@
-import 'package:dart_mc_mod/api/block.dart';
+import 'package:dart_mc/api/block.dart';
 
 /// Maps RGB colors to the nearest Minecraft concrete block.
 class ColorMapper {

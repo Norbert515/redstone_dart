@@ -1,10 +1,10 @@
-// test_mod - A Minecraft mod built with Redstone
+// basic_dart_mod - A Minecraft mod built with Redstone
 //
 // This is your mod's entry point. Register your blocks, entities,
 // and other game objects here.
 
-// Dart Mod API imports
-import 'package:dart_mod/dart_mod.dart';
+// Dart MC API imports
+import 'package:dart_mc/dart_mc.dart';
 
 /// Example custom block that shows a message when right-clicked.
 ///
@@ -12,7 +12,7 @@ import 'package:dart_mod/dart_mod.dart';
 /// The block will appear in the creative menu under "Building Blocks".
 class HelloBlock extends CustomBlock {
   HelloBlock() : super(
-    id: 'test_mod:hello_block',
+    id: 'basic_dart_mod:hello_block',
     settings: BlockSettings(
       hardness: 1.0,
       resistance: 1.0,
@@ -25,7 +25,7 @@ class HelloBlock extends CustomBlock {
     // Get player info and send a message
     final player = Players.getPlayer(playerId);
     if (player != null) {
-      player.sendMessage('Hello from Test Mod! You clicked at ($x, $y, $z)');
+      player.sendMessage('Hello from Basic Dart Mod! You clicked at ($x, $y, $z)');
     }
     return ActionResult.success;
   }
@@ -41,7 +41,7 @@ class HelloBlock extends CustomBlock {
 ///
 /// This is called when the Dart VM is initialized by the native bridge.
 void main() {
-  print('Test Mod mod initialized!');
+  print('Basic Dart Mod mod initialized!');
 
   // Initialize the native bridge
   Bridge.initialize();
@@ -75,5 +75,5 @@ void main() {
     // Use for animations, timers, etc.
   });
 
-  print('Test Mod ready with ${BlockRegistry.blockCount} custom blocks!');
+  print('Basic Dart Mod ready with ${BlockRegistry.blockCount} custom blocks!');
 }

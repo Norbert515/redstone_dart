@@ -1,4 +1,4 @@
-import 'package:dart_mc_mod/dart_mod.dart';
+import 'package:dart_mc/dart_mc.dart';
 
 /// Marker block for defining nocterm screen corners.
 ///

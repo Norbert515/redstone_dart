@@ -1,7 +1,7 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "com.example.test_mod.mixin",
+  "package": "com.example.basic_dart_mod.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
   "client": [],

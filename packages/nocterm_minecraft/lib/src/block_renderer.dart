@@ -1,4 +1,4 @@
-import 'package:dart_mc_mod/dart_mod.dart';
+import 'package:dart_mc/dart_mc.dart';
 
 /// Represents a single block change to be rendered.
 class BlockChange {
