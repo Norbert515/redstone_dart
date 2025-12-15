@@ -15,7 +15,7 @@
 /// ## Example
 ///
 /// ```dart
-/// import 'package:dart_mod/api/gui/gui.dart';
+/// import 'package:dart_mc/api/gui/gui.dart';
 ///
 /// class HelloScreen extends Screen {
 ///   HelloScreen() : super('Hello Screen');

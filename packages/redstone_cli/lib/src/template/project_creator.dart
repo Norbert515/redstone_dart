@@ -105,11 +105,6 @@ class ProjectCreator {
     await _copyBridgeCode();
     Logger.progressDone();
 
-    // Copy Dart mod API
-    Logger.progress('Installing Dart mod API');
-    await _copyDartModApi();
-    Logger.progressDone();
-
     // Write version file
     Logger.progress('Writing version info');
     await _writeVersionFile();
@@ -233,121 +228,6 @@ class ProjectCreator {
     }
 
     await _copyDirectory(sourceDir, targetBridgeDir);
-  }
-
-  Future<void> _copyDartModApi() async {
-    // Find the dart_mod package in the vide_mc repo
-    final packagesDir = _findPackagesDir();
-    if (packagesDir == null) {
-      Logger.warning('Could not find packages directory, skipping Dart mod API');
-      return;
-    }
-
-    // dart_mod is in dart_mc_bridge/dart_mod
-    final dartModDir = Directory(p.join(
-      Directory(packagesDir).parent.path,
-      'dart_mc_bridge',
-      'dart_mod',
-    ));
-    final targetDartModDir = Directory(p.join(targetDir, '.redstone', 'dart_mod'));
-
-    if (!dartModDir.existsSync()) {
-      Logger.warning('Dart mod API not found at ${dartModDir.path}');
-      return;
-    }
-
-    // Create target directory
-    targetDartModDir.createSync(recursive: true);
-
-    // Copy lib/ directory with filtering
-    final libDir = Directory(p.join(dartModDir.path, 'lib'));
-    if (libDir.existsSync()) {
-      await _copyDartModLibDirectory(
-        libDir,
-        Directory(p.join(targetDartModDir.path, 'lib')),
-      );
-    }
-
-    // Create a pubspec.yaml for the copied dart_mod
-    final pubspecContent = '''
-name: dart_mod
-description: Dart mod API for Minecraft
-version: 0.1.0
-
-environment:
-  sdk: ^3.0.0
-
-dependencies:
-  ffi: ^2.1.0
-''';
-    File(p.join(targetDartModDir.path, 'pubspec.yaml')).writeAsStringSync(pubspecContent);
-  }
-
-  /// Copy the dart_mod lib directory with special handling:
-  /// - Skip nocterm example files that have external dependencies
-  /// - Create a clean version of dart_mod.dart without nocterm imports/calls
-  Future<void> _copyDartModLibDirectory(Directory source, Directory target) async {
-    if (!target.existsSync()) {
-      target.createSync(recursive: true);
-    }
-
-    // Files and directories to skip (have nocterm/external dependencies)
-    const skipFiles = {
-      'nocterm_minecraft_example.dart',
-    };
-    const skipDirs = {
-      'nocterm_demos',
-    };
-
-    await for (final entity in source.list(recursive: false)) {
-      final basename = p.basename(entity.path);
-
-      if (entity is File) {
-        if (skipFiles.contains(basename)) {
-          continue; // Skip nocterm example files
-        }
-
-        final targetPath = p.join(target.path, basename);
-
-        // Special handling for dart_mod.dart - strip nocterm code
-        if (basename == 'dart_mod.dart') {
-          final cleanContent = _createCleanDartModContent(entity.readAsStringSync());
-          File(targetPath).writeAsStringSync(cleanContent);
-        } else {
-          entity.copySync(targetPath);
-        }
-      } else if (entity is Directory) {
-        if (skipDirs.contains(basename)) {
-          continue; // Skip nocterm demo directories
-        }
-        await _copyDartModLibDirectory(entity, Directory(p.join(target.path, basename)));
-      }
-    }
-  }
-
-  /// Create a clean version of dart_mod.dart without nocterm imports and calls
-  String _createCleanDartModContent(String original) {
-    final lines = original.split('\n');
-    final cleanLines = <String>[];
-
-    for (final line in lines) {
-      // Skip nocterm import
-      if (line.contains("import 'examples/nocterm_minecraft_example.dart'")) {
-        continue;
-      }
-
-      // Skip nocterm function calls
-      if (line.contains('registerNoctermMinecraftBlocks()')) {
-        continue;
-      }
-      if (line.contains('noctermTick(tick)')) {
-        continue;
-      }
-
-      cleanLines.add(line);
-    }
-
-    return cleanLines.join('\n');
   }
 
   Future<void> _writeVersionFile() async {
@@ -510,8 +390,8 @@ environment:
 
 dependencies:
   ffi: ^2.1.0
-  dart_mod:
-    path: .redstone/dart_mod
+  dart_mc:
+    path: /Users/norbertkozsir/IdeaProjects/vide_mc/packages/dart_mc
 
 # Redstone configuration
 redstone:
@@ -526,8 +406,8 @@ redstone:
 // This is your mod's entry point. Register your blocks, entities,
 // and other game objects here.
 
-// Dart Mod API imports
-import 'package:dart_mod/dart_mod.dart';
+// Dart MC API imports
+import 'package:dart_mc/dart_mc.dart';
 
 /// Example custom block that shows a message when right-clicked.
 ///

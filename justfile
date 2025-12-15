@@ -117,3 +117,11 @@ logs-dart:
 clean-all:
     cd myfirstmod && ./gradlew clean
     rm -rf dart_mc_bridge/native/build/CMakeCache.txt
+
+# =============================================================================
+# REDSTONE CLI
+# =============================================================================
+
+# Activate redstone CLI globally from local source
+redstone-activate:
+    dart pub global activate --source path packages/redstone_cli

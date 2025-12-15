@@ -11,7 +11,7 @@
   "environment": "*",
   "entrypoints": {
     "main": [
-      "com.redstone.DartModLoader"
+      "com.redstone.core.DartModLoader"
     ],
     "client": []
   },

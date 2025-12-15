@@ -45,15 +45,14 @@ public class DartModLoader implements ModInitializer {
      * Get the path to the Dart script file.
      */
     private static String getScriptPath() {
-        // Look for dart_mod in several locations
-        // Prefer the package structure (dart_mod/lib/dart_mod.dart) over single file
+        // Look for dart_mc in several locations
+        // Prefer the package structure (dart_mc/lib/dart_mc.dart) over single file
         String[] searchPaths = {
-            "../../dart_mc_bridge/dart_mod/lib/dart_mod.dart",  // Source location (for hot reload)
-            "mods/dart_mod/lib/dart_mod.dart",  // Package structure
-            "mods/dart_mod.dart",                // Single file
-            "dart_mod/lib/dart_mod.dart",
-            "dart_mod.dart",
-            "config/dart_mod.dart"
+            "mods/dart_mc/lib/dart_mc.dart",  // Package structure
+            "mods/dart_mc.dart",               // Single file
+            "dart_mc/lib/dart_mc.dart",
+            "dart_mc.dart",
+            "config/dart_mc.dart"
         };
 
         String runDir = System.getProperty("user.dir");
@@ -65,7 +64,7 @@ public class DartModLoader implements ModInitializer {
         }
 
         // Default path
-        return Path.of(runDir, "mods", "dart_mod", "lib", "dart_mod.dart").toAbsolutePath().toString();
+        return Path.of(runDir, "mods", "dart_mc", "lib", "dart_mc.dart").toAbsolutePath().toString();
     }
 
     @Override
@@ -98,7 +97,7 @@ public class DartModLoader implements ModInitializer {
 
         if (!scriptExists) {
             LOGGER.error("[{}] Dart script not found at: {}", MOD_ID, scriptPath);
-            LOGGER.error("[{}] Please place your dart_mod.dart file in the mods folder", MOD_ID);
+            LOGGER.error("[{}] Please place your dart_mc.dart file in the mods folder", MOD_ID);
         } else {
             // Initialize Dart VM synchronously during mod init
             // This allows Dart to register blocks before the registry freezes

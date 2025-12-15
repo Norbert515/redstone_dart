@@ -1,0 +1,9 @@
+name: dart_mc
+description: Dart API for Minecraft modding with Redstone
+version: 0.1.0
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  ffi: ^2.1.0

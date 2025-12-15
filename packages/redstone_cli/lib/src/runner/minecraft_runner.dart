@@ -77,9 +77,9 @@ class MinecraftRunner {
 
   Future<void> _copyDartMod() async {
     final sourceDir = Directory(project.libDir);
-    // DartModLoader expects the mod at mods/dart_mod/lib/dart_mod.dart
+    // DartModLoader expects the mod at mods/dart_mc/lib/dart_mc.dart
     final targetDir = Directory(
-      p.join(project.minecraftDir, 'run', 'mods', 'dart_mod'),
+      p.join(project.minecraftDir, 'run', 'mods', 'dart_mc'),
     );
 
     // Create target directory
@@ -92,26 +92,17 @@ class MinecraftRunner {
     final targetLibDir = Directory(p.join(targetDir.path, 'lib'));
     await _copyDirectory(sourceDir, targetLibDir);
 
-    // Rename main.dart to dart_mod.dart if it exists (DartModLoader expects this name)
+    // Rename main.dart to dart_mc.dart if it exists (DartModLoader expects this name)
     final mainDart = File(p.join(targetLibDir.path, 'main.dart'));
-    final dartModDart = File(p.join(targetLibDir.path, 'dart_mod.dart'));
-    if (mainDart.existsSync() && !dartModDart.existsSync()) {
-      mainDart.renameSync(dartModDart.path);
+    final dartMcDart = File(p.join(targetLibDir.path, 'dart_mc.dart'));
+    if (mainDart.existsSync() && !dartMcDart.existsSync()) {
+      mainDart.renameSync(dartMcDart.path);
     }
 
-    // Copy pubspec.yaml (but rename to dart_mod pubspec)
+    // Copy pubspec.yaml
     final pubspec = File(p.join(project.rootDir, 'pubspec.yaml'));
     if (pubspec.existsSync()) {
       pubspec.copySync(p.join(targetDir.path, 'pubspec.yaml'));
-    }
-
-    // Also copy .redstone/dart_mod for the API
-    final dartModApiSource = Directory(p.join(project.redstoneDir, 'dart_mod'));
-    if (dartModApiSource.existsSync()) {
-      await _copyDirectory(
-        dartModApiSource,
-        Directory(p.join(targetDir.path, '.redstone', 'dart_mod')),
-      );
     }
 
     // Run pub get in the target directory
