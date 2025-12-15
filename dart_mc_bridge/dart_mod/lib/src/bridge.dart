@@ -81,6 +81,82 @@ typedef PlayerDropItemCallbackNative = Bool Function(Int32 playerId, Pointer<Utf
 /// Server lifecycle callbacks (no parameters)
 typedef ServerLifecycleCallbackNative = Void Function();
 
+// =============================================================================
+// Screen/GUI Callback Types
+// =============================================================================
+
+/// Screen init callback - called when screen is initialized
+typedef ScreenInitCallbackNative = Void Function(
+    Int64 screenId, Int32 width, Int32 height);
+
+/// Screen tick callback - called every game tick
+typedef ScreenTickCallbackNative = Void Function(Int64 screenId);
+
+/// Screen render callback - called every frame
+typedef ScreenRenderCallbackNative = Void Function(
+    Int64 screenId, Int32 mouseX, Int32 mouseY, Float partialTick);
+
+/// Screen close callback - called when screen is closed
+typedef ScreenCloseCallbackNative = Void Function(Int64 screenId);
+
+/// Screen key pressed callback - returns true if event was handled
+typedef ScreenKeyPressedCallbackNative = Bool Function(
+    Int64 screenId, Int32 keyCode, Int32 scanCode, Int32 modifiers);
+
+/// Screen key released callback - returns true if event was handled
+typedef ScreenKeyReleasedCallbackNative = Bool Function(
+    Int64 screenId, Int32 keyCode, Int32 scanCode, Int32 modifiers);
+
+/// Screen char typed callback - returns true if event was handled
+typedef ScreenCharTypedCallbackNative = Bool Function(
+    Int64 screenId, Int32 codePoint, Int32 modifiers);
+
+/// Screen mouse clicked callback - returns true if event was handled
+typedef ScreenMouseClickedCallbackNative = Bool Function(
+    Int64 screenId, Double mouseX, Double mouseY, Int32 button);
+
+/// Screen mouse released callback - returns true if event was handled
+typedef ScreenMouseReleasedCallbackNative = Bool Function(
+    Int64 screenId, Double mouseX, Double mouseY, Int32 button);
+
+/// Screen mouse dragged callback - returns true if event was handled
+typedef ScreenMouseDraggedCallbackNative = Bool Function(
+    Int64 screenId, Double mouseX, Double mouseY, Int32 button,
+    Double dragX, Double dragY);
+
+/// Screen mouse scrolled callback - returns true if event was handled
+typedef ScreenMouseScrolledCallbackNative = Bool Function(
+    Int64 screenId, Double mouseX, Double mouseY, Double deltaX, Double deltaY);
+
+// =============================================================================
+// Widget Callback Types
+// =============================================================================
+
+/// Widget pressed callback - called when a button widget is pressed
+typedef WidgetPressedCallbackNative = Void Function(
+    Int64 screenId, Int64 widgetId);
+
+/// Widget text changed callback - called when edit box text changes
+typedef WidgetTextChangedCallbackNative = Void Function(
+    Int64 screenId, Int64 widgetId, Pointer<Utf8> text);
+
+// =============================================================================
+// Container Screen Callback Types
+// =============================================================================
+
+/// Container screen init callback - called when container screen is initialized
+typedef ContainerScreenInitCallbackNative = Void Function(
+    Int64 screenId, Int32 width, Int32 height,
+    Int32 leftPos, Int32 topPos, Int32 imageWidth, Int32 imageHeight);
+
+/// Container screen render background callback - called every frame to render background
+typedef ContainerScreenRenderBgCallbackNative = Void Function(
+    Int64 screenId, Int32 mouseX, Int32 mouseY,
+    Float partialTick, Int32 leftPos, Int32 topPos);
+
+/// Container screen close callback - called when container screen is closed
+typedef ContainerScreenCloseCallbackNative = Void Function(Int64 screenId);
+
 /// Native function signatures
 typedef RegisterBlockBreakHandlerNative = Void Function(
     Pointer<NativeFunction<BlockBreakCallbackNative>> callback);
@@ -195,6 +271,98 @@ typedef RegisterServerLifecycleHandlerNative = Void Function(
     Pointer<NativeFunction<ServerLifecycleCallbackNative>> callback);
 typedef RegisterServerLifecycleHandler = void Function(
     Pointer<NativeFunction<ServerLifecycleCallbackNative>> callback);
+
+// =============================================================================
+// Screen Callback Registration Signatures
+// =============================================================================
+
+typedef RegisterScreenInitHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenInitCallbackNative>> callback);
+typedef RegisterScreenInitHandler = void Function(
+    Pointer<NativeFunction<ScreenInitCallbackNative>> callback);
+
+typedef RegisterScreenTickHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenTickCallbackNative>> callback);
+typedef RegisterScreenTickHandler = void Function(
+    Pointer<NativeFunction<ScreenTickCallbackNative>> callback);
+
+typedef RegisterScreenRenderHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenRenderCallbackNative>> callback);
+typedef RegisterScreenRenderHandler = void Function(
+    Pointer<NativeFunction<ScreenRenderCallbackNative>> callback);
+
+typedef RegisterScreenCloseHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenCloseCallbackNative>> callback);
+typedef RegisterScreenCloseHandler = void Function(
+    Pointer<NativeFunction<ScreenCloseCallbackNative>> callback);
+
+typedef RegisterScreenKeyPressedHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenKeyPressedCallbackNative>> callback);
+typedef RegisterScreenKeyPressedHandler = void Function(
+    Pointer<NativeFunction<ScreenKeyPressedCallbackNative>> callback);
+
+typedef RegisterScreenKeyReleasedHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenKeyReleasedCallbackNative>> callback);
+typedef RegisterScreenKeyReleasedHandler = void Function(
+    Pointer<NativeFunction<ScreenKeyReleasedCallbackNative>> callback);
+
+typedef RegisterScreenCharTypedHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenCharTypedCallbackNative>> callback);
+typedef RegisterScreenCharTypedHandler = void Function(
+    Pointer<NativeFunction<ScreenCharTypedCallbackNative>> callback);
+
+typedef RegisterScreenMouseClickedHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenMouseClickedCallbackNative>> callback);
+typedef RegisterScreenMouseClickedHandler = void Function(
+    Pointer<NativeFunction<ScreenMouseClickedCallbackNative>> callback);
+
+typedef RegisterScreenMouseReleasedHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenMouseReleasedCallbackNative>> callback);
+typedef RegisterScreenMouseReleasedHandler = void Function(
+    Pointer<NativeFunction<ScreenMouseReleasedCallbackNative>> callback);
+
+typedef RegisterScreenMouseDraggedHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenMouseDraggedCallbackNative>> callback);
+typedef RegisterScreenMouseDraggedHandler = void Function(
+    Pointer<NativeFunction<ScreenMouseDraggedCallbackNative>> callback);
+
+typedef RegisterScreenMouseScrolledHandlerNative = Void Function(
+    Pointer<NativeFunction<ScreenMouseScrolledCallbackNative>> callback);
+typedef RegisterScreenMouseScrolledHandler = void Function(
+    Pointer<NativeFunction<ScreenMouseScrolledCallbackNative>> callback);
+
+// =============================================================================
+// Widget Callback Registration Signatures
+// =============================================================================
+
+typedef RegisterWidgetPressedHandlerNative = Void Function(
+    Pointer<NativeFunction<WidgetPressedCallbackNative>> callback);
+typedef RegisterWidgetPressedHandler = void Function(
+    Pointer<NativeFunction<WidgetPressedCallbackNative>> callback);
+
+typedef RegisterWidgetTextChangedHandlerNative = Void Function(
+    Pointer<NativeFunction<WidgetTextChangedCallbackNative>> callback);
+typedef RegisterWidgetTextChangedHandler = void Function(
+    Pointer<NativeFunction<WidgetTextChangedCallbackNative>> callback);
+
+// =============================================================================
+// Container Screen Callback Registration Signatures
+// =============================================================================
+
+typedef RegisterContainerScreenInitHandlerNative = Void Function(
+    Pointer<NativeFunction<ContainerScreenInitCallbackNative>> callback);
+typedef RegisterContainerScreenInitHandler = void Function(
+    Pointer<NativeFunction<ContainerScreenInitCallbackNative>> callback);
+
+typedef RegisterContainerScreenRenderBgHandlerNative = Void Function(
+    Pointer<NativeFunction<ContainerScreenRenderBgCallbackNative>> callback);
+typedef RegisterContainerScreenRenderBgHandler = void Function(
+    Pointer<NativeFunction<ContainerScreenRenderBgCallbackNative>> callback);
+
+typedef RegisterContainerScreenCloseHandlerNative = Void Function(
+    Pointer<NativeFunction<ContainerScreenCloseCallbackNative>> callback);
+typedef RegisterContainerScreenCloseHandler = void Function(
+    Pointer<NativeFunction<ContainerScreenCloseCallbackNative>> callback);
 
 /// Bridge to the native library.
 class Bridge {
@@ -471,6 +639,146 @@ class Bridge {
       Pointer<NativeFunction<ServerLifecycleCallbackNative>> callback) {
     final register = library.lookupFunction<RegisterServerLifecycleHandlerNative,
         RegisterServerLifecycleHandler>('register_server_stopping_handler');
+    register(callback);
+  }
+
+  // ===========================================================================
+  // Screen Callback Registration Methods
+  // ===========================================================================
+
+  /// Register a screen init handler.
+  static void registerScreenInitHandler(
+      Pointer<NativeFunction<ScreenInitCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenInitHandlerNative,
+        RegisterScreenInitHandler>('register_screen_init_callback');
+    register(callback);
+  }
+
+  /// Register a screen tick handler.
+  static void registerScreenTickHandler(
+      Pointer<NativeFunction<ScreenTickCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenTickHandlerNative,
+        RegisterScreenTickHandler>('register_screen_tick_callback');
+    register(callback);
+  }
+
+  /// Register a screen render handler.
+  static void registerScreenRenderHandler(
+      Pointer<NativeFunction<ScreenRenderCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenRenderHandlerNative,
+        RegisterScreenRenderHandler>('register_screen_render_callback');
+    register(callback);
+  }
+
+  /// Register a screen close handler.
+  static void registerScreenCloseHandler(
+      Pointer<NativeFunction<ScreenCloseCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenCloseHandlerNative,
+        RegisterScreenCloseHandler>('register_screen_close_callback');
+    register(callback);
+  }
+
+  /// Register a screen key pressed handler.
+  static void registerScreenKeyPressedHandler(
+      Pointer<NativeFunction<ScreenKeyPressedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenKeyPressedHandlerNative,
+        RegisterScreenKeyPressedHandler>('register_screen_key_pressed_callback');
+    register(callback);
+  }
+
+  /// Register a screen key released handler.
+  static void registerScreenKeyReleasedHandler(
+      Pointer<NativeFunction<ScreenKeyReleasedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenKeyReleasedHandlerNative,
+        RegisterScreenKeyReleasedHandler>('register_screen_key_released_callback');
+    register(callback);
+  }
+
+  /// Register a screen char typed handler.
+  static void registerScreenCharTypedHandler(
+      Pointer<NativeFunction<ScreenCharTypedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenCharTypedHandlerNative,
+        RegisterScreenCharTypedHandler>('register_screen_char_typed_callback');
+    register(callback);
+  }
+
+  /// Register a screen mouse clicked handler.
+  static void registerScreenMouseClickedHandler(
+      Pointer<NativeFunction<ScreenMouseClickedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenMouseClickedHandlerNative,
+        RegisterScreenMouseClickedHandler>('register_screen_mouse_clicked_callback');
+    register(callback);
+  }
+
+  /// Register a screen mouse released handler.
+  static void registerScreenMouseReleasedHandler(
+      Pointer<NativeFunction<ScreenMouseReleasedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenMouseReleasedHandlerNative,
+        RegisterScreenMouseReleasedHandler>('register_screen_mouse_released_callback');
+    register(callback);
+  }
+
+  /// Register a screen mouse dragged handler.
+  static void registerScreenMouseDraggedHandler(
+      Pointer<NativeFunction<ScreenMouseDraggedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenMouseDraggedHandlerNative,
+        RegisterScreenMouseDraggedHandler>('register_screen_mouse_dragged_callback');
+    register(callback);
+  }
+
+  /// Register a screen mouse scrolled handler.
+  static void registerScreenMouseScrolledHandler(
+      Pointer<NativeFunction<ScreenMouseScrolledCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterScreenMouseScrolledHandlerNative,
+        RegisterScreenMouseScrolledHandler>('register_screen_mouse_scrolled_callback');
+    register(callback);
+  }
+
+  // ===========================================================================
+  // Widget Callback Registration Methods
+  // ===========================================================================
+
+  /// Register a widget pressed handler.
+  static void registerWidgetPressedHandler(
+      Pointer<NativeFunction<WidgetPressedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterWidgetPressedHandlerNative,
+        RegisterWidgetPressedHandler>('register_widget_pressed_callback');
+    register(callback);
+  }
+
+  /// Register a widget text changed handler.
+  static void registerWidgetTextChangedHandler(
+      Pointer<NativeFunction<WidgetTextChangedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterWidgetTextChangedHandlerNative,
+        RegisterWidgetTextChangedHandler>('register_widget_text_changed_callback');
+    register(callback);
+  }
+
+  // ===========================================================================
+  // Container Screen Callback Registration Methods
+  // ===========================================================================
+
+  /// Register a container screen init handler.
+  static void registerContainerScreenInitHandler(
+      Pointer<NativeFunction<ContainerScreenInitCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterContainerScreenInitHandlerNative,
+        RegisterContainerScreenInitHandler>('register_container_screen_init_callback');
+    register(callback);
+  }
+
+  /// Register a container screen render background handler.
+  static void registerContainerScreenRenderBgHandler(
+      Pointer<NativeFunction<ContainerScreenRenderBgCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterContainerScreenRenderBgHandlerNative,
+        RegisterContainerScreenRenderBgHandler>('register_container_screen_render_bg_callback');
+    register(callback);
+  }
+
+  /// Register a container screen close handler.
+  static void registerContainerScreenCloseHandler(
+      Pointer<NativeFunction<ContainerScreenCloseCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterContainerScreenCloseHandlerNative,
+        RegisterContainerScreenCloseHandler>('register_container_screen_close_callback');
     register(callback);
   }
 }

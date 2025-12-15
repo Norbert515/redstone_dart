@@ -4,8 +4,6 @@
 /// in the Minecraft world using nocterm's declarative component system.
 library;
 
-import 'dart:async';
-
 import 'package:nocterm/nocterm.dart';
 import 'package:nocterm/src/backend/terminal.dart' as term;
 import 'package:nocterm/src/binding/terminal_binding.dart';
@@ -18,108 +16,8 @@ import '../api/block.dart';
 import '../api/custom_block.dart';
 import '../api/block_registry.dart';
 import '../api/player.dart';
-// ignore: unused_import - used by demoCreateTestScreen
-import '../src/bridge.dart';
-import '../src/types.dart';
 
-// =============================================================================
-// Animated nocterm Components
-// =============================================================================
-
-/// Custom painter for diagonal rainbow wave pattern.
-/// Draws diagonal stripes that animate over time.
-class RainbowWavePainter extends CustomPainter {
-  RainbowWavePainter({required this.frame});
-
-  final int frame;
-
-  // Rainbow colors
-  static const _colors = [
-    Color.fromRGB(255, 0, 0), // Red
-    Color.fromRGB(255, 127, 0), // Orange
-    Color.fromRGB(255, 255, 0), // Yellow
-    Color.fromRGB(0, 255, 0), // Green
-    Color.fromRGB(0, 255, 255), // Cyan
-    Color.fromRGB(0, 0, 255), // Blue
-    Color.fromRGB(139, 0, 255), // Purple
-    Color.fromRGB(255, 0, 255), // Magenta
-  ];
-
-  @override
-  void paint(TerminalCanvas canvas, Size size) {
-    for (int y = 0; y < size.height; y++) {
-      for (int x = 0; x < size.width; x++) {
-        // Diagonal stripes: x + y gives diagonal, add frame for animation
-        final colorIndex = ((x + y + frame) ~/ 3) % _colors.length;
-        final color = _colors[colorIndex];
-
-        // Fill this pixel with the background color
-        canvas.fillRect(
-          Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1),
-          ' ', // Space character (we only care about background)
-          style: TextStyle(backgroundColor: color),
-        );
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(RainbowWavePainter oldDelegate) {
-    return frame != oldDelegate.frame;
-  }
-}
-
-/// An animated rainbow stripes component using setState and CustomPaint.
-/// Creates diagonal rainbow stripes that animate.
-class RainbowWaveComponent extends StatefulComponent {
-  const RainbowWaveComponent({super.key, this.gridWidth = 21, this.gridHeight = 16});
-
-  final int gridWidth;
-  final int gridHeight;
-
-  @override
-  State<RainbowWaveComponent> createState() => _RainbowWaveState();
-}
-
-class _RainbowWaveState extends State<RainbowWaveComponent> {
-  Timer? _timer;
-  int _frame = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    // Animate at ~4 FPS for smooth scrolling
-    _timer = Timer.periodic(const Duration(milliseconds: 250), (_) {
-      setState(() => _frame++);
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Component build(BuildContext context) {
-    return CustomPaint(
-      painter: RainbowWavePainter(frame: _frame),
-      size: Size(component.gridWidth.toDouble(), component.gridHeight.toDouble()),
-    );
-  }
-}
-
-/// A static UI demo component (no animation).
-/// Simple solid color fill to test rendering works.
-class StaticUIComponent extends StatelessComponent {
-  @override
-  Component build(BuildContext context) {
-    // Just a solid red container that fills the entire space
-    return Container(
-      color: Colors.red,
-    );
-  }
-}
+import 'nocterm_demos/demos.dart';
 
 // =============================================================================
 // Minecraft Screen Manager with Declarative Rendering
@@ -247,8 +145,7 @@ void registerNoctermMinecraftBlocks() {
 // =============================================================================
 
 /// Demo block for nocterm Minecraft rendering.
-/// - Right-click: Create screen with static UI
-/// - Right-click again: Start rainbow wave animation
+/// - Right-click: Create screen and cycle through demos
 /// - Sneak + right-click: Clear and stop
 class NoctermDemoBlock extends CustomBlock {
   NoctermDemoBlock()
@@ -256,6 +153,20 @@ class NoctermDemoBlock extends CustomBlock {
           id: 'dartmod:nocterm_demo',
           settings: BlockSettings(hardness: 1.0, resistance: 1.0),
         );
+
+  /// Current demo index (persists across interactions).
+  static int _currentDemoIndex = 0;
+
+  /// List of available demos with name and builder.
+  static final List<(String name, Component Function(int width, int height) builder)> _demos = [
+    ('Static Red', (w, h) => StaticUIComponent()),
+    ('Rainbow Wave', (w, h) => RainbowWaveComponent(gridWidth: w, gridHeight: h)),
+    ('Matrix Rain', (w, h) => MatrixRainComponent(gridWidth: w, gridHeight: h)),
+    ('Plasma', (w, h) => PlasmaComponent(gridWidth: w, gridHeight: h)),
+    ('Bouncing Logo', (w, h) => BouncingLogoComponent(gridWidth: w, gridHeight: h)),
+    ('Clock', (w, h) => ClockComponent(gridWidth: w, gridHeight: h)),
+    ('Game of Life', (w, h) => GameOfLifeComponent(gridWidth: w, gridHeight: h)),
+  ];
 
   @override
   ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
@@ -266,26 +177,25 @@ class NoctermDemoBlock extends CustomBlock {
     if (player.isSneaking) {
       manager.clearScreen();
       manager.dispose();
+      _currentDemoIndex = 0;
       player.sendMessage('§a[nocterm] §fScreen cleared!');
       return ActionResult.success;
     }
 
-    // If screen exists, toggle to animated
+    // If screen exists, cycle to next demo
     if (manager.screen != null) {
-      // Switch to animated rainbow wave
-      player.sendMessage('§a[nocterm] §f🌈 Starting rainbow wave animation...');
+      _currentDemoIndex = (_currentDemoIndex + 1) % _demos.length;
+      final demo = _demos[_currentDemoIndex];
+      player.sendMessage('§a[nocterm] §f${demo.$1}');
       manager.start(
         manager.screen!,
-        RainbowWaveComponent(
-          gridWidth: manager.screen!.width,
-          gridHeight: manager.screen!.height,
-        ),
+        demo.$2(manager.screen!.width, manager.screen!.height),
       );
-      player.sendMessage('§7Using declarative nocterm components with setState');
       return ActionResult.success;
     }
 
-    // Create new screen
+    // Create new screen with first demo
+    _currentDemoIndex = 0;
     _createScreen(player, x, y, z);
     return ActionResult.success;
   }
@@ -317,12 +227,13 @@ class NoctermDemoBlock extends CustomBlock {
 
     try {
       final screen = MinecraftScreen.fromCorners(corner1, corner2);
+      final demo = _demos[_currentDemoIndex];
 
-      // Start with static UI
-      MinecraftScreenManager.instance.start(screen, StaticUIComponent());
+      // Start with current demo (first one initially)
+      MinecraftScreenManager.instance.start(screen, demo.$2(screen.width, screen.height));
 
-      player.sendMessage('§a[nocterm] §fScreen created with static UI!');
-      player.sendMessage('§7Right-click again for 🌈 rainbow animation');
+      player.sendMessage('§a[nocterm] §f${demo.$1}');
+      player.sendMessage('§7Right-click to cycle demos (${_demos.length} total)');
       player.sendMessage('§7Sneak + click to clear');
     } catch (e) {
       player.sendMessage('§c[nocterm] §fFailed: $e');

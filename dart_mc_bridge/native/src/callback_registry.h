@@ -136,6 +136,73 @@ public:
         server_stopping_handler_ = cb;
     }
 
+    // Screen callback setters
+    void setScreenInitHandler(ScreenInitCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_init_handler_ = cb;
+    }
+
+    void setScreenTickHandler(ScreenTickCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_tick_handler_ = cb;
+    }
+
+    void setScreenRenderHandler(ScreenRenderCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_render_handler_ = cb;
+    }
+
+    void setScreenCloseHandler(ScreenCloseCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_close_handler_ = cb;
+    }
+
+    void setScreenKeyPressedHandler(ScreenKeyPressedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_key_pressed_handler_ = cb;
+    }
+
+    void setScreenKeyReleasedHandler(ScreenKeyReleasedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_key_released_handler_ = cb;
+    }
+
+    void setScreenCharTypedHandler(ScreenCharTypedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_char_typed_handler_ = cb;
+    }
+
+    void setScreenMouseClickedHandler(ScreenMouseClickedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_mouse_clicked_handler_ = cb;
+    }
+
+    void setScreenMouseReleasedHandler(ScreenMouseReleasedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_mouse_released_handler_ = cb;
+    }
+
+    void setScreenMouseDraggedHandler(ScreenMouseDraggedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_mouse_dragged_handler_ = cb;
+    }
+
+    void setScreenMouseScrolledHandler(ScreenMouseScrolledCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        screen_mouse_scrolled_handler_ = cb;
+    }
+
+    // Widget callback setters
+    void setWidgetPressedHandler(WidgetPressedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        widget_pressed_handler_ = cb;
+    }
+
+    void setWidgetTextChangedHandler(WidgetTextChangedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        widget_text_changed_handler_ = cb;
+    }
+
     // Dispatch (called from Java via JNI)
     int32_t dispatchBlockBreak(int32_t x, int32_t y, int32_t z, int64_t player_id) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -320,6 +387,146 @@ public:
         }
     }
 
+    // Screen event dispatch methods
+    void dispatchScreenInit(int64_t screen_id, int32_t width, int32_t height) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_init_handler_) {
+            screen_init_handler_(screen_id, width, height);
+        }
+    }
+
+    void dispatchScreenTick(int64_t screen_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_tick_handler_) {
+            screen_tick_handler_(screen_id);
+        }
+    }
+
+    void dispatchScreenRender(int64_t screen_id, int32_t mouse_x, int32_t mouse_y, float partial_tick) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_render_handler_) {
+            screen_render_handler_(screen_id, mouse_x, mouse_y, partial_tick);
+        }
+    }
+
+    void dispatchScreenClose(int64_t screen_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_close_handler_) {
+            screen_close_handler_(screen_id);
+        }
+    }
+
+    bool dispatchScreenKeyPressed(int64_t screen_id, int32_t key_code, int32_t scan_code, int32_t modifiers) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_key_pressed_handler_) {
+            return screen_key_pressed_handler_(screen_id, key_code, scan_code, modifiers);
+        }
+        return false; // Default: not handled
+    }
+
+    bool dispatchScreenKeyReleased(int64_t screen_id, int32_t key_code, int32_t scan_code, int32_t modifiers) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_key_released_handler_) {
+            return screen_key_released_handler_(screen_id, key_code, scan_code, modifiers);
+        }
+        return false; // Default: not handled
+    }
+
+    bool dispatchScreenCharTyped(int64_t screen_id, int32_t code_point, int32_t modifiers) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_char_typed_handler_) {
+            return screen_char_typed_handler_(screen_id, code_point, modifiers);
+        }
+        return false; // Default: not handled
+    }
+
+    bool dispatchScreenMouseClicked(int64_t screen_id, double mouse_x, double mouse_y, int32_t button) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_mouse_clicked_handler_) {
+            return screen_mouse_clicked_handler_(screen_id, mouse_x, mouse_y, button);
+        }
+        return false; // Default: not handled
+    }
+
+    bool dispatchScreenMouseReleased(int64_t screen_id, double mouse_x, double mouse_y, int32_t button) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_mouse_released_handler_) {
+            return screen_mouse_released_handler_(screen_id, mouse_x, mouse_y, button);
+        }
+        return false; // Default: not handled
+    }
+
+    bool dispatchScreenMouseDragged(int64_t screen_id, double mouse_x, double mouse_y, int32_t button, double drag_x, double drag_y) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_mouse_dragged_handler_) {
+            return screen_mouse_dragged_handler_(screen_id, mouse_x, mouse_y, button, drag_x, drag_y);
+        }
+        return false; // Default: not handled
+    }
+
+    bool dispatchScreenMouseScrolled(int64_t screen_id, double mouse_x, double mouse_y, double delta_x, double delta_y) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (screen_mouse_scrolled_handler_) {
+            return screen_mouse_scrolled_handler_(screen_id, mouse_x, mouse_y, delta_x, delta_y);
+        }
+        return false; // Default: not handled
+    }
+
+    // Widget event dispatch methods
+    void dispatchWidgetPressed(int64_t screen_id, int64_t widget_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (widget_pressed_handler_) {
+            widget_pressed_handler_(screen_id, widget_id);
+        }
+    }
+
+    void dispatchWidgetTextChanged(int64_t screen_id, int64_t widget_id, const char* text) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (widget_text_changed_handler_) {
+            widget_text_changed_handler_(screen_id, widget_id, text);
+        }
+    }
+
+    // Container screen callback setters
+    void setContainerScreenInitHandler(ContainerScreenInitCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        container_screen_init_handler_ = cb;
+    }
+
+    void setContainerScreenRenderBgHandler(ContainerScreenRenderBgCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        container_screen_render_bg_handler_ = cb;
+    }
+
+    void setContainerScreenCloseHandler(ContainerScreenCloseCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        container_screen_close_handler_ = cb;
+    }
+
+    // Container screen event dispatch methods
+    void dispatchContainerScreenInit(int64_t screen_id, int32_t width, int32_t height,
+                                     int32_t left_pos, int32_t top_pos, int32_t image_width, int32_t image_height) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (container_screen_init_handler_) {
+            container_screen_init_handler_(screen_id, width, height, left_pos, top_pos, image_width, image_height);
+        }
+    }
+
+    void dispatchContainerScreenRenderBg(int64_t screen_id, int32_t mouse_x, int32_t mouse_y,
+                                         float partial_tick, int32_t left_pos, int32_t top_pos) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (container_screen_render_bg_handler_) {
+            container_screen_render_bg_handler_(screen_id, mouse_x, mouse_y, partial_tick, left_pos, top_pos);
+        }
+    }
+
+    void dispatchContainerScreenClose(int64_t screen_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (container_screen_close_handler_) {
+            container_screen_close_handler_(screen_id);
+        }
+    }
+
     // Clear all handlers
     void clear() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -347,6 +554,25 @@ public:
         server_starting_handler_ = nullptr;
         server_started_handler_ = nullptr;
         server_stopping_handler_ = nullptr;
+        // Screen handlers
+        screen_init_handler_ = nullptr;
+        screen_tick_handler_ = nullptr;
+        screen_render_handler_ = nullptr;
+        screen_close_handler_ = nullptr;
+        screen_key_pressed_handler_ = nullptr;
+        screen_key_released_handler_ = nullptr;
+        screen_char_typed_handler_ = nullptr;
+        screen_mouse_clicked_handler_ = nullptr;
+        screen_mouse_released_handler_ = nullptr;
+        screen_mouse_dragged_handler_ = nullptr;
+        screen_mouse_scrolled_handler_ = nullptr;
+        // Widget handlers
+        widget_pressed_handler_ = nullptr;
+        widget_text_changed_handler_ = nullptr;
+        // Container screen handlers
+        container_screen_init_handler_ = nullptr;
+        container_screen_render_bg_handler_ = nullptr;
+        container_screen_close_handler_ = nullptr;
     }
 
 private:
@@ -382,6 +608,28 @@ private:
     ServerStartingCallback server_starting_handler_ = nullptr;
     ServerStartedCallback server_started_handler_ = nullptr;
     ServerStoppingCallback server_stopping_handler_ = nullptr;
+
+    // Screen handlers
+    ScreenInitCallback screen_init_handler_ = nullptr;
+    ScreenTickCallback screen_tick_handler_ = nullptr;
+    ScreenRenderCallback screen_render_handler_ = nullptr;
+    ScreenCloseCallback screen_close_handler_ = nullptr;
+    ScreenKeyPressedCallback screen_key_pressed_handler_ = nullptr;
+    ScreenKeyReleasedCallback screen_key_released_handler_ = nullptr;
+    ScreenCharTypedCallback screen_char_typed_handler_ = nullptr;
+    ScreenMouseClickedCallback screen_mouse_clicked_handler_ = nullptr;
+    ScreenMouseReleasedCallback screen_mouse_released_handler_ = nullptr;
+    ScreenMouseDraggedCallback screen_mouse_dragged_handler_ = nullptr;
+    ScreenMouseScrolledCallback screen_mouse_scrolled_handler_ = nullptr;
+
+    // Widget handlers
+    WidgetPressedCallback widget_pressed_handler_ = nullptr;
+    WidgetTextChangedCallback widget_text_changed_handler_ = nullptr;
+
+    // Container screen handlers
+    ContainerScreenInitCallback container_screen_init_handler_ = nullptr;
+    ContainerScreenRenderBgCallback container_screen_render_bg_handler_ = nullptr;
+    ContainerScreenCloseCallback container_screen_close_handler_ = nullptr;
 };
 
 } // namespace dart_mc_bridge

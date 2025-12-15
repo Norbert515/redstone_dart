@@ -131,4 +131,86 @@ extern "C" {
     void dispatch_server_starting();
     void dispatch_server_started();
     void dispatch_server_stopping();
+
+    // ==========================================================================
+    // Screen/GUI Callbacks
+    // ==========================================================================
+
+    // Screen callbacks (called from Dart via FFI)
+    typedef void (*ScreenInitCallback)(int64_t screen_id, int32_t width, int32_t height);
+    typedef void (*ScreenTickCallback)(int64_t screen_id);
+    typedef void (*ScreenRenderCallback)(int64_t screen_id, int32_t mouse_x, int32_t mouse_y, float partial_tick);
+    typedef void (*ScreenCloseCallback)(int64_t screen_id);
+    typedef bool (*ScreenKeyPressedCallback)(int64_t screen_id, int32_t key_code, int32_t scan_code, int32_t modifiers);
+    typedef bool (*ScreenKeyReleasedCallback)(int64_t screen_id, int32_t key_code, int32_t scan_code, int32_t modifiers);
+    typedef bool (*ScreenCharTypedCallback)(int64_t screen_id, int32_t code_point, int32_t modifiers);
+    typedef bool (*ScreenMouseClickedCallback)(int64_t screen_id, double mouse_x, double mouse_y, int32_t button);
+    typedef bool (*ScreenMouseReleasedCallback)(int64_t screen_id, double mouse_x, double mouse_y, int32_t button);
+    typedef bool (*ScreenMouseDraggedCallback)(int64_t screen_id, double mouse_x, double mouse_y, int32_t button, double drag_x, double drag_y);
+    typedef bool (*ScreenMouseScrolledCallback)(int64_t screen_id, double mouse_x, double mouse_y, double delta_x, double delta_y);
+
+    // Screen callback registration (called from Dart via FFI)
+    void register_screen_init_callback(ScreenInitCallback callback);
+    void register_screen_tick_callback(ScreenTickCallback callback);
+    void register_screen_render_callback(ScreenRenderCallback callback);
+    void register_screen_close_callback(ScreenCloseCallback callback);
+    void register_screen_key_pressed_callback(ScreenKeyPressedCallback callback);
+    void register_screen_key_released_callback(ScreenKeyReleasedCallback callback);
+    void register_screen_char_typed_callback(ScreenCharTypedCallback callback);
+    void register_screen_mouse_clicked_callback(ScreenMouseClickedCallback callback);
+    void register_screen_mouse_released_callback(ScreenMouseReleasedCallback callback);
+    void register_screen_mouse_dragged_callback(ScreenMouseDraggedCallback callback);
+    void register_screen_mouse_scrolled_callback(ScreenMouseScrolledCallback callback);
+
+    // Screen dispatch functions (called from Java via JNI)
+    void dispatch_screen_init(int64_t screen_id, int32_t width, int32_t height);
+    void dispatch_screen_tick(int64_t screen_id);
+    void dispatch_screen_render(int64_t screen_id, int32_t mouse_x, int32_t mouse_y, float partial_tick);
+    void dispatch_screen_close(int64_t screen_id);
+    bool dispatch_screen_key_pressed(int64_t screen_id, int32_t key_code, int32_t scan_code, int32_t modifiers);
+    bool dispatch_screen_key_released(int64_t screen_id, int32_t key_code, int32_t scan_code, int32_t modifiers);
+    bool dispatch_screen_char_typed(int64_t screen_id, int32_t code_point, int32_t modifiers);
+    bool dispatch_screen_mouse_clicked(int64_t screen_id, double mouse_x, double mouse_y, int32_t button);
+    bool dispatch_screen_mouse_released(int64_t screen_id, double mouse_x, double mouse_y, int32_t button);
+    bool dispatch_screen_mouse_dragged(int64_t screen_id, double mouse_x, double mouse_y, int32_t button, double drag_x, double drag_y);
+    bool dispatch_screen_mouse_scrolled(int64_t screen_id, double mouse_x, double mouse_y, double delta_x, double delta_y);
+
+    // ==========================================================================
+    // Widget Callbacks
+    // ==========================================================================
+
+    // Widget callbacks (called from Dart via FFI)
+    typedef void (*WidgetPressedCallback)(int64_t screen_id, int64_t widget_id);
+    typedef void (*WidgetTextChangedCallback)(int64_t screen_id, int64_t widget_id, const char* text);
+
+    // Widget callback registration (called from Dart via FFI)
+    void register_widget_pressed_callback(WidgetPressedCallback callback);
+    void register_widget_text_changed_callback(WidgetTextChangedCallback callback);
+
+    // Widget dispatch functions (called from Java via JNI)
+    void dispatch_widget_pressed(int64_t screen_id, int64_t widget_id);
+    void dispatch_widget_text_changed(int64_t screen_id, int64_t widget_id, const char* text);
+
+    // ==========================================================================
+    // Container Screen Callbacks
+    // ==========================================================================
+
+    // Container screen callbacks (called from Dart via FFI)
+    typedef void (*ContainerScreenInitCallback)(int64_t screen_id, int32_t width, int32_t height,
+                                                 int32_t left_pos, int32_t top_pos, int32_t image_width, int32_t image_height);
+    typedef void (*ContainerScreenRenderBgCallback)(int64_t screen_id, int32_t mouse_x, int32_t mouse_y,
+                                                     float partial_tick, int32_t left_pos, int32_t top_pos);
+    typedef void (*ContainerScreenCloseCallback)(int64_t screen_id);
+
+    // Container screen callback registration (called from Dart via FFI)
+    void register_container_screen_init_callback(ContainerScreenInitCallback callback);
+    void register_container_screen_render_bg_callback(ContainerScreenRenderBgCallback callback);
+    void register_container_screen_close_callback(ContainerScreenCloseCallback callback);
+
+    // Container screen dispatch functions (called from Java via JNI)
+    void dispatch_container_screen_init(int64_t screen_id, int32_t width, int32_t height,
+                                        int32_t left_pos, int32_t top_pos, int32_t image_width, int32_t image_height);
+    void dispatch_container_screen_render_bg(int64_t screen_id, int32_t mouse_x, int32_t mouse_y,
+                                             float partial_tick, int32_t left_pos, int32_t top_pos);
+    void dispatch_container_screen_close(int64_t screen_id);
 }

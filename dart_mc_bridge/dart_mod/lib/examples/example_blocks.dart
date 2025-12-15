@@ -16,6 +16,7 @@ import '../api/item.dart';
 import '../api/inventory.dart';
 import '../src/bridge.dart';
 import '../src/types.dart';
+import 'demo_screen.dart';
 
 /// Helper function to send a chat message to a player.
 void _chat(int playerId, String message) {
@@ -631,8 +632,7 @@ class PartyBlock extends CustomBlock {
     final pos = Vec3(x + 0.5, y + 1.0, z + 0.5);
 
     // Big title
-    player.sendTitle('§6§lPARTY TIME! HELLO MODE!',
-        subtitle: '§e✨ Let\'s celebrate! ✨', fadeIn: 5, stay: 40, fadeOut: 10);
+    player.sendTitle('§6§lHEY X!', subtitle: '§e✨ Let\'s celebrate! ✨', fadeIn: 5, stay: 40, fadeOut: 10);
 
     // Lots of particles!
     world.spawnParticles(Particles.totemOfUndying, pos, count: 100, delta: Vec3(1.0, 1.5, 1.0), speed: 0.5);
@@ -681,6 +681,118 @@ class InfoBlock extends CustomBlock {
   }
 }
 
+// =============================================================================
+// GUI API Demo Blocks
+// =============================================================================
+
+/// GUI Demo Block - Opens a custom Dart screen when right-clicked.
+/// Demonstrates: The new Screen/GuiGraphics GUI API.
+///
+/// This block showcases how to create and open custom screens entirely in Dart.
+/// When a player right-clicks this block, it opens the DemoScreen which
+/// demonstrates:
+/// - Drawing text (centered, left-aligned)
+/// - Filling rectangles with solid colors
+/// - Gradient fills
+/// - Drawing outlines
+/// - Handling keyboard input (ESC to close)
+/// - Handling mouse input (click counting)
+/// - Animation using tick counts
+class GuiDemoBlock extends CustomBlock {
+  GuiDemoBlock()
+      : super(
+          id: 'dartmod:gui_demo',
+          settings: BlockSettings(hardness: 1.0, resistance: 1.0),
+        );
+
+  @override
+  ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+    final player = Player(playerId);
+    final world = World.overworld;
+    final pos = Vec3(x + 0.5, y + 1.0, z + 0.5);
+
+    // Visual feedback when opening the screen
+    world.spawnParticles(
+      Particles.enchant,
+      pos,
+      count: 20,
+      delta: Vec3(0.3, 0.5, 0.3),
+    );
+    world.playSound(pos, Sounds.click, volume: 0.5);
+
+    // Send a message before opening
+    player.sendMessage('§b[GUI Demo] §fOpening Dart GUI screen...');
+
+    // Open the demo screen!
+    showDemoScreen();
+
+    return ActionResult.success;
+  }
+
+  @override
+  bool onBreak(int worldId, int x, int y, int z, int playerId) {
+    _chat(playerId, '§b[GUI Demo] §fGUI Demo Block broken!');
+    return true; // Allow break
+  }
+}
+
+// =============================================================================
+// Container GUI API Demo Blocks
+// =============================================================================
+
+/// Container Demo Block - Opens a Dart container screen when right-clicked.
+/// Demonstrates: The Container Screen API with real inventory slots.
+///
+/// This block showcases how to create container screens in Dart.
+/// Container screens differ from regular screens in that:
+/// - They have real inventory slots managed by Minecraft
+/// - Items can be dragged, dropped, and shift-clicked
+/// - Item synchronization is handled automatically
+///
+/// When a player right-clicks this block, Java creates the DartContainerMenu
+/// on the server, which triggers the DartContainerScreen on the client.
+/// Dart then receives callbacks to render the background and manage slots.
+class ContainerDemoBlock extends CustomBlock {
+  ContainerDemoBlock()
+      : super(
+          id: 'dartmod:container_demo',
+          settings: BlockSettings(hardness: 1.0, resistance: 1.0),
+        );
+
+  @override
+  ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+    final player = Player(playerId);
+    final world = World.overworld;
+    final pos = Vec3(x + 0.5, y + 1.0, z + 0.5);
+
+    // Visual feedback when clicking the block
+    world.spawnParticles(
+      Particles.enchant,
+      pos,
+      count: 15,
+      delta: Vec3(0.3, 0.5, 0.3),
+    );
+    world.playSound(pos, Sounds.click, volume: 0.5);
+
+    // Send a message to the player
+    player.sendMessage('§6[Container Demo] §fOpening Dart container screen...');
+    player.sendMessage('§7(Note: Container is opened by the Java block)');
+
+    // Note: The actual container opening is handled by Java.
+    // This block needs to be placed by the Java DartContainerBlock
+    // which implements MenuProvider and opens the DartContainerMenu.
+    // The Dart side only handles the rendering via DemoContainerScreen.
+
+    return ActionResult.success;
+  }
+
+  @override
+  bool onBreak(int worldId, int x, int y, int z, int playerId) {
+    _chat(playerId, '§6[Container Demo] §fContainer Demo Block broken!');
+    return true; // Allow break
+  }
+}
+
 /// Register all example blocks.
 /// Call this during mod initialization.
 void registerExampleBlocks() {
@@ -711,6 +823,12 @@ void registerExampleBlocks() {
   BlockRegistry.register(TeleporterBlock());
   BlockRegistry.register(PartyBlock());
   BlockRegistry.register(InfoBlock());
+
+  // GUI API demo blocks
+  BlockRegistry.register(GuiDemoBlock());
+
+  // Container GUI API demo blocks
+  BlockRegistry.register(ContainerDemoBlock());
 
   print('Example blocks registered: ${BlockRegistry.blockCount} blocks total');
 }

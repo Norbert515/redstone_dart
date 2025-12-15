@@ -1,6 +1,7 @@
 package com.example.block;
 
 import com.example.ExampleMod;
+import com.example.dartbridge.DartContainerBlock;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -53,6 +54,17 @@ public class ModBlocks {
             true
     );
 
+    // Dart Container - opens a Dart-controlled container screen
+    public static final Block DART_CONTAINER = register(
+            "dart_container",
+            DartContainerBlock::new,
+            BlockBehaviour.Properties.of()
+                    .strength(2.0f)
+                    .sound(SoundType.WOOD)
+                    .lightLevel(state -> 8),
+            true
+    );
+
     private static ResourceKey<Block> keyOfBlock(String name) {
         return ResourceKey.create(
                 Registries.BLOCK,
@@ -89,6 +101,7 @@ public class ModBlocks {
             entries.accept(LUCKY_BLOCK);
             entries.accept(TELEPORTER_PAD);
             entries.accept(TECH_FABRICATOR);
+            entries.accept(DART_CONTAINER);
         });
     }
 }

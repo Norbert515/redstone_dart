@@ -572,4 +572,247 @@ void dispatch_server_stopping() {
     safe_exit_isolate(did_enter);
 }
 
+// ==========================================================================
+// Screen Callback Registration (called from Dart via FFI)
+// ==========================================================================
+
+void register_screen_init_callback(ScreenInitCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenInitHandler(callback);
+}
+
+void register_screen_tick_callback(ScreenTickCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenTickHandler(callback);
+}
+
+void register_screen_render_callback(ScreenRenderCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenRenderHandler(callback);
+}
+
+void register_screen_close_callback(ScreenCloseCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenCloseHandler(callback);
+}
+
+void register_screen_key_pressed_callback(ScreenKeyPressedCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenKeyPressedHandler(callback);
+}
+
+void register_screen_key_released_callback(ScreenKeyReleasedCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenKeyReleasedHandler(callback);
+}
+
+void register_screen_char_typed_callback(ScreenCharTypedCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenCharTypedHandler(callback);
+}
+
+void register_screen_mouse_clicked_callback(ScreenMouseClickedCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenMouseClickedHandler(callback);
+}
+
+void register_screen_mouse_released_callback(ScreenMouseReleasedCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenMouseReleasedHandler(callback);
+}
+
+void register_screen_mouse_dragged_callback(ScreenMouseDraggedCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenMouseDraggedHandler(callback);
+}
+
+void register_screen_mouse_scrolled_callback(ScreenMouseScrolledCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setScreenMouseScrolledHandler(callback);
+}
+
+// ==========================================================================
+// Screen Event Dispatch (called from Java via JNI)
+// ==========================================================================
+
+void dispatch_screen_init(int64_t screen_id, int32_t width, int32_t height) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchScreenInit(screen_id, width, height);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_screen_tick(int64_t screen_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchScreenTick(screen_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_screen_render(int64_t screen_id, int32_t mouse_x, int32_t mouse_y, float partial_tick) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchScreenRender(screen_id, mouse_x, mouse_y, partial_tick);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_screen_close(int64_t screen_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchScreenClose(screen_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+bool dispatch_screen_key_pressed(int64_t screen_id, int32_t key_code, int32_t scan_code, int32_t modifiers) {
+    if (!g_initialized || g_isolate == nullptr) return false;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenKeyPressed(screen_id, key_code, scan_code, modifiers);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_screen_key_released(int64_t screen_id, int32_t key_code, int32_t scan_code, int32_t modifiers) {
+    if (!g_initialized || g_isolate == nullptr) return false;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenKeyReleased(screen_id, key_code, scan_code, modifiers);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_screen_char_typed(int64_t screen_id, int32_t code_point, int32_t modifiers) {
+    if (!g_initialized || g_isolate == nullptr) return false;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenCharTyped(screen_id, code_point, modifiers);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_screen_mouse_clicked(int64_t screen_id, double mouse_x, double mouse_y, int32_t button) {
+    if (!g_initialized || g_isolate == nullptr) return false;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseClicked(screen_id, mouse_x, mouse_y, button);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_screen_mouse_released(int64_t screen_id, double mouse_x, double mouse_y, int32_t button) {
+    if (!g_initialized || g_isolate == nullptr) return false;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseReleased(screen_id, mouse_x, mouse_y, button);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_screen_mouse_dragged(int64_t screen_id, double mouse_x, double mouse_y, int32_t button, double drag_x, double drag_y) {
+    if (!g_initialized || g_isolate == nullptr) return false;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseDragged(screen_id, mouse_x, mouse_y, button, drag_x, drag_y);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_screen_mouse_scrolled(int64_t screen_id, double mouse_x, double mouse_y, double delta_x, double delta_y) {
+    if (!g_initialized || g_isolate == nullptr) return false;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseScrolled(screen_id, mouse_x, mouse_y, delta_x, delta_y);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+// ==========================================================================
+// Widget Callback Registration (called from Dart via FFI)
+// ==========================================================================
+
+void register_widget_pressed_callback(WidgetPressedCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setWidgetPressedHandler(callback);
+}
+
+void register_widget_text_changed_callback(WidgetTextChangedCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setWidgetTextChangedHandler(callback);
+}
+
+// ==========================================================================
+// Widget Event Dispatch (called from Java via JNI)
+// ==========================================================================
+
+void dispatch_widget_pressed(int64_t screen_id, int64_t widget_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchWidgetPressed(screen_id, widget_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_widget_text_changed(int64_t screen_id, int64_t widget_id, const char* text) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchWidgetTextChanged(screen_id, widget_id, text);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+// ==========================================================================
+// Container Screen Callback Registration (called from Dart via FFI)
+// ==========================================================================
+
+void register_container_screen_init_callback(ContainerScreenInitCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setContainerScreenInitHandler(callback);
+}
+
+void register_container_screen_render_bg_callback(ContainerScreenRenderBgCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setContainerScreenRenderBgHandler(callback);
+}
+
+void register_container_screen_close_callback(ContainerScreenCloseCallback callback) {
+    dart_mc_bridge::CallbackRegistry::instance().setContainerScreenCloseHandler(callback);
+}
+
+// ==========================================================================
+// Container Screen Event Dispatch (called from Java via JNI)
+// ==========================================================================
+
+void dispatch_container_screen_init(int64_t screen_id, int32_t width, int32_t height,
+                                    int32_t left_pos, int32_t top_pos, int32_t image_width, int32_t image_height) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchContainerScreenInit(
+        screen_id, width, height, left_pos, top_pos, image_width, image_height);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_container_screen_render_bg(int64_t screen_id, int32_t mouse_x, int32_t mouse_y,
+                                         float partial_tick, int32_t left_pos, int32_t top_pos) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchContainerScreenRenderBg(
+        screen_id, mouse_x, mouse_y, partial_tick, left_pos, top_pos);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_container_screen_close(int64_t screen_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchContainerScreenClose(screen_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
 } // extern "C"

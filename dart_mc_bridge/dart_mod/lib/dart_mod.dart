@@ -8,12 +8,14 @@ import 'src/bridge.dart';
 import 'src/events.dart';
 import 'src/types.dart';
 import 'api/block_registry.dart';
+import 'api/gui/screen.dart';
 import 'api/player.dart';
 import 'api/world.dart';
 import 'api/item.dart';
 import 'api/inventory.dart';
 import 'examples/example_blocks.dart';
 import 'examples/nocterm_minecraft_example.dart';
+import 'examples/demo_container_screen.dart';
 
 export 'src/bridge.dart';
 export 'src/events.dart';
@@ -26,6 +28,7 @@ export 'api/item.dart';
 export 'api/inventory.dart';
 export 'api/custom_block.dart';
 export 'api/block_registry.dart';
+export 'api/gui/screen.dart';
 
 /// Main entry point called when the Dart VM is initialized.
 void main() {
@@ -36,6 +39,12 @@ void main() {
 
   // Register proxy block handlers (for Dart-defined custom blocks)
   Events.registerProxyBlockHandlers();
+
+  // Register screen callbacks (for Dart-defined GUI screens)
+  initScreenCallbacks();
+
+  // Register container screen callbacks (for Dart-defined container screens)
+  initDemoContainerScreen();
 
   // =========================================================================
   // Register custom blocks defined in Dart

@@ -2271,4 +2271,227 @@ public class DartBridge {
         // For now, log and skip
         LOGGER.debug("setGameRule not fully implemented for rule: {} = {}", rule, value);
     }
+
+    // ==========================================================================
+    // GUI / Screen APIs (Native Method Declarations)
+    // ==========================================================================
+    // Note: These methods are called from the client-side DartBridgeClient class.
+    // The actual dispatch and GUI operations are in the client source set.
+
+    // --------------------------------------------------------------------------
+    // Screen Event Dispatch Methods
+    // --------------------------------------------------------------------------
+
+    public static void dispatchScreenInit(long screenId, int width, int height) {
+        if (!initialized) return;
+        try {
+            onScreenInit(screenId, width, height);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen init dispatch: {}", e.getMessage());
+        }
+    }
+
+    public static void dispatchScreenTick(long screenId) {
+        if (!initialized) return;
+        try {
+            onScreenTick(screenId);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen tick dispatch: {}", e.getMessage());
+        }
+    }
+
+    public static void dispatchScreenRender(long screenId, int mouseX, int mouseY, float partialTick) {
+        if (!initialized) return;
+        try {
+            onScreenRender(screenId, mouseX, mouseY, partialTick);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen render dispatch: {}", e.getMessage());
+        }
+    }
+
+    public static void dispatchScreenClose(long screenId) {
+        if (!initialized) return;
+        try {
+            onScreenClose(screenId);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen close dispatch: {}", e.getMessage());
+        }
+    }
+
+    public static boolean dispatchScreenKeyPressed(long screenId, int keyCode, int scanCode, int modifiers) {
+        if (!initialized) return false;
+        try {
+            return onScreenKeyPressed(screenId, keyCode, scanCode, modifiers);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen key pressed dispatch: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean dispatchScreenKeyReleased(long screenId, int keyCode, int scanCode, int modifiers) {
+        if (!initialized) return false;
+        try {
+            return onScreenKeyReleased(screenId, keyCode, scanCode, modifiers);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen key released dispatch: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean dispatchScreenCharTyped(long screenId, int codePoint, int modifiers) {
+        if (!initialized) return false;
+        try {
+            return onScreenCharTyped(screenId, codePoint, modifiers);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen char typed dispatch: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean dispatchScreenMouseClicked(long screenId, double mouseX, double mouseY, int button) {
+        if (!initialized) return false;
+        try {
+            return onScreenMouseClicked(screenId, mouseX, mouseY, button);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen mouse clicked dispatch: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean dispatchScreenMouseReleased(long screenId, double mouseX, double mouseY, int button) {
+        if (!initialized) return false;
+        try {
+            return onScreenMouseReleased(screenId, mouseX, mouseY, button);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen mouse released dispatch: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean dispatchScreenMouseDragged(long screenId, double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (!initialized) return false;
+        try {
+            return onScreenMouseDragged(screenId, mouseX, mouseY, button, dragX, dragY);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen mouse dragged dispatch: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean dispatchScreenMouseScrolled(long screenId, double mouseX, double mouseY, double deltaX, double deltaY) {
+        if (!initialized) return false;
+        try {
+            return onScreenMouseScrolled(screenId, mouseX, mouseY, deltaX, deltaY);
+        } catch (Exception e) {
+            LOGGER.error("Exception during screen mouse scrolled dispatch: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // --------------------------------------------------------------------------
+    // Screen Native Method Declarations
+    // --------------------------------------------------------------------------
+
+    private static native void onScreenInit(long screenId, int width, int height);
+    private static native void onScreenTick(long screenId);
+    private static native void onScreenRender(long screenId, int mouseX, int mouseY, float partialTick);
+    private static native void onScreenClose(long screenId);
+    private static native boolean onScreenKeyPressed(long screenId, int keyCode, int scanCode, int modifiers);
+    private static native boolean onScreenKeyReleased(long screenId, int keyCode, int scanCode, int modifiers);
+    private static native boolean onScreenCharTyped(long screenId, int codePoint, int modifiers);
+    private static native boolean onScreenMouseClicked(long screenId, double mouseX, double mouseY, int button);
+    private static native boolean onScreenMouseReleased(long screenId, double mouseX, double mouseY, int button);
+    private static native boolean onScreenMouseDragged(long screenId, double mouseX, double mouseY, int button, double dragX, double dragY);
+    private static native boolean onScreenMouseScrolled(long screenId, double mouseX, double mouseY, double deltaX, double deltaY);
+
+    // --------------------------------------------------------------------------
+    // Widget Event Dispatch Methods
+    // --------------------------------------------------------------------------
+
+    /**
+     * Dispatch widget pressed event to Dart handlers.
+     */
+    public static void dispatchWidgetPressed(long screenId, long widgetId) {
+        if (!initialized) return;
+        try {
+            onWidgetPressed(screenId, widgetId);
+        } catch (Exception e) {
+            LOGGER.error("Exception during widget pressed dispatch: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Dispatch widget text changed event to Dart handlers.
+     */
+    public static void dispatchWidgetTextChanged(long screenId, long widgetId, String text) {
+        if (!initialized) return;
+        try {
+            onWidgetTextChanged(screenId, widgetId, text);
+        } catch (Exception e) {
+            LOGGER.error("Exception during widget text changed dispatch: {}", e.getMessage());
+        }
+    }
+
+    // --------------------------------------------------------------------------
+    // Widget Native Method Declarations
+    // --------------------------------------------------------------------------
+
+    private static native void onWidgetPressed(long screenId, long widgetId);
+    private static native void onWidgetTextChanged(long screenId, long widgetId, String text);
+
+    // ==========================================================================
+    // Container Screen APIs
+    // ==========================================================================
+
+    // --------------------------------------------------------------------------
+    // Container Screen Event Dispatch Methods
+    // --------------------------------------------------------------------------
+
+    /**
+     * Dispatch container screen init event to Dart handlers.
+     */
+    public static void dispatchContainerScreenInit(long screenId, int width, int height,
+                                                    int leftPos, int topPos, int imageWidth, int imageHeight) {
+        if (!initialized) return;
+        try {
+            onContainerScreenInit(screenId, width, height, leftPos, topPos, imageWidth, imageHeight);
+        } catch (Exception e) {
+            LOGGER.error("Exception during container screen init dispatch: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Dispatch container screen render background event to Dart handlers.
+     */
+    public static void dispatchContainerScreenRenderBg(long screenId, int mouseX, int mouseY,
+                                                        float partialTick, int leftPos, int topPos) {
+        if (!initialized) return;
+        try {
+            onContainerScreenRenderBg(screenId, mouseX, mouseY, partialTick, leftPos, topPos);
+        } catch (Exception e) {
+            LOGGER.error("Exception during container screen render bg dispatch: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Dispatch container screen close event to Dart handlers.
+     */
+    public static void dispatchContainerScreenClose(long screenId) {
+        if (!initialized) return;
+        try {
+            onContainerScreenClose(screenId);
+        } catch (Exception e) {
+            LOGGER.error("Exception during container screen close dispatch: {}", e.getMessage());
+        }
+    }
+
+    // --------------------------------------------------------------------------
+    // Container Screen Native Method Declarations
+    // --------------------------------------------------------------------------
+
+    private static native void onContainerScreenInit(long screenId, int width, int height,
+                                                      int leftPos, int topPos, int imageWidth, int imageHeight);
+    private static native void onContainerScreenRenderBg(long screenId, int mouseX, int mouseY,
+                                                          float partialTick, int leftPos, int topPos);
+    private static native void onContainerScreenClose(long screenId);
 }
