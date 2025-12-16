@@ -36,7 +36,10 @@ class AssetGenerator {
   }
 
   Future<Map<String, dynamic>?> _readManifest() async {
-    final manifestFile = File(project.manifestPath);
+    // In datagen mode (CLI context), manifest is written to project root
+    // at .redstone/manifest.json
+    final manifestPath = p.join(project.rootDir, '.redstone', 'manifest.json');
+    final manifestFile = File(manifestPath);
     if (!manifestFile.existsSync()) return null;
     final content = await manifestFile.readAsString();
     return jsonDecode(content) as Map<String, dynamic>;
@@ -53,6 +56,8 @@ class AssetGenerator {
     await _generateBlockstate(namespace, blockName, model);
     await _generateBlockModel(namespace, blockName, model);
     await _generateBlockItemModel(namespace, blockName);
+    // 1.21.4+: Generate item model definition in items/ folder
+    await _generateItemModelDefinition(namespace, blockName, '$namespace:block/$blockName');
   }
 
   Future<void> _generateBlockstate(
@@ -155,6 +160,8 @@ class AssetGenerator {
     final itemName = id.split(':')[1];
 
     await _generateItemModel(namespace, itemName, model);
+    // 1.21.4+: Generate item model definition in items/ folder
+    await _generateItemModelDefinition(namespace, itemName, '$namespace:item/$itemName');
   }
 
   Future<void> _generateItemModel(
@@ -186,6 +193,29 @@ class AssetGenerator {
       '$itemName.json',
     );
     await _writeJson(path, itemModel);
+  }
+
+  /// Generate item model definition for 1.21.4+
+  /// These go in assets/<namespace>/items/<name>.json
+  /// and point to the actual model in models/block/ or models/item/
+  Future<void> _generateItemModelDefinition(
+    String namespace,
+    String itemName,
+    String modelRef,
+  ) async {
+    final itemDef = {
+      'model': {
+        'type': 'minecraft:model',
+        'model': modelRef,
+      }
+    };
+
+    final path = p.join(
+      project.minecraftAssetsDir(namespace),
+      'items',
+      '$itemName.json',
+    );
+    await _writeJson(path, itemDef);
   }
 
   /// Convert 'assets/textures/block/hello.png' to 'mymod:block/hello'

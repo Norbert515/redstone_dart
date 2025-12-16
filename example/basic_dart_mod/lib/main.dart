@@ -8,18 +8,15 @@ import 'dart:math';
 // Dart MC API imports
 import 'package:dart_mc/dart_mc.dart';
 
-// Generated identifiers - run `redstone generate` after adding assets
-import 'generated/textures.dart';
-
 /// Example custom item that demonstrates the item system.
 ///
 /// This item is dropped by HelloBlock and can be picked up by players.
 class DartItem extends CustomItem {
   DartItem()
       : super(
-          id: ItemIds.dartItem,
+          id: 'basic_dart_mod:dart_item',
           settings: ItemSettings(maxStackSize: 64),
-          model: ItemModel.generated(texture: ItemTextures.dartItem),
+          model: ItemModel.generated(texture: 'assets/textures/item/dart_item.png'),
         );
 }
 
@@ -31,14 +28,14 @@ class DartItem extends CustomItem {
 class HelloBlock extends CustomBlock {
   HelloBlock()
       : super(
-          id: BlockIds.helloBlock,
+          id: 'basic_dart_mod:hello_block',
           settings: BlockSettings(
             hardness: 4.0,
             resistance: 1.0,
             requiresTool: false,
           ),
-          model: BlockModel.cubeAll(texture: BlockTextures.helloBlock),
-          drops: ItemIds.dartItem,
+          model: BlockModel.cubeAll(texture: 'assets/textures/block/hello_block.png'),
+          drops: 'basic_dart_mod:dart_item',
         );
 
   @override

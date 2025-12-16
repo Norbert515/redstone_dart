@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'custom_block.dart';
+import '../src/bridge.dart';
 import '../src/jni/generic_bridge.dart';
 
 /// Registry for Dart-defined blocks.
@@ -159,9 +160,17 @@ class BlockRegistry {
   /// Freeze the registry (called internally after mod initialization).
   ///
   /// After this is called, no more blocks can be registered.
+  /// In datagen mode, this also exits the process after writing the manifest.
   static void freeze() {
     _frozen = true;
     print('BlockRegistry: Frozen with ${_blocks.length} blocks registered');
+
+    // In datagen mode, exit cleanly after registration is complete
+    // The manifest has been written, so the CLI can now generate assets
+    if (Bridge.isDatagenMode) {
+      print('BlockRegistry: Datagen mode complete, exiting...');
+      exit(0);
+    }
   }
 
   /// Check if the registry is frozen.

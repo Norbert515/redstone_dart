@@ -80,6 +80,28 @@ class MinecraftRunner {
   }
 
   Future<void> _generateAssets() async {
+    // Step 1: Run the mod in datagen mode to generate manifest.json
+    Logger.info('Running mod in datagen mode...');
+    final result = await Process.run(
+      'dart',
+      ['run', 'lib/main.dart'],
+      workingDirectory: project.rootDir,
+      environment: {'REDSTONE_DATAGEN': 'true'},
+    );
+
+    if (result.exitCode != 0) {
+      Logger.error('Datagen failed with exit code ${result.exitCode}');
+      if (result.stdout.toString().isNotEmpty) {
+        Logger.debug('stdout: ${result.stdout}');
+      }
+      if (result.stderr.toString().isNotEmpty) {
+        Logger.error('stderr: ${result.stderr}');
+      }
+      throw Exception('Datagen failed');
+    }
+
+    // Step 2: Generate all JSON assets from manifest
+    Logger.info('Generating Minecraft assets...');
     final generator = AssetGenerator(project);
     await generator.generate();
   }

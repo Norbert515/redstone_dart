@@ -509,11 +509,26 @@ class Bridge {
   static DynamicLibrary? _lib;
   static bool _initialized = false;
 
+  /// Whether we're running in datagen mode (no JNI/Minecraft).
+  /// In this mode, stub values are returned for all JNI calls.
+  static bool isDatagenMode = false;
+
   /// Initialize the bridge by loading the native library.
   /// When running embedded in the Dart VM (via dart_dll), the symbols
   /// are already available in the current process.
   static void initialize() {
     if (_initialized) return;
+
+    // Check for datagen mode via environment variable
+    final datagenEnv = Platform.environment['REDSTONE_DATAGEN'];
+    if (datagenEnv == 'true' || datagenEnv == '1') {
+      isDatagenMode = true;
+      _initialized = true;
+      print('Bridge: Running in DATAGEN mode (no native library)');
+      // Initialize GenericJniBridge in datagen mode (will use stubs)
+      GenericJniBridge.init();
+      return;
+    }
 
     _lib = _loadLibrary();
     _initialized = true;
