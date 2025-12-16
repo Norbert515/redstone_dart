@@ -56,14 +56,27 @@ class BlockRegistry {
     final path = parts[1];
 
     // Create the proxy block in Java
+    // JNI signature: (FFZ I DDD ZZZ Z)J
+    // float hardness, float resistance, boolean requiresTool,
+    // int luminance, double slipperiness, double velocityMultiplier, double jumpVelocityMultiplier,
+    // boolean ticksRandomly, boolean collidable, boolean replaceable, boolean burnable
+    // returns long
     final handlerId = GenericJniBridge.callStaticLongMethod(
       'com/redstone/proxy/ProxyRegistry',
       'createBlock',
-      '(FFZ)J',
+      '(FFZIDDDZZZ Z)J'.replaceAll(' ', ''),
       [
         block.settings.hardness,
         block.settings.resistance,
         block.settings.requiresTool,
+        block.settings.luminance,
+        block.settings.slipperiness,
+        block.settings.velocityMultiplier,
+        block.settings.jumpVelocityMultiplier,
+        block.settings.ticksRandomly,
+        block.settings.collidable,
+        block.settings.replaceable,
+        block.settings.burnable,
       ],
     );
 
@@ -216,5 +229,104 @@ class BlockRegistry {
       return result.index;
     }
     return ActionResult.pass.index;
+  }
+
+  /// Dispatch a stepped on event to the appropriate handler.
+  /// Called from native code via callback.
+  static void dispatchSteppedOn(
+    int handlerId,
+    int worldId,
+    int x,
+    int y,
+    int z,
+    int entityId,
+  ) {
+    final block = _blocks[handlerId];
+    block?.onSteppedOn(worldId, x, y, z, entityId);
+  }
+
+  /// Dispatch a fallen upon event to the appropriate handler.
+  /// Called from native code via callback.
+  static void dispatchFallenUpon(
+    int handlerId,
+    int worldId,
+    int x,
+    int y,
+    int z,
+    int entityId,
+    double fallDistance,
+  ) {
+    final block = _blocks[handlerId];
+    block?.onFallenUpon(worldId, x, y, z, entityId, fallDistance);
+  }
+
+  /// Dispatch a random tick event to the appropriate handler.
+  /// Called from native code via callback.
+  static void dispatchRandomTick(
+    int handlerId,
+    int worldId,
+    int x,
+    int y,
+    int z,
+  ) {
+    final block = _blocks[handlerId];
+    block?.randomTick(worldId, x, y, z);
+  }
+
+  /// Dispatch a block placed event to the appropriate handler.
+  /// Called from native code via callback.
+  static void dispatchPlaced(
+    int handlerId,
+    int worldId,
+    int x,
+    int y,
+    int z,
+    int playerId,
+  ) {
+    final block = _blocks[handlerId];
+    block?.onPlaced(worldId, x, y, z, playerId);
+  }
+
+  /// Dispatch a block removed event to the appropriate handler.
+  /// Called from native code via callback.
+  static void dispatchRemoved(
+    int handlerId,
+    int worldId,
+    int x,
+    int y,
+    int z,
+  ) {
+    final block = _blocks[handlerId];
+    block?.onRemoved(worldId, x, y, z);
+  }
+
+  /// Dispatch a neighbor changed event to the appropriate handler.
+  /// Called from native code via callback.
+  static void dispatchNeighborChanged(
+    int handlerId,
+    int worldId,
+    int x,
+    int y,
+    int z,
+    int neighborX,
+    int neighborY,
+    int neighborZ,
+  ) {
+    final block = _blocks[handlerId];
+    block?.neighborChanged(worldId, x, y, z, neighborX, neighborY, neighborZ);
+  }
+
+  /// Dispatch an entity inside event to the appropriate handler.
+  /// Called from native code via callback.
+  static void dispatchEntityInside(
+    int handlerId,
+    int worldId,
+    int x,
+    int y,
+    int z,
+    int entityId,
+  ) {
+    final block = _blocks[handlerId];
+    block?.entityInside(worldId, x, y, z, entityId);
   }
 }

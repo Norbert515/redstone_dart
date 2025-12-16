@@ -157,6 +157,13 @@ public class DartBridge {
     // Proxy block native methods - called by DartBlockProxy
     public static native boolean onProxyBlockBreak(long handlerId, long worldId, int x, int y, int z, long playerId);
     public static native int onProxyBlockUse(long handlerId, long worldId, int x, int y, int z, long playerId, int hand);
+    public static native void onProxyBlockSteppedOn(long handlerId, long worldId, int x, int y, int z, int entityId);
+    public static native void onProxyBlockFallenUpon(long handlerId, long worldId, int x, int y, int z, int entityId, float fallDistance);
+    public static native void onProxyBlockRandomTick(long handlerId, long worldId, int x, int y, int z);
+    public static native void onProxyBlockPlaced(long handlerId, long worldId, int x, int y, int z, long playerId);
+    public static native void onProxyBlockRemoved(long handlerId, long worldId, int x, int y, int z);
+    public static native void onProxyBlockNeighborChanged(long handlerId, long worldId, int x, int y, int z, int neighborX, int neighborY, int neighborZ);
+    public static native void onProxyBlockEntityInside(long handlerId, long worldId, int x, int y, int z, int entityId);
 
     // Entity proxy native methods - called by DartEntityProxy
     public static native void onProxyEntitySpawn(long handlerId, int entityId, long worldId);

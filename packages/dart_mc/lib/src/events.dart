@@ -215,6 +215,41 @@ int _onProxyBlockUse(int handlerId, int worldId, int x, int y, int z, int player
   return BlockRegistry.dispatchBlockUse(handlerId, worldId, x, y, z, playerId, hand);
 }
 
+@pragma('vm:entry-point')
+void _onProxyBlockSteppedOn(int handlerId, int worldId, int x, int y, int z, int entityId) {
+  BlockRegistry.dispatchSteppedOn(handlerId, worldId, x, y, z, entityId);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockFallenUpon(int handlerId, int worldId, int x, int y, int z, int entityId, double fallDistance) {
+  BlockRegistry.dispatchFallenUpon(handlerId, worldId, x, y, z, entityId, fallDistance);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockRandomTick(int handlerId, int worldId, int x, int y, int z) {
+  BlockRegistry.dispatchRandomTick(handlerId, worldId, x, y, z);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockPlaced(int handlerId, int worldId, int x, int y, int z, int playerId) {
+  BlockRegistry.dispatchPlaced(handlerId, worldId, x, y, z, playerId);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockRemoved(int handlerId, int worldId, int x, int y, int z) {
+  BlockRegistry.dispatchRemoved(handlerId, worldId, x, y, z);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockNeighborChanged(int handlerId, int worldId, int x, int y, int z, int neighborX, int neighborY, int neighborZ) {
+  BlockRegistry.dispatchNeighborChanged(handlerId, worldId, x, y, z, neighborX, neighborY, neighborZ);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockEntityInside(int handlerId, int worldId, int x, int y, int z, int entityId) {
+  BlockRegistry.dispatchEntityInside(handlerId, worldId, x, y, z, entityId);
+}
+
 // =============================================================================
 // Proxy Entity Callback Trampolines - route to EntityRegistry
 // =============================================================================
@@ -311,6 +346,41 @@ class Events {
     final useCallback = Pointer.fromFunction<ProxyBlockUseCallbackNative>(
         _onProxyBlockUse, _actionResultPassOrdinal);
     Bridge.registerProxyBlockUseHandler(useCallback);
+
+    // Stepped on callback (void return)
+    final steppedOnCallback = Pointer.fromFunction<ProxyBlockSteppedOnCallbackNative>(
+        _onProxyBlockSteppedOn);
+    Bridge.registerProxyBlockSteppedOnHandler(steppedOnCallback);
+
+    // Fallen upon callback (void return)
+    final fallenUponCallback = Pointer.fromFunction<ProxyBlockFallenUponCallbackNative>(
+        _onProxyBlockFallenUpon);
+    Bridge.registerProxyBlockFallenUponHandler(fallenUponCallback);
+
+    // Random tick callback (void return)
+    final randomTickCallback = Pointer.fromFunction<ProxyBlockRandomTickCallbackNative>(
+        _onProxyBlockRandomTick);
+    Bridge.registerProxyBlockRandomTickHandler(randomTickCallback);
+
+    // Placed callback (void return)
+    final placedCallback = Pointer.fromFunction<ProxyBlockPlacedCallbackNative>(
+        _onProxyBlockPlaced);
+    Bridge.registerProxyBlockPlacedHandler(placedCallback);
+
+    // Removed callback (void return)
+    final removedCallback = Pointer.fromFunction<ProxyBlockRemovedCallbackNative>(
+        _onProxyBlockRemoved);
+    Bridge.registerProxyBlockRemovedHandler(removedCallback);
+
+    // Neighbor changed callback (void return)
+    final neighborChangedCallback = Pointer.fromFunction<ProxyBlockNeighborChangedCallbackNative>(
+        _onProxyBlockNeighborChanged);
+    Bridge.registerProxyBlockNeighborChangedHandler(neighborChangedCallback);
+
+    // Entity inside callback (void return)
+    final entityInsideCallback = Pointer.fromFunction<ProxyBlockEntityInsideCallbackNative>(
+        _onProxyBlockEntityInside);
+    Bridge.registerProxyBlockEntityInsideHandler(entityInsideCallback);
 
     print('Events: Proxy block handlers registered');
   }

@@ -40,7 +40,19 @@ public class ProxyRegistry {
     /**
      * Holds block settings between createBlock() and registerBlock() calls.
      */
-    private record BlockSettings(float hardness, float resistance, boolean requiresTool) {}
+    private record BlockSettings(
+        float hardness,
+        float resistance,
+        boolean requiresTool,
+        int luminance,
+        double slipperiness,
+        double velocityMultiplier,
+        double jumpVelocityMultiplier,
+        boolean ticksRandomly,
+        boolean collidable,
+        boolean replaceable,
+        boolean burnable
+    ) {}
 
     /**
      * Holds item settings between createItem() and registerItem() calls.
@@ -56,13 +68,35 @@ public class ProxyRegistry {
      * @param hardness Block hardness (time to break). Use -1 for unbreakable.
      * @param resistance Explosion resistance.
      * @param requiresTool Whether the block requires the correct tool to drop items.
+     * @param luminance Light emission level (0-15).
+     * @param slipperiness Slipperiness factor (default 0.6, ice is 0.98).
+     * @param velocityMultiplier Movement speed multiplier (default 1.0, soul sand is 0.4).
+     * @param jumpVelocityMultiplier Jump height multiplier (default 1.0, honey is 0.5).
+     * @param ticksRandomly Whether block receives random ticks.
+     * @param collidable Whether entities collide with this block.
+     * @param replaceable Whether block can be replaced when placing.
+     * @param burnable Whether block can catch fire.
      * @return The handler ID to use when registering the block.
      */
-    public static long createBlock(float hardness, float resistance, boolean requiresTool) {
+    public static long createBlock(
+            float hardness,
+            float resistance,
+            boolean requiresTool,
+            int luminance,
+            double slipperiness,
+            double velocityMultiplier,
+            double jumpVelocityMultiplier,
+            boolean ticksRandomly,
+            boolean collidable,
+            boolean replaceable,
+            boolean burnable) {
         long handlerId = nextHandlerId++;
 
         // Store settings for use during registerBlock()
-        pendingSettings.put(handlerId, new BlockSettings(hardness, resistance, requiresTool));
+        pendingSettings.put(handlerId, new BlockSettings(
+            hardness, resistance, requiresTool,
+            luminance, slipperiness, velocityMultiplier, jumpVelocityMultiplier,
+            ticksRandomly, collidable, replaceable, burnable));
 
         LOGGER.info("Prepared DartBlockProxy slot with handler ID: {}", handlerId);
         return handlerId;
@@ -106,7 +140,48 @@ public class ProxyRegistry {
                 properties = properties.requiresCorrectToolForDrops();
             }
 
-            DartBlockProxy block = new DartBlockProxy(properties, handlerId);
+            // Apply luminance (light level)
+            if (settings.luminance() > 0) {
+                final int lightLevel = settings.luminance();
+                properties = properties.lightLevel(state -> lightLevel);
+            }
+
+            // Apply friction (slipperiness)
+            if (settings.slipperiness() != 0.6) {
+                properties = properties.friction((float) settings.slipperiness());
+            }
+
+            // Apply velocity multiplier (speed factor)
+            if (settings.velocityMultiplier() != 1.0) {
+                properties = properties.speedFactor((float) settings.velocityMultiplier());
+            }
+
+            // Apply jump velocity multiplier (jump factor)
+            if (settings.jumpVelocityMultiplier() != 1.0) {
+                properties = properties.jumpFactor((float) settings.jumpVelocityMultiplier());
+            }
+
+            // Apply random ticks
+            if (settings.ticksRandomly()) {
+                properties = properties.randomTicks();
+            }
+
+            // Apply collidable (noCollission if not collidable)
+            if (!settings.collidable()) {
+                properties = properties.noCollission();
+            }
+
+            // Apply replaceable
+            if (settings.replaceable()) {
+                properties = properties.replaceable();
+            }
+
+            // Apply burnable (ignitedByLava)
+            if (settings.burnable()) {
+                properties = properties.ignitedByLava();
+            }
+
+            DartBlockProxy block = new DartBlockProxy(properties, handlerId, settings);
             blocks.put(handlerId, block);
             pendingSettings.remove(handlerId); // Clean up pending settings
 
