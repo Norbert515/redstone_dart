@@ -35,7 +35,24 @@ class BuildCommand extends Command<int> {
     Logger.newLine();
 
     try {
-      // Generate assets (blockstates, models, textures)
+      // Step 1: Run the mod in datagen mode to generate manifest.json
+      Logger.progress('Running datagen');
+      final datagenResult = await Process.run(
+        'dart',
+        ['run', 'lib/main.dart'],
+        workingDirectory: project.rootDir,
+        environment: {'REDSTONE_DATAGEN': 'true'},
+      );
+
+      if (datagenResult.exitCode != 0) {
+        Logger.progressFailed();
+        Logger.error('Datagen failed:');
+        Logger.info(datagenResult.stderr.toString());
+        return 1;
+      }
+      Logger.progressDone();
+
+      // Step 2: Generate assets (blockstates, models, textures) from manifest
       Logger.progress('Generating assets');
       final generator = AssetGenerator(project);
       await generator.generate();

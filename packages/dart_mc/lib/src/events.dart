@@ -296,6 +296,12 @@ class Events {
     if (_proxyHandlersRegistered) return;
     _proxyHandlersRegistered = true;
 
+    // In datagen mode, skip native handler registration
+    if (Bridge.isDatagenMode) {
+      print('Events: Skipping proxy block handlers (datagen mode)');
+      return;
+    }
+
     // Default return value true = allow break
     final breakCallback = Pointer.fromFunction<ProxyBlockBreakCallbackNative>(
         _onProxyBlockBreak, true);
@@ -317,6 +323,12 @@ class Events {
   static void registerProxyEntityHandlers() {
     if (_proxyEntityHandlersRegistered) return;
     _proxyEntityHandlersRegistered = true;
+
+    // In datagen mode, skip native handler registration
+    if (Bridge.isDatagenMode) {
+      print('Events: Skipping proxy entity handlers (datagen mode)');
+      return;
+    }
 
     // Spawn callback (no return value)
     final spawnCallback = Pointer.fromFunction<ProxyEntitySpawnCallbackNative>(

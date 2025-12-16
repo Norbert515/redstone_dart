@@ -4,6 +4,7 @@
 library;
 
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -426,6 +427,12 @@ class GenericJniBridge {
   static late DynamicLibrary _lib;
   static bool _initialized = false;
 
+  /// Whether we're running in datagen mode (stub mode).
+  static bool _datagenMode = false;
+
+  /// Counter for generating fake handler IDs in datagen mode.
+  static int _nextHandlerId = 1;
+
   // Function pointers - Object Creation
   static late DartCreateObject _createObject;
 
@@ -472,6 +479,15 @@ class GenericJniBridge {
   /// Initialize the bridge. Call once at startup.
   static void init() {
     if (_initialized) return;
+
+    // Check for datagen mode via environment variable
+    final datagenEnv = Platform.environment['REDSTONE_DATAGEN'];
+    if (datagenEnv == 'true' || datagenEnv == '1') {
+      _datagenMode = true;
+      _initialized = true;
+      print('GenericJniBridge: Running in DATAGEN mode (stub JNI)');
+      return;
+    }
 
     // In embedded mode, symbols are in the current process
     _lib = DynamicLibrary.process();
@@ -912,6 +928,11 @@ class GenericJniBridge {
     String sig, [
     List<Object?> args = const [],
   ]) {
+    // In datagen mode, no-op
+    if (_datagenMode) {
+      return;
+    }
+
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
@@ -940,6 +961,11 @@ class GenericJniBridge {
     String sig, [
     List<Object?> args = const [],
   ]) {
+    // In datagen mode, return 0
+    if (_datagenMode) {
+      return 0;
+    }
+
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
@@ -968,6 +994,11 @@ class GenericJniBridge {
     String sig, [
     List<Object?> args = const [],
   ]) {
+    // In datagen mode, return incrementing handler IDs
+    if (_datagenMode) {
+      return _nextHandlerId++;
+    }
+
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
@@ -996,6 +1027,11 @@ class GenericJniBridge {
     String sig, [
     List<Object?> args = const [],
   ]) {
+    // In datagen mode, return 0 (null handle)
+    if (_datagenMode) {
+      return 0;
+    }
+
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
@@ -1024,6 +1060,11 @@ class GenericJniBridge {
     String sig, [
     List<Object?> args = const [],
   ]) {
+    // In datagen mode, return null
+    if (_datagenMode) {
+      return null;
+    }
+
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
@@ -1058,6 +1099,11 @@ class GenericJniBridge {
     String sig, [
     List<Object?> args = const [],
   ]) {
+    // In datagen mode, return 0.0
+    if (_datagenMode) {
+      return 0.0;
+    }
+
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
@@ -1086,6 +1132,11 @@ class GenericJniBridge {
     String sig, [
     List<Object?> args = const [],
   ]) {
+    // In datagen mode, return true (success)
+    if (_datagenMode) {
+      return true;
+    }
+
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
