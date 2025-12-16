@@ -25,6 +25,36 @@ typedef ProxyBlockUseCallbackNative = Int32 Function(
     Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z,
     Int64 playerId, Int32 hand);
 
+/// Entity stepped on block callback
+typedef ProxyBlockSteppedOnCallbackNative = Void Function(
+    Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z, Int32 entityId);
+
+/// Entity fallen upon block callback
+typedef ProxyBlockFallenUponCallbackNative = Void Function(
+    Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z,
+    Int32 entityId, Double fallDistance);
+
+/// Random tick callback
+typedef ProxyBlockRandomTickCallbackNative = Void Function(
+    Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z);
+
+/// Block placed callback
+typedef ProxyBlockPlacedCallbackNative = Void Function(
+    Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z, Int64 playerId);
+
+/// Block removed callback
+typedef ProxyBlockRemovedCallbackNative = Void Function(
+    Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z);
+
+/// Neighbor changed callback
+typedef ProxyBlockNeighborChangedCallbackNative = Void Function(
+    Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z,
+    Int32 neighborX, Int32 neighborY, Int32 neighborZ);
+
+/// Entity inside block callback
+typedef ProxyBlockEntityInsideCallbackNative = Void Function(
+    Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z, Int32 entityId);
+
 // =============================================================================
 // Proxy Entity Callback Types (for custom Dart-defined entities)
 // =============================================================================
@@ -265,6 +295,41 @@ typedef RegisterProxyBlockUseHandlerNative = Void Function(
     Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback);
 typedef RegisterProxyBlockUseHandler = void Function(
     Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback);
+
+typedef RegisterProxyBlockSteppedOnHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyBlockSteppedOnCallbackNative>> callback);
+typedef RegisterProxyBlockSteppedOnHandler = void Function(
+    Pointer<NativeFunction<ProxyBlockSteppedOnCallbackNative>> callback);
+
+typedef RegisterProxyBlockFallenUponHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyBlockFallenUponCallbackNative>> callback);
+typedef RegisterProxyBlockFallenUponHandler = void Function(
+    Pointer<NativeFunction<ProxyBlockFallenUponCallbackNative>> callback);
+
+typedef RegisterProxyBlockRandomTickHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyBlockRandomTickCallbackNative>> callback);
+typedef RegisterProxyBlockRandomTickHandler = void Function(
+    Pointer<NativeFunction<ProxyBlockRandomTickCallbackNative>> callback);
+
+typedef RegisterProxyBlockPlacedHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyBlockPlacedCallbackNative>> callback);
+typedef RegisterProxyBlockPlacedHandler = void Function(
+    Pointer<NativeFunction<ProxyBlockPlacedCallbackNative>> callback);
+
+typedef RegisterProxyBlockRemovedHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyBlockRemovedCallbackNative>> callback);
+typedef RegisterProxyBlockRemovedHandler = void Function(
+    Pointer<NativeFunction<ProxyBlockRemovedCallbackNative>> callback);
+
+typedef RegisterProxyBlockNeighborChangedHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyBlockNeighborChangedCallbackNative>> callback);
+typedef RegisterProxyBlockNeighborChangedHandler = void Function(
+    Pointer<NativeFunction<ProxyBlockNeighborChangedCallbackNative>> callback);
+
+typedef RegisterProxyBlockEntityInsideHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyBlockEntityInsideCallbackNative>> callback);
+typedef RegisterProxyBlockEntityInsideHandler = void Function(
+    Pointer<NativeFunction<ProxyBlockEntityInsideCallbackNative>> callback);
 
 // =============================================================================
 // Proxy Entity Handler Registration Signatures
@@ -631,6 +696,69 @@ class Bridge {
       Pointer<NativeFunction<ProxyBlockUseCallbackNative>> callback) {
     final register = library.lookupFunction<RegisterProxyBlockUseHandlerNative,
         RegisterProxyBlockUseHandler>('register_proxy_block_use_handler');
+    register(callback);
+  }
+
+  /// Register a proxy block stepped on handler.
+  /// This is called when an entity walks on a Dart-defined custom block.
+  static void registerProxyBlockSteppedOnHandler(
+      Pointer<NativeFunction<ProxyBlockSteppedOnCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyBlockSteppedOnHandlerNative,
+        RegisterProxyBlockSteppedOnHandler>('register_proxy_block_stepped_on_handler');
+    register(callback);
+  }
+
+  /// Register a proxy block fallen upon handler.
+  /// This is called when an entity falls onto a Dart-defined custom block.
+  static void registerProxyBlockFallenUponHandler(
+      Pointer<NativeFunction<ProxyBlockFallenUponCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyBlockFallenUponHandlerNative,
+        RegisterProxyBlockFallenUponHandler>('register_proxy_block_fallen_upon_handler');
+    register(callback);
+  }
+
+  /// Register a proxy block random tick handler.
+  /// This is called on random ticks for blocks with ticksRandomly enabled.
+  static void registerProxyBlockRandomTickHandler(
+      Pointer<NativeFunction<ProxyBlockRandomTickCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyBlockRandomTickHandlerNative,
+        RegisterProxyBlockRandomTickHandler>('register_proxy_block_random_tick_handler');
+    register(callback);
+  }
+
+  /// Register a proxy block placed handler.
+  /// This is called when a Dart-defined custom block is placed.
+  static void registerProxyBlockPlacedHandler(
+      Pointer<NativeFunction<ProxyBlockPlacedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyBlockPlacedHandlerNative,
+        RegisterProxyBlockPlacedHandler>('register_proxy_block_placed_handler');
+    register(callback);
+  }
+
+  /// Register a proxy block removed handler.
+  /// This is called when a Dart-defined custom block is removed.
+  static void registerProxyBlockRemovedHandler(
+      Pointer<NativeFunction<ProxyBlockRemovedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyBlockRemovedHandlerNative,
+        RegisterProxyBlockRemovedHandler>('register_proxy_block_removed_handler');
+    register(callback);
+  }
+
+  /// Register a proxy block neighbor changed handler.
+  /// This is called when a neighbor of a Dart-defined custom block changes.
+  static void registerProxyBlockNeighborChangedHandler(
+      Pointer<NativeFunction<ProxyBlockNeighborChangedCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyBlockNeighborChangedHandlerNative,
+        RegisterProxyBlockNeighborChangedHandler>('register_proxy_block_neighbor_changed_handler');
+    register(callback);
+  }
+
+  /// Register a proxy block entity inside handler.
+  /// This is called when an entity is inside a Dart-defined custom block.
+  static void registerProxyBlockEntityInsideHandler(
+      Pointer<NativeFunction<ProxyBlockEntityInsideCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyBlockEntityInsideHandlerNative,
+        RegisterProxyBlockEntityInsideHandler>('register_proxy_block_entity_inside_handler');
     register(callback);
   }
 

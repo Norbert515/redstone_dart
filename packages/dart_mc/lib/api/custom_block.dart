@@ -18,10 +18,42 @@ class BlockSettings {
   final double resistance;
   final bool requiresTool;
 
+  /// Light emission level (0-15). Default is 0 (no light).
+  final int luminance;
+
+  /// Slipperiness factor. Default is 0.6, ice is 0.98.
+  final double slipperiness;
+
+  /// Movement speed multiplier. Default is 1.0, soul sand is 0.4.
+  final double velocityMultiplier;
+
+  /// Jump height multiplier. Default is 1.0, honey is 0.5.
+  final double jumpVelocityMultiplier;
+
+  /// Whether this block receives random ticks (for crops, spreading, etc.).
+  final bool ticksRandomly;
+
+  /// Whether entities collide with this block. Default is true.
+  final bool collidable;
+
+  /// Whether this block can be replaced when placing other blocks.
+  final bool replaceable;
+
+  /// Whether this block can catch fire.
+  final bool burnable;
+
   const BlockSettings({
     this.hardness = 1.0,
     this.resistance = 1.0,
     this.requiresTool = false,
+    this.luminance = 0,
+    this.slipperiness = 0.6,
+    this.velocityMultiplier = 1.0,
+    this.jumpVelocityMultiplier = 1.0,
+    this.ticksRandomly = false,
+    this.collidable = true,
+    this.replaceable = false,
+    this.burnable = false,
   });
 }
 
@@ -95,10 +127,55 @@ abstract class CustomBlock {
     return ActionResult.pass;
   }
 
-  // Future: Add more overridable methods
-  // void onSteppedOn(int worldId, int x, int y, int z, int entityId) {}
-  // void onLandedUpon(int worldId, int x, int y, int z, int entityId, double fallDistance) {}
-  // void randomTick(int worldId, int x, int y, int z) {}
+  /// Called when an entity walks on top of the block.
+  ///
+  /// Override to add custom behavior (e.g., damage, effects).
+  void onSteppedOn(int worldId, int x, int y, int z, int entityId) {
+    // Default: no action
+  }
+
+  /// Called when an entity falls and lands on the block.
+  ///
+  /// Override to add custom fall behavior (e.g., reduce fall damage, bounce).
+  void onFallenUpon(int worldId, int x, int y, int z, int entityId, double fallDistance) {
+    // Default: no action
+  }
+
+  /// Called on random game ticks.
+  ///
+  /// Override to add random tick behavior (e.g., crop growth, spreading).
+  /// Requires [BlockSettings.ticksRandomly] to be true.
+  void randomTick(int worldId, int x, int y, int z) {
+    // Default: no action
+  }
+
+  /// Called when the block is placed in the world.
+  ///
+  /// Override to add custom placement behavior.
+  void onPlaced(int worldId, int x, int y, int z, int playerId) {
+    // Default: no action
+  }
+
+  /// Called when the block is removed from the world.
+  ///
+  /// Override to add custom removal behavior (e.g., cleanup).
+  void onRemoved(int worldId, int x, int y, int z) {
+    // Default: no action
+  }
+
+  /// Called when an adjacent block changes.
+  ///
+  /// Override to react to neighbor changes (e.g., redstone).
+  void neighborChanged(int worldId, int x, int y, int z, int neighborX, int neighborY, int neighborZ) {
+    // Default: no action
+  }
+
+  /// Called when an entity is inside the block's collision box.
+  ///
+  /// Override to add effects on entities inside (e.g., cobweb slowdown, damage).
+  void entityInside(int worldId, int x, int y, int z, int entityId) {
+    // Default: no action
+  }
 
   /// Internal: Set the handler ID after registration.
   void setHandlerId(int id) {
