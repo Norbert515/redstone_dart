@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../api/fabric_meta_api.dart';
+import '../project/bridge_sync.dart';
 import '../util/logger.dart';
 import '../util/platform.dart';
 import 'template_renderer.dart';
@@ -235,11 +236,15 @@ class ProjectCreator {
   }
 
   Future<void> _writeVersionFile() async {
+    // Compute content hash of bridge source
+    final bridgeHash = BridgeSync.computeSourceBridgeHash();
+
     final versionInfo = {
       'redstone_cli_version': '0.1.0',
       'bridge_version': '0.1.0',
       'native_version': '0.1.0',
       'platform': _platform.identifier,
+      'bridge_content_hash': bridgeHash,
       'created_at': DateTime.now().toIso8601String(),
     };
 

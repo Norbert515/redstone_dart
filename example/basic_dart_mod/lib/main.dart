@@ -310,7 +310,7 @@ void main() {
     return EventResult.allow;
   });
 
-  Events.onTick((tick) {
+  Events.addTickListener((tick) {
     // Called every game tick (20 times per second)
     // Use for animations, timers, etc.
   });
