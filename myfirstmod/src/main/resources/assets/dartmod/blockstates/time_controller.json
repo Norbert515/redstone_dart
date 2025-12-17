@@ -1,7 +1,0 @@
-{
-  "variants": {
-    "": {
-      "model": "dartmod:block/time_controller"
-    }
-  }
-}
