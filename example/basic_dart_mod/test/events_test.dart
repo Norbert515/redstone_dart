@@ -26,8 +26,8 @@ Future<void> main() async {
     await testMinecraft('tick events fire', (game) async {
       var tickCount = 0;
 
-      // Register tick handler
-      Events.onTick((tick) {
+      // Register tick handler - store the remover
+      final removeListener = Events.addTickListener((tick) {
         tickCount++;
       });
 
@@ -36,24 +36,29 @@ Future<void> main() async {
 
       // Tick count should have increased
       expect(tickCount, greaterThan(0));
+
+      // Clean up
+      removeListener();
     });
 
     await testMinecraft('tick handler receives tick number', (game) async {
       var lastTick = -1;
 
-      Events.onTick((tick) {
+      final removeListener = Events.addTickListener((tick) {
         lastTick = tick;
       });
 
       await game.waitTicks(10);
 
       expect(lastTick, greaterThan(0));
+
+      removeListener();
     });
 
     await testMinecraft('ticks advance monotonically', (game) async {
       final ticks = <int>[];
 
-      Events.onTick((tick) {
+      final removeListener = Events.addTickListener((tick) {
         ticks.add(tick);
       });
 
@@ -63,6 +68,8 @@ Future<void> main() async {
       for (var i = 1; i < ticks.length; i++) {
         expect(ticks[i], greaterThan(ticks[i - 1]));
       }
+
+      removeListener();
     });
   });
 

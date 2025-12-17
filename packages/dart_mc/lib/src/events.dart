@@ -30,7 +30,7 @@ typedef TickHandler = void Function(int tick);
 /// Static storage for callbacks (prevents garbage collection)
 BlockBreakHandler? _blockBreakHandler;
 BlockInteractHandler? _blockInteractHandler;
-TickHandler? _tickHandler;
+final List<TickHandler> _tickListeners = [];
 bool _proxyHandlersRegistered = false;
 bool _proxyEntityHandlersRegistered = false;
 
@@ -73,7 +73,9 @@ int _onBlockInteract(int x, int y, int z, int playerId, int hand) {
 
 @pragma('vm:entry-point')
 void _onTick(int tick) {
-  _tickHandler?.call(tick);
+  for (final listener in _tickListeners) {
+    listener(tick);
+  }
 }
 
 // New event trampolines
@@ -312,14 +314,27 @@ class Events {
     Bridge.registerBlockInteractHandler(callback);
   }
 
-  /// Register a handler for tick events.
+  /// Adds a tick listener. Returns a function to remove the listener.
   ///
   /// The handler receives the current tick number.
   /// This is called 20 times per second.
-  static void onTick(TickHandler handler) {
-    _tickHandler = handler;
-    final callback = Pointer.fromFunction<TickCallbackNative>(_onTick);
-    Bridge.registerTickHandler(callback);
+  ///
+  /// Multiple listeners can be registered and all will be called on each tick.
+  static void Function() addTickListener(TickHandler handler) {
+    _tickListeners.add(handler);
+
+    // Register the native callback if this is the first listener
+    if (_tickListeners.length == 1) {
+      final callback = Pointer.fromFunction<TickCallbackNative>(_onTick);
+      Bridge.registerTickHandler(callback);
+    }
+
+    return () => _tickListeners.remove(handler);
+  }
+
+  /// Removes a tick listener.
+  static void removeTickListener(TickHandler handler) {
+    _tickListeners.remove(handler);
   }
 
   /// Register proxy block handlers for custom Dart-defined blocks.

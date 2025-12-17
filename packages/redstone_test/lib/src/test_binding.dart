@@ -63,7 +63,7 @@ class MinecraftTestBinding {
   }
 
   void _registerTickHandler() {
-    Events.onTick(_onTick);
+    Events.addTickListener(_onTick);
   }
 
   void _onTick(int tick) {

@@ -19,6 +19,7 @@ dependencies:
   cli_util: ^0.4.0
   collection: ^1.18.0
   http: ^1.2.0
+  crypto: ^3.0.3
   redstone_test:
     path: ../redstone_test
 

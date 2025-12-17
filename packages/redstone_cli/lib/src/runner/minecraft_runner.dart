@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../assets/asset_generator.dart';
+import '../project/bridge_sync.dart';
 import '../project/redstone_project.dart';
 import '../util/logger.dart';
 
@@ -113,6 +114,9 @@ class MinecraftRunner {
 
   /// Prepare files before running
   Future<void> _prepareFiles() async {
+    // Sync bridge code if source has changed
+    await BridgeSync.syncIfNeeded(project.rootDir);
+
     // Generate assets first (blockstates, models, textures)
     await _generateAssets();
 
