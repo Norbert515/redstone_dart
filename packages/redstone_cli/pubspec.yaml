@@ -22,6 +22,8 @@ dependencies:
   crypto: ^3.0.3
   redstone_test:
     path: ../redstone_test
+  nocterm:
+    path: /Users/norbertkozsir/IdeaProjects/nocterm
 
 dev_dependencies:
   test: ^1.24.0

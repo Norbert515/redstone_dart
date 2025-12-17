@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
+import 'package:nocterm/nocterm.dart' hide Logger;
 import 'package:path/path.dart' as p;
 import 'package:redstone_test/redstone_test.dart';
 
 import '../project/redstone_project.dart';
 import '../runner/minecraft_runner.dart';
 import '../test/test_harness_generator.dart';
+import '../test/test_runner_ui.dart';
 import '../util/logger.dart';
 
 /// Command for running Dart tests inside a Minecraft environment.
@@ -157,7 +159,7 @@ class TestCommand extends Command<int> {
     }
   }
 
-  /// Wait for test completion by listening to stdout JSON events.
+  /// Wait for test completion using Nocterm TUI.
   Future<int> _waitForTestCompletion({
     required MinecraftRunner runner,
     required bool verbose,
@@ -171,93 +173,40 @@ class TestCommand extends Command<int> {
       return code == 0 ? 0 : 1;
     }
 
-    // Listen to stdout lines
-    final subscription = stdoutLines.listen((line) {
-      // Try to parse as a test event
-      final event = TestEvent.tryParse(line);
+    // Create a stream controller to transform lines to events
+    final eventController = StreamController<TestEvent>();
 
+    // Listen to stdout and parse events
+    final subscription = stdoutLines.listen((line) {
+      final event = TestEvent.tryParse(line);
       if (event != null) {
-        _handleTestEvent(event, completer);
+        eventController.add(event);
       } else if (verbose) {
-        // Not a test event, forward to stdout (game logs) only in verbose mode
         print(line);
       }
     });
 
-    // Also complete if Minecraft exits without sending done event
+    // Handle process exit
     runner.exitCode.then((code) {
       if (!completer.isCompleted) {
-        // Process exited without done event, treat as failure
         completer.complete(1);
       }
     });
 
-    try {
-      return await completer.future;
-    } finally {
-      await subscription.cancel();
-    }
-  }
+    // Run Nocterm UI
+    await runApp(
+      TestRunnerUI(
+        eventStream: eventController.stream,
+        exitCodeCompleter: completer,
+      ),
+      screenMode: ScreenMode.inline,
+      inlineExitBehavior: InlineExitBehavior.preserve,
+    );
 
-  /// Handle a parsed test event and update UI.
-  void _handleTestEvent(TestEvent event, Completer<int> completer) {
-    switch (event) {
-      case SuiteStartEvent(:final name):
-        _printColored('\n📁 Suite: $name', _AnsiColor.cyan);
-      case SuiteEndEvent():
-        break; // No output needed
-      case GroupStartEvent(:final name):
-        _printColored('\n  📂 $name', _AnsiColor.blue);
-      case GroupEndEvent():
-        break; // No output needed
-      case TestStartEvent(:final name):
-        // Could show "running..." but might be too noisy
-        stdout.write('    ⏳ $name...');
+    await subscription.cancel();
+    await eventController.close();
 
-      case TestPassEvent(:final name, :final durationMs):
-        // Clear the "running" line and print pass
-        stdout.write('\r');
-        _printColored('    ✅ $name (${durationMs}ms)', _AnsiColor.green);
-
-      case TestFailEvent(:final name, :final error, :final stack):
-        stdout.write('\r');
-        _printColored('    ❌ $name', _AnsiColor.red);
-        _printColored('       Error: $error', _AnsiColor.red);
-        if (stack != null && stack.isNotEmpty) {
-          // Print first few lines of stack
-          final stackLines = stack.split('\n').take(5);
-          for (final line in stackLines) {
-            _printColored('       $line', _AnsiColor.gray);
-          }
-        }
-
-      case TestSkipEvent(:final name, :final reason):
-        stdout.write('\r');
-        final reasonSuffix = reason != null ? ' ($reason)' : '';
-        _printColored('    ⏭️  $name$reasonSuffix', _AnsiColor.yellow);
-
-      case DoneEvent(:final passed, :final failed, :final skipped, :final exitCode):
-        Logger.newLine();
-        _printColored('=' * 60, _AnsiColor.gray);
-        _printColored(
-          'Results: $passed passed, $failed failed, $skipped skipped',
-          failed > 0 ? _AnsiColor.red : _AnsiColor.green,
-        );
-        _printColored('=' * 60, _AnsiColor.gray);
-
-        if (!completer.isCompleted) {
-          completer.complete(exitCode);
-        }
-    }
-  }
-
-  /// Print with ANSI color if stdout supports it.
-  void _printColored(String message, _AnsiColor color) {
-    if (stdout.supportsAnsiEscapes) {
-      print('${color.code}$message${_AnsiColor.reset.code}');
-    } else {
-      print(message);
-    }
+    return completer.future;
   }
 
   /// Delete the Minecraft world directory for clean test runs.
@@ -272,18 +221,4 @@ class TestCommand extends Command<int> {
       }
     }
   }
-}
-
-/// ANSI color codes for terminal output.
-enum _AnsiColor {
-  reset('\x1B[0m'),
-  red('\x1B[31m'),
-  green('\x1B[32m'),
-  yellow('\x1B[33m'),
-  blue('\x1B[34m'),
-  cyan('\x1B[36m'),
-  gray('\x1B[90m');
-
-  final String code;
-  const _AnsiColor(this.code);
 }

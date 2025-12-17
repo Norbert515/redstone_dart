@@ -4,6 +4,8 @@
 /// and [group] for organizing tests.
 library;
 
+import 'dart:async';
+
 import 'package:meta/meta.dart';
 
 import 'game_context.dart';
@@ -163,14 +165,24 @@ Future<void> testMinecraft(
     final binding = MinecraftTestBinding.ensureInitialized();
     final context = MinecraftGameContext(binding);
 
-    // Run with timeout
-    await callback(context).timeout(timeout);
+    // Run with timeout, capturing print output
+    await runZoned(
+      () => callback(context).timeout(timeout),
+      zoneSpecification: ZoneSpecification(
+        print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
+          // Emit as PrintEvent for the UI to capture
+          emitEvent(PrintEvent(message: line));
+          // Also print to actual stdout for logging
+          parent.print(zone, line);
+        },
+      ),
+    );
 
     stopwatch.stop();
     _testResults.passed++;
     emitEvent(TestPassEvent(
       name: fullName,
-      durationMs: stopwatch.elapsedMilliseconds,
+      durationMicros: stopwatch.elapsedMicroseconds,
     ));
     print('  PASS: $description (${stopwatch.elapsedMilliseconds}ms)');
   } catch (e, st) {

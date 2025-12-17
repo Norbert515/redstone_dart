@@ -28,6 +28,7 @@ sealed class TestEvent {
       'test_pass' => TestPassEvent.fromJson(json),
       'test_fail' => TestFailEvent.fromJson(json),
       'test_skip' => TestSkipEvent.fromJson(json),
+      'print' => PrintEvent.fromJson(json),
       'done' => DoneEvent.fromJson(json),
       _ => throw ArgumentError('Unknown event type: $event'),
     };
@@ -122,14 +123,17 @@ final class TestStartEvent extends TestEvent {
 /// Emitted when a test passes.
 final class TestPassEvent extends TestEvent {
   final String name;
-  final int durationMs;
+  /// Duration in microseconds for sub-millisecond precision.
+  final int durationMicros;
 
-  const TestPassEvent({required this.name, required this.durationMs});
+  const TestPassEvent({required this.name, required this.durationMicros});
 
   factory TestPassEvent.fromJson(Map<String, dynamic> json) {
     return TestPassEvent(
       name: json['name'] as String,
-      durationMs: json['duration_ms'] as int,
+      // Support both old 'duration_ms' and new 'duration_micros' for compatibility
+      durationMicros: json['duration_micros'] as int? ??
+          ((json['duration_ms'] as int?) ?? 0) * 1000,
     );
   }
 
@@ -137,7 +141,7 @@ final class TestPassEvent extends TestEvent {
   Map<String, dynamic> toJson() => {
         'event': 'test_pass',
         'name': name,
-        'duration_ms': durationMs,
+        'duration_micros': durationMicros,
       };
 }
 
@@ -186,6 +190,20 @@ final class TestSkipEvent extends TestEvent {
         'name': name,
         if (reason != null) 'reason': reason,
       };
+}
+
+/// Emitted when a test prints output.
+final class PrintEvent extends TestEvent {
+  final String message;
+
+  const PrintEvent({required this.message});
+
+  factory PrintEvent.fromJson(Map<String, dynamic> json) {
+    return PrintEvent(message: json['message'] as String);
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {'event': 'print', 'message': message};
 }
 
 /// Emitted when all tests are done.
