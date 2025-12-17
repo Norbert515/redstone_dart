@@ -90,6 +90,7 @@ export 'src/test_event.dart'
         TestPassEvent,
         TestFailEvent,
         TestSkipEvent,
+        PrintEvent,
         DoneEvent,
         emitEvent;
 
