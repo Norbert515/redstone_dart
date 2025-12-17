@@ -159,12 +159,15 @@ class TestCommand extends Command<int> {
     }
   }
 
-  /// Wait for test completion using Nocterm TUI.
+  /// Check if we're running in an interactive terminal.
+  bool get _isInteractive => stdout.hasTerminal;
+
+  /// Wait for test completion.
+  /// Uses Nocterm TUI in interactive terminals, simple output in CI.
   Future<int> _waitForTestCompletion({
     required MinecraftRunner runner,
     required bool verbose,
   }) async {
-    final completer = Completer<int>();
     final stdoutLines = runner.stdoutLines;
 
     if (stdoutLines == null) {
@@ -173,10 +176,22 @@ class TestCommand extends Command<int> {
       return code == 0 ? 0 : 1;
     }
 
-    // Create a stream controller to transform lines to events
+    if (_isInteractive) {
+      return _waitWithTUI(runner: runner, stdoutLines: stdoutLines, verbose: verbose);
+    } else {
+      return _waitWithSimpleOutput(runner: runner, stdoutLines: stdoutLines, verbose: verbose);
+    }
+  }
+
+  /// Interactive TUI rendering with Nocterm.
+  Future<int> _waitWithTUI({
+    required MinecraftRunner runner,
+    required Stream<String> stdoutLines,
+    required bool verbose,
+  }) async {
+    final completer = Completer<int>();
     final eventController = StreamController<TestEvent>();
 
-    // Listen to stdout and parse events
     final subscription = stdoutLines.listen((line) {
       final event = TestEvent.tryParse(line);
       if (event != null) {
@@ -186,14 +201,12 @@ class TestCommand extends Command<int> {
       }
     });
 
-    // Handle process exit
     runner.exitCode.then((code) {
       if (!completer.isCompleted) {
         completer.complete(1);
       }
     });
 
-    // Run Nocterm UI
     await runApp(
       TestRunnerUI(
         eventStream: eventController.stream,
@@ -207,6 +220,90 @@ class TestCommand extends Command<int> {
     await eventController.close();
 
     return completer.future;
+  }
+
+  /// Simple line-by-line output for CI/non-interactive environments.
+  Future<int> _waitWithSimpleOutput({
+    required MinecraftRunner runner,
+    required Stream<String> stdoutLines,
+    required bool verbose,
+  }) async {
+    final completer = Completer<int>();
+
+    final subscription = stdoutLines.listen((line) {
+      final event = TestEvent.tryParse(line);
+      if (event != null) {
+        _printSimpleEvent(event, completer);
+      } else if (verbose) {
+        print(line);
+      }
+    });
+
+    runner.exitCode.then((code) {
+      if (!completer.isCompleted) {
+        completer.complete(1);
+      }
+    });
+
+    try {
+      return await completer.future;
+    } finally {
+      await subscription.cancel();
+    }
+  }
+
+  /// Print test event in simple format for CI.
+  void _printSimpleEvent(TestEvent event, Completer<int> completer) {
+    switch (event) {
+      case GroupStartEvent(:final name):
+        print('\n$name');
+      case GroupEndEvent():
+        break;
+      case TestStartEvent():
+        break; // Don't print "running" in CI
+      case TestPassEvent(:final name, :final durationMicros):
+        final displayName = name.contains(' > ') ? name.split(' > ').last : name;
+        final duration = _formatDurationSimple(durationMicros);
+        print('  ✓ $displayName $duration');
+      case TestFailEvent(:final name, :final error, :final stack):
+        final displayName = name.contains(' > ') ? name.split(' > ').last : name;
+        print('  ✗ $displayName');
+        print('    Error: $error');
+        if (stack != null) {
+          // Print filtered stack trace
+          final lines = stack
+              .split('\n')
+              .where((l) =>
+                  l.trim().isNotEmpty &&
+                  !l.contains('dart:async') &&
+                  !l.contains('<asynchronous suspension>'))
+              .take(5);
+          for (final line in lines) {
+            print('    $line');
+          }
+        }
+      case TestSkipEvent(:final name, :final reason):
+        final displayName = name.contains(' > ') ? name.split(' > ').last : name;
+        final reasonStr = reason != null ? ' ($reason)' : '';
+        print('  - $displayName$reasonStr');
+      case PrintEvent(:final message):
+        print('    $message');
+      case DoneEvent(:final passed, :final failed, :final skipped, :final exitCode):
+        print('\n${'─' * 50}');
+        print('$passed passed, $failed failed, $skipped skipped');
+        if (!completer.isCompleted) {
+          completer.complete(exitCode);
+        }
+      case SuiteStartEvent():
+      case SuiteEndEvent():
+        break;
+    }
+  }
+
+  String _formatDurationSimple(int micros) {
+    if (micros < 1000) return '(${micros}µs)';
+    if (micros < 1000000) return '(${(micros / 1000).toStringAsFixed(1)}ms)';
+    return '(${(micros / 1000000).toStringAsFixed(2)}s)';
   }
 
   /// Delete the Minecraft world directory for clean test runs.

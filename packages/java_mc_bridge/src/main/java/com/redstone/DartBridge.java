@@ -64,6 +64,10 @@ public class DartBridge {
     // Container type definitions registered from Dart
     private static final Map<String, ContainerDef> containerDefinitions = new HashMap<>();
 
+    // Cache for recently spawned entities that may not yet be fully registered in their level
+    // This is needed because addFreshEntity doesn't immediately make entities findable via level.getEntity()
+    private static final java.util.concurrent.ConcurrentHashMap<Integer, Entity> recentlySpawnedEntities = new java.util.concurrent.ConcurrentHashMap<>();
+
     static {
         try {
             loadNativeLibrary();
@@ -1056,10 +1060,33 @@ public class DartBridge {
 
     /**
      * Get an Entity by ID from any loaded level.
+     * Also checks recently spawned entities that may not yet be fully registered.
      */
     private static Entity getEntityById(int entityId) {
         if (serverInstance == null) return null;
 
+        // First check recently spawned entities cache
+        Entity cachedEntity = recentlySpawnedEntities.get(entityId);
+        if (cachedEntity != null) {
+            // Verify entity is still valid and remove from cache if found in level
+            if (!cachedEntity.isRemoved()) {
+                // Try to find it in the level - if found, remove from cache
+                for (ServerLevel level : serverInstance.getAllLevels()) {
+                    Entity levelEntity = level.getEntity(entityId);
+                    if (levelEntity != null) {
+                        recentlySpawnedEntities.remove(entityId);
+                        return levelEntity;
+                    }
+                }
+                // Not yet in level, but still valid - return cached entity
+                return cachedEntity;
+            } else {
+                // Entity was removed, clean up cache
+                recentlySpawnedEntities.remove(entityId);
+            }
+        }
+
+        // Fall back to level lookup
         for (ServerLevel level : serverInstance.getAllLevels()) {
             Entity entity = level.getEntity(entityId);
             if (entity != null) {
@@ -1507,7 +1534,13 @@ public class DartBridge {
         if (entity == null) return -1;
 
         entity.setPos(x, y, z);
-        level.addFreshEntity(entity);
+        boolean added = level.addFreshEntity(entity);
+
+        // Cache the entity so it can be found immediately before the next tick
+        if (added) {
+            recentlySpawnedEntities.put(entity.getId(), entity);
+        }
+
         return entity.getId();
     }
 
@@ -1553,7 +1586,12 @@ public class DartBridge {
 
         // Set position and spawn
         entity.setPos(x, y, z);
-        level.addFreshEntity(entity);
+        boolean added = level.addFreshEntity(entity);
+
+        // Cache the entity so it can be found immediately before the next tick
+        if (added) {
+            recentlySpawnedEntities.put(entity.getId(), entity);
+        }
 
         // Call the onProxyEntitySpawn callback to notify Dart
         if (initialized) {
@@ -1576,7 +1614,15 @@ public class DartBridge {
         if (level == null) return "";
 
         AABB box = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
-        List<Entity> entities = level.getEntities((Entity) null, box, e -> true);
+        List<Entity> entities = new java.util.ArrayList<>(level.getEntities((Entity) null, box, e -> true));
+        java.util.Set<Integer> seenIds = entities.stream().map(Entity::getId).collect(Collectors.toSet());
+
+        // Also check recently spawned entities that may not yet be in the level's entity list
+        for (Entity cached : recentlySpawnedEntities.values()) {
+            if (!cached.isRemoved() && cached.level() == level && box.contains(cached.position()) && !seenIds.contains(cached.getId())) {
+                entities.add(cached);
+            }
+        }
 
         return entities.stream()
             .map(e -> String.valueOf(e.getId()))
@@ -1593,7 +1639,15 @@ public class DartBridge {
         Vec3 center = new Vec3(x, y, z);
         double radiusSq = radius * radius;
 
-        List<Entity> entities = level.getEntities((Entity) null, box, e -> e.distanceToSqr(center) <= radiusSq);
+        List<Entity> entities = new java.util.ArrayList<>(level.getEntities((Entity) null, box, e -> e.distanceToSqr(center) <= radiusSq));
+        java.util.Set<Integer> seenIds = entities.stream().map(Entity::getId).collect(Collectors.toSet());
+
+        // Also check recently spawned entities that may not yet be in the level's entity list
+        for (Entity cached : recentlySpawnedEntities.values()) {
+            if (!cached.isRemoved() && cached.level() == level && cached.distanceToSqr(center) <= radiusSq && !seenIds.contains(cached.getId())) {
+                entities.add(cached);
+            }
+        }
 
         return entities.stream()
             .map(e -> String.valueOf(e.getId()))
