@@ -2,6 +2,8 @@ name: redstone_cli
 description: CLI tool for building Minecraft mods with Dart - The Flutter for Minecraft
 version: 0.1.0
 
+publish_to: none
+
 environment:
   sdk: ^3.0.0
 
@@ -23,7 +25,9 @@ dependencies:
   redstone_test:
     path: ../redstone_test
   nocterm:
-    path: /Users/norbertkozsir/IdeaProjects/nocterm
+    git:
+      url: https://github.com/Norbert515/nocterm.git
+      ref: d1861c44b9521fa253727a865f8acd211ad61298
 
 dev_dependencies:
   test: ^1.24.0
