@@ -9,11 +9,11 @@ environment:
 dependencies:
   ffi: ^2.1.0
   dart_mc:
-    path: /Users/norbertkozsir/IdeaProjects/vide_mc/packages/dart_mc
+    path: ../../packages/dart_mc
 
 dev_dependencies:
   redstone_test:
-    path: /Users/norbertkozsir/IdeaProjects/vide_mc/packages/redstone_test
+    path: ../../packages/redstone_test
 
 # Redstone configuration
 redstone:
