@@ -19,6 +19,8 @@ dependencies:
   cli_util: ^0.4.0
   collection: ^1.18.0
   http: ^1.2.0
+  redstone_test:
+    path: ../redstone_test
 
 dev_dependencies:
   test: ^1.24.0

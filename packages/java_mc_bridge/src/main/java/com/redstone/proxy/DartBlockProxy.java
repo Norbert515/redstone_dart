@@ -6,11 +6,14 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.InsideBlockEffectApplier;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.redstone.Orientation;
 import net.minecraft.world.phys.BlockHitResult;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,16 +32,16 @@ public class DartBlockProxy extends Block {
         super(settings);
         this.dartHandlerId = dartHandlerId;
         // Extract ticksRandomly from the record if available
+        boolean ticksRandomlyValue = false;
         if (blockSettings != null) {
             try {
                 var method = blockSettings.getClass().getMethod("ticksRandomly");
-                this.ticksRandomly = (Boolean) method.invoke(blockSettings);
+                ticksRandomlyValue = (Boolean) method.invoke(blockSettings);
             } catch (Exception e) {
-                this.ticksRandomly = false;
+                // Keep default value
             }
-        } else {
-            this.ticksRandomly = false;
         }
+        this.ticksRandomly = ticksRandomlyValue;
     }
 
     public long getDartHandlerId() {
@@ -117,7 +120,7 @@ public class DartBlockProxy extends Block {
     }
 
     @Override
-    public void fallOn(Level level, BlockState state, BlockPos pos, Entity entity, float fallDistance) {
+    public void fallOn(Level level, BlockState state, BlockPos pos, Entity entity, double fallDistance) {
         // Only run on server side
         if (!level.isClientSide() && DartBridge.isInitialized()) {
             DartBridge.onProxyBlockFallenUpon(
@@ -127,7 +130,7 @@ public class DartBlockProxy extends Block {
                 pos.getY(),
                 pos.getZ(),
                 entity.getId(),
-                fallDistance
+                (float) fallDistance
             );
         }
         super.fallOn(level, state, pos, entity, fallDistance);
@@ -166,9 +169,9 @@ public class DartBlockProxy extends Block {
     }
 
     @Override
-    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
-        // Only run on server side and only if block type changed
-        if (!level.isClientSide() && !state.is(newState.getBlock()) && DartBridge.isInitialized()) {
+    protected void affectNeighborsAfterRemoval(BlockState state, ServerLevel level, BlockPos pos, boolean movedByPiston) {
+        // Notify Dart that this block was removed
+        if (DartBridge.isInitialized()) {
             DartBridge.onProxyBlockRemoved(
                 dartHandlerId,
                 level.hashCode(),
@@ -177,29 +180,31 @@ public class DartBlockProxy extends Block {
                 pos.getZ()
             );
         }
-        super.onRemove(state, level, pos, newState, movedByPiston);
+        super.affectNeighborsAfterRemoval(state, level, pos, movedByPiston);
     }
 
     @Override
-    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block neighborBlock, BlockPos neighborPos, boolean movedByPiston) {
+    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block neighborBlock, @Nullable Orientation orientation, boolean movedByPiston) {
         // Only run on server side
         if (!level.isClientSide() && DartBridge.isInitialized()) {
+            // Since we no longer have neighborPos, pass the block's own position
+            // The orientation can be used to determine the direction of the change
             DartBridge.onProxyBlockNeighborChanged(
                 dartHandlerId,
                 level.hashCode(),
                 pos.getX(),
                 pos.getY(),
                 pos.getZ(),
-                neighborPos.getX(),
-                neighborPos.getY(),
-                neighborPos.getZ()
+                pos.getX(),  // neighborPos no longer available in new API
+                pos.getY(),
+                pos.getZ()
             );
         }
-        super.neighborChanged(state, level, pos, neighborBlock, neighborPos, movedByPiston);
+        super.neighborChanged(state, level, pos, neighborBlock, orientation, movedByPiston);
     }
 
     @Override
-    protected void entityInside(BlockState state, Level level, BlockPos pos, Entity entity) {
+    protected void entityInside(BlockState state, Level level, BlockPos pos, Entity entity, InsideBlockEffectApplier applier, boolean intersects) {
         // Only run on server side
         if (!level.isClientSide() && DartBridge.isInitialized()) {
             DartBridge.onProxyBlockEntityInside(
@@ -211,6 +216,6 @@ public class DartBlockProxy extends Block {
                 entity.getId()
             );
         }
-        super.entityInside(state, level, pos, entity);
+        super.entityInside(state, level, pos, entity, applier, intersects);
     }
 }

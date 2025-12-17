@@ -120,6 +120,7 @@ class ProjectCreator {
     final dirs = [
       '',
       'lib',
+      'test',
       'assets/textures',
       'minecraft/src/main/java/${config.javaPackagePath}',
       'minecraft/src/main/resources/assets/${config.name}',
@@ -142,6 +143,9 @@ class ProjectCreator {
 
     // lib/main.dart
     await _writeFile('lib/main.dart', _mainDart());
+
+    // test/hello_block_test.dart
+    await _writeFile('test/hello_block_test.dart', _helloBlockTest());
 
     // README.md
     await _writeFile('README.md', _readmeMd());
@@ -393,6 +397,10 @@ dependencies:
   dart_mc:
     path: /Users/norbertkozsir/IdeaProjects/vide_mc/packages/dart_mc
 
+dev_dependencies:
+  redstone_test:
+    path: /Users/norbertkozsir/IdeaProjects/vide_mc/packages/redstone_test
+
 # Redstone configuration
 redstone:
   minecraft_version: "{{minecraft_version}}"
@@ -510,6 +518,64 @@ While running, press `r` to hot reload your Dart code changes!
 
 - [Redstone Documentation](https://github.com/your-repo/redstone)
 - [Fabric Mod Development](https://fabricmc.net/wiki/)
+
+## Running Tests
+
+Run your mod's tests inside a Minecraft server:
+
+```bash
+redstone test
+```
+''';
+
+  String _helloBlockTest() => '''
+// Tests for HelloBlock
+//
+// Run with: redstone test
+
+import 'package:redstone_test/redstone_test.dart';
+
+Future<void> main() async {
+  await group('HelloBlock', () async {
+    await testMinecraft('can be placed in the world', (game) async {
+      final pos = BlockPos(0, 64, 0);
+
+      // Place our custom block
+      game.placeBlock(pos, Block('{{project_name}}:hello_block'));
+
+      // Verify it was placed
+      final block = game.getBlock(pos);
+      expect(block, isBlock('{{project_name}}:hello_block'));
+    });
+
+    await testMinecraft('can be broken', (game) async {
+      final pos = BlockPos(0, 64, 0);
+
+      // Place and then break the block
+      game.placeBlock(pos, Block('{{project_name}}:hello_block'));
+      game.setBlock(pos, Block.air);
+
+      // Verify it's now air
+      expect(game.getBlock(pos), isAirBlock);
+    });
+  });
+
+  await group('World basics', () async {
+    await testMinecraft('can access world time', (game) async {
+      final time = game.world.timeOfDay;
+      expect(time, greaterThanOrEqualTo(0));
+    });
+
+    await testMinecraft('can wait for ticks', (game) async {
+      final startTick = game.currentTick;
+
+      // Wait for 20 ticks (1 second in game time)
+      await game.waitTicks(20);
+
+      expect(game.currentTick, greaterThanOrEqualTo(startTick + 20));
+    });
+  });
+}
 ''';
 
   String _gitignore() => '''
@@ -606,6 +672,13 @@ java {
 jar {
     from("LICENSE") {
         rename { "\${it}_\${project.base.archivesName.get()}" }
+    }
+}
+
+// Enable Fabric game tests (used by 'redstone test')
+fabricApi {
+    configureTests {
+        enableGameTests = true
     }
 }
 ''';

@@ -578,6 +578,9 @@ class Bridge {
   /// In this mode, stub values are returned for all JNI calls.
   static bool isDatagenMode = false;
 
+  /// Whether the bridge has been initialized.
+  static bool get isInitialized => _initialized;
+
   /// Initialize the bridge by loading the native library.
   /// When running embedded in the Dart VM (via dart_dll), the symbols
   /// are already available in the current process.
@@ -982,6 +985,19 @@ class Bridge {
     final register = library.lookupFunction<RegisterServerLifecycleHandlerNative,
         RegisterServerLifecycleHandler>('register_server_stopping_handler');
     register(callback);
+  }
+
+  /// Stop the Minecraft server gracefully.
+  ///
+  /// This will cause the server to halt and exit. Use this when you need
+  /// to programmatically stop the server (e.g., after tests complete).
+  static void stopServer() {
+    if (isDatagenMode) return;
+    GenericJniBridge.callStaticVoidMethod(
+      'com/redstone/DartBridge',
+      'stopServer',
+      '()V',
+    );
   }
 
   // ===========================================================================

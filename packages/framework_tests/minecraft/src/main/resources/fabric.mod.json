@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "framework_tests",
+  "version": "${version}",
+  "name": "Framework Tests",
+  "description": "A Minecraft mod built with Redstone",
+  "authors": ["Redstone Team"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/framework_tests/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.redstone.DartModLoader"
+    ],
+    "client": []
+  },
+  "mixins": [
+    "framework_tests.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

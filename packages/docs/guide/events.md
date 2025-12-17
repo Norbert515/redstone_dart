@@ -1,0 +1,109 @@
+# Events
+
+There are two ways to respond to things happening in Minecraft: **block callbacks** and **global events**.
+
+## Block Callbacks vs Global Events
+
+**Block callbacks** (like `onUse`, `onBreak`) only fire for *your* custom blocks. They're routed by handler ID—when a player clicks your `HelloBlock`, Minecraft calls the proxy, which looks up the handler ID and calls *your* `onUse` method.
+
+**Global events** fire for *everything* in the game. When *any* block breaks (yours, vanilla, other mods), the `onBlockBreak` event fires.
+
+Use block callbacks for block-specific behavior. Use global events for game-wide logic.
+
+## Global Events
+
+Register event handlers in your `main()` function:
+
+```dart
+void main() {
+  Bridge.initialize();
+  Events.registerProxyBlockHandlers();
+
+  // Global events
+  Events.onPlayerJoin((player) {
+    player.sendMessage('§aWelcome to the server!');
+  });
+
+  Events.onBlockBreak((x, y, z, playerId) {
+    // Called for ANY block in the game
+    return EventResult.allow;
+  });
+
+  BlockRegistry.freeze();
+}
+```
+
+### Available Events
+
+**Player Events:**
+- `Events.onPlayerJoin((player) { })` — Player enters the game
+- `Events.onPlayerLeave((player) { })` — Player exits the game
+
+**Block Events:**
+- `Events.onBlockBreak((x, y, z, playerId) { })` — Any block broken
+- `Events.onBlockPlace((x, y, z, playerId) { })` — Any block placed
+
+**Game Events:**
+- `Events.onTick(() { })` — Every game tick (20/second)
+
+### The Tick Event
+
+`onTick` runs 20 times per second. It's powerful but dangerous—expensive code here causes lag for everyone.
+
+```dart
+var tickCount = 0;
+
+Events.onTick(() {
+  tickCount++;
+
+  // Do something every second (20 ticks)
+  if (tickCount % 20 == 0) {
+    // This is fine
+  }
+
+  // DON'T do expensive operations every tick
+  // for (player in allPlayers) { for (block in nearbyBlocks) { ... } }
+});
+```
+
+### Cancelling Events
+
+Some events can be cancelled:
+
+```dart
+Events.onBlockBreak((x, y, z, playerId) {
+  final player = Players.getPlayer(playerId);
+
+  // Prevent breaking bedrock
+  if (world.getBlock(x, y, z) == 'minecraft:bedrock') {
+    player?.sendMessage('§cYou cannot break bedrock!');
+    return EventResult.deny;
+  }
+
+  return EventResult.allow;
+});
+```
+
+## When to Use Which
+
+| Situation | Use |
+|-----------|-----|
+| Custom block interaction | Block callback (`onUse`) |
+| Prevent breaking specific blocks | Global event (`onBlockBreak`) |
+| Welcome message on join | Global event (`onPlayerJoin`) |
+| Block that damages nearby players | Block callback (`randomTick` or `onTick`) |
+| Track all player deaths | Global event |
+
+## One Handler Per Event
+
+Unlike some event systems, Redstone only keeps **one handler per event type**. If you call `Events.onPlayerJoin()` twice, the second handler replaces the first.
+
+If you need multiple handlers, combine them:
+
+```dart
+Events.onPlayerJoin((player) {
+  welcomePlayer(player);
+  giveStarterKit(player);
+  logJoin(player);
+});
+```

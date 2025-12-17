@@ -45,6 +45,41 @@ public:
         proxy_block_use_handler_ = cb;
     }
 
+    void setProxyBlockSteppedOnHandler(ProxyBlockSteppedOnCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        proxy_block_stepped_on_handler_ = cb;
+    }
+
+    void setProxyBlockFallenUponHandler(ProxyBlockFallenUponCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        proxy_block_fallen_upon_handler_ = cb;
+    }
+
+    void setProxyBlockRandomTickHandler(ProxyBlockRandomTickCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        proxy_block_random_tick_handler_ = cb;
+    }
+
+    void setProxyBlockPlacedHandler(ProxyBlockPlacedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        proxy_block_placed_handler_ = cb;
+    }
+
+    void setProxyBlockRemovedHandler(ProxyBlockRemovedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        proxy_block_removed_handler_ = cb;
+    }
+
+    void setProxyBlockNeighborChangedHandler(ProxyBlockNeighborChangedCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        proxy_block_neighbor_changed_handler_ = cb;
+    }
+
+    void setProxyBlockEntityInsideHandler(ProxyBlockEntityInsideCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        proxy_block_entity_inside_handler_ = cb;
+    }
+
     // New event handler setters
     void setPlayerJoinHandler(PlayerJoinCallback cb) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -278,6 +313,63 @@ public:
         return 3; // Default: ActionResult.pass
     }
 
+    void dispatchProxyBlockSteppedOn(int64_t handler_id, int64_t world_id,
+                                      int32_t x, int32_t y, int32_t z, int32_t entity_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (proxy_block_stepped_on_handler_) {
+            proxy_block_stepped_on_handler_(handler_id, world_id, x, y, z, entity_id);
+        }
+    }
+
+    void dispatchProxyBlockFallenUpon(int64_t handler_id, int64_t world_id,
+                                       int32_t x, int32_t y, int32_t z, int32_t entity_id, float fall_distance) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (proxy_block_fallen_upon_handler_) {
+            proxy_block_fallen_upon_handler_(handler_id, world_id, x, y, z, entity_id, fall_distance);
+        }
+    }
+
+    void dispatchProxyBlockRandomTick(int64_t handler_id, int64_t world_id,
+                                       int32_t x, int32_t y, int32_t z) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (proxy_block_random_tick_handler_) {
+            proxy_block_random_tick_handler_(handler_id, world_id, x, y, z);
+        }
+    }
+
+    void dispatchProxyBlockPlaced(int64_t handler_id, int64_t world_id,
+                                   int32_t x, int32_t y, int32_t z, int32_t player_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (proxy_block_placed_handler_) {
+            proxy_block_placed_handler_(handler_id, world_id, x, y, z, player_id);
+        }
+    }
+
+    void dispatchProxyBlockRemoved(int64_t handler_id, int64_t world_id,
+                                    int32_t x, int32_t y, int32_t z) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (proxy_block_removed_handler_) {
+            proxy_block_removed_handler_(handler_id, world_id, x, y, z);
+        }
+    }
+
+    void dispatchProxyBlockNeighborChanged(int64_t handler_id, int64_t world_id,
+                                            int32_t x, int32_t y, int32_t z,
+                                            int32_t neighbor_x, int32_t neighbor_y, int32_t neighbor_z) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (proxy_block_neighbor_changed_handler_) {
+            proxy_block_neighbor_changed_handler_(handler_id, world_id, x, y, z, neighbor_x, neighbor_y, neighbor_z);
+        }
+    }
+
+    void dispatchProxyBlockEntityInside(int64_t handler_id, int64_t world_id,
+                                         int32_t x, int32_t y, int32_t z, int32_t entity_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (proxy_block_entity_inside_handler_) {
+            proxy_block_entity_inside_handler_(handler_id, world_id, x, y, z, entity_id);
+        }
+    }
+
     // New event dispatch methods
     void dispatchPlayerJoin(int32_t player_id) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -405,9 +497,14 @@ public:
     }
 
     void dispatchServerStarted() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (server_started_handler_) {
-            server_started_handler_();
+        ServerStartedCallback handler = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            handler = server_started_handler_;
+        }
+        // Call outside the lock to avoid deadlock when callback registers handlers
+        if (handler) {
+            handler();
         }
     }
 
@@ -666,6 +763,13 @@ public:
         tick_handler_ = nullptr;
         proxy_block_break_handler_ = nullptr;
         proxy_block_use_handler_ = nullptr;
+        proxy_block_stepped_on_handler_ = nullptr;
+        proxy_block_fallen_upon_handler_ = nullptr;
+        proxy_block_random_tick_handler_ = nullptr;
+        proxy_block_placed_handler_ = nullptr;
+        proxy_block_removed_handler_ = nullptr;
+        proxy_block_neighbor_changed_handler_ = nullptr;
+        proxy_block_entity_inside_handler_ = nullptr;
         // New event handlers
         player_join_handler_ = nullptr;
         player_leave_handler_ = nullptr;
@@ -731,6 +835,13 @@ private:
     TickCallback tick_handler_ = nullptr;
     ProxyBlockBreakCallback proxy_block_break_handler_ = nullptr;
     ProxyBlockUseCallback proxy_block_use_handler_ = nullptr;
+    ProxyBlockSteppedOnCallback proxy_block_stepped_on_handler_ = nullptr;
+    ProxyBlockFallenUponCallback proxy_block_fallen_upon_handler_ = nullptr;
+    ProxyBlockRandomTickCallback proxy_block_random_tick_handler_ = nullptr;
+    ProxyBlockPlacedCallback proxy_block_placed_handler_ = nullptr;
+    ProxyBlockRemovedCallback proxy_block_removed_handler_ = nullptr;
+    ProxyBlockNeighborChangedCallback proxy_block_neighbor_changed_handler_ = nullptr;
+    ProxyBlockEntityInsideCallback proxy_block_entity_inside_handler_ = nullptr;
 
     // New event handlers
     PlayerJoinCallback player_join_handler_ = nullptr;

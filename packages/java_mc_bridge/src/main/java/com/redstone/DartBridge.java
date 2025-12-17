@@ -620,6 +620,19 @@ public class DartBridge {
         return serverInstance;
     }
 
+    /**
+     * Stop the Minecraft server gracefully.
+     * Called from Dart to request server shutdown.
+     */
+    public static void stopServer() {
+        if (serverInstance != null) {
+            LOGGER.info("Stopping server via Dart bridge...");
+            serverInstance.halt(false);
+        } else {
+            LOGGER.warn("Cannot stop server: no server instance available");
+        }
+    }
+
     // ==========================================================================
     // Container Registry APIs
     // ==========================================================================

@@ -1,0 +1,143 @@
+# World
+
+The World API lets you manipulate the Minecraft world—place blocks, spawn entities, play sounds, and more.
+
+## How World Works
+
+Unlike `Player` which wraps an entity ID, `World` wraps a **dimension identifier**. Minecraft has three dimensions by default:
+
+- `minecraft:overworld`
+- `minecraft:the_nether`
+- `minecraft:the_end`
+
+When you call methods on a World object, they make JNI calls to Java with the dimension ID and coordinates.
+
+## Getting a World Reference
+
+In block callbacks, you receive a `worldId` that you can use:
+
+```dart
+@override
+ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+  // Use World.overworld, World.nether, or World.end
+  // Or work with the worldId directly in some APIs
+}
+```
+
+For most operations, use the static dimension references:
+
+```dart
+World.overworld.setBlock(x, y, z, 'minecraft:diamond_block');
+```
+
+## Placing and Reading Blocks
+
+```dart
+// Place a block
+World.overworld.setBlock(100, 64, 100, 'minecraft:diamond_block');
+
+// Remove a block (place air)
+World.overworld.setBlock(100, 64, 100, 'minecraft:air');
+
+// Read what block is at a position
+final block = World.overworld.getBlock(100, 64, 100);
+// Returns something like "minecraft:stone"
+```
+
+Block IDs follow Minecraft's `namespace:path` format. Vanilla blocks use `minecraft:` prefix.
+
+## Spawning Entities
+
+```dart
+// Spawn a mob
+World.overworld.spawnEntity('minecraft:pig', x, y, z);
+World.overworld.spawnEntity('minecraft:zombie', x, y, z);
+
+// Spawn lightning
+World.overworld.spawnLightning(x, y, z);
+```
+
+Entity IDs follow the same `namespace:path` format as blocks.
+
+## Particles and Sounds
+
+Particles and sounds add feedback without affecting gameplay:
+
+```dart
+// Spawn particles
+World.overworld.spawnParticle(x, y, z, ParticleType.flame);
+World.overworld.spawnParticle(x, y, z, ParticleType.heart);
+World.overworld.spawnParticle(x, y, z, ParticleType.explosion);
+
+// Play sounds
+World.overworld.playSound(x, y, z, 'minecraft:entity.experience_orb.pickup');
+World.overworld.playSound(x, y, z, 'minecraft:block.note_block.pling');
+```
+
+Sound IDs come from Minecraft's sound registry. You can find them in the Minecraft wiki or by looking at vanilla sound files.
+
+## Explosions
+
+```dart
+// Basic explosion (no block damage)
+World.overworld.createExplosion(x, y, z, power: 4.0);
+
+// TNT-like explosion (breaks blocks)
+World.overworld.createExplosion(x, y, z, power: 4.0, breakBlocks: true);
+
+// Fiery explosion
+World.overworld.createExplosion(x, y, z, power: 4.0, causeFire: true);
+```
+
+The `power` parameter controls explosion size. TNT is 4.0, creepers are 3.0, the wither is 8.0.
+
+## Time and Weather
+
+```dart
+// Set time (0-24000)
+// 0 = dawn, 6000 = noon, 12000 = dusk, 18000 = midnight
+World.overworld.setTime(6000);
+
+// Weather
+World.overworld.setRaining(true);
+World.overworld.setThundering(true);
+```
+
+## Coordinate System
+
+Minecraft uses a right-handed coordinate system:
+- **X** — East (+) / West (-)
+- **Y** — Up (+) / Down (-)
+- **Z** — South (+) / North (-)
+
+Y=64 is roughly sea level. The world extends from Y=-64 to Y=320 in modern Minecraft.
+
+## Example: Teleporter Pad
+
+A block that builds a platform and teleports the player:
+
+```dart
+@override
+ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+  final player = Players.getPlayer(playerId);
+  if (player == null) return ActionResult.fail;
+
+  final targetY = y + 50;
+
+  // Build a glass platform
+  for (var dx = -1; dx <= 1; dx++) {
+    for (var dz = -1; dz <= 1; dz++) {
+      World.overworld.setBlock(x + dx, targetY, z + dz, 'minecraft:glass');
+    }
+  }
+
+  // Teleport player
+  player.teleport(x.toDouble(), targetY + 1.0, z.toDouble());
+
+  // Effects
+  World.overworld.spawnParticle(x.toDouble(), y + 1.0, z.toDouble(), ParticleType.portal);
+  World.overworld.playSound(x.toDouble(), y.toDouble(), z.toDouble(), 'minecraft:entity.enderman.teleport');
+
+  return ActionResult.success;
+}
+```

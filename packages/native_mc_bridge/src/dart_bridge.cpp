@@ -227,6 +227,34 @@ void register_proxy_block_use_handler(ProxyBlockUseCallback cb) {
     dart_mc_bridge::CallbackRegistry::instance().setProxyBlockUseHandler(cb);
 }
 
+void register_proxy_block_stepped_on_handler(ProxyBlockSteppedOnCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyBlockSteppedOnHandler(cb);
+}
+
+void register_proxy_block_fallen_upon_handler(ProxyBlockFallenUponCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyBlockFallenUponHandler(cb);
+}
+
+void register_proxy_block_random_tick_handler(ProxyBlockRandomTickCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyBlockRandomTickHandler(cb);
+}
+
+void register_proxy_block_placed_handler(ProxyBlockPlacedCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyBlockPlacedHandler(cb);
+}
+
+void register_proxy_block_removed_handler(ProxyBlockRemovedCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyBlockRemovedHandler(cb);
+}
+
+void register_proxy_block_neighbor_changed_handler(ProxyBlockNeighborChangedCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyBlockNeighborChangedHandler(cb);
+}
+
+void register_proxy_block_entity_inside_handler(ProxyBlockEntityInsideCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyBlockEntityInsideHandler(cb);
+}
+
 // Event dispatch (called from Java via JNI)
 // These functions must enter/exit the isolate to invoke Dart callbacks
 int32_t dispatch_block_break(int32_t x, int32_t y, int32_t z, int64_t player_id) {
@@ -289,6 +317,84 @@ int32_t dispatch_proxy_block_use(int64_t handler_id, int64_t world_id,
     Dart_ExitScope();
     safe_exit_isolate(did_enter);
     return result;
+}
+
+void dispatch_proxy_block_stepped_on(int64_t handler_id, int64_t world_id,
+                                      int32_t x, int32_t y, int32_t z, int32_t entity_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockSteppedOn(
+        handler_id, world_id, x, y, z, entity_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_proxy_block_fallen_upon(int64_t handler_id, int64_t world_id,
+                                       int32_t x, int32_t y, int32_t z, int32_t entity_id, float fall_distance) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockFallenUpon(
+        handler_id, world_id, x, y, z, entity_id, fall_distance);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_proxy_block_random_tick(int64_t handler_id, int64_t world_id,
+                                       int32_t x, int32_t y, int32_t z) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockRandomTick(
+        handler_id, world_id, x, y, z);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_proxy_block_placed(int64_t handler_id, int64_t world_id,
+                                  int32_t x, int32_t y, int32_t z, int32_t player_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockPlaced(
+        handler_id, world_id, x, y, z, player_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_proxy_block_removed(int64_t handler_id, int64_t world_id,
+                                   int32_t x, int32_t y, int32_t z) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockRemoved(
+        handler_id, world_id, x, y, z);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_proxy_block_neighbor_changed(int64_t handler_id, int64_t world_id,
+                                            int32_t x, int32_t y, int32_t z,
+                                            int32_t neighbor_x, int32_t neighbor_y, int32_t neighbor_z) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockNeighborChanged(
+        handler_id, world_id, x, y, z, neighbor_x, neighbor_y, neighbor_z);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_proxy_block_entity_inside(int64_t handler_id, int64_t world_id,
+                                         int32_t x, int32_t y, int32_t z, int32_t entity_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockEntityInside(
+        handler_id, world_id, x, y, z, entity_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
 }
 
 // Dart -> Java communication

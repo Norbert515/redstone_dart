@@ -1,0 +1,191 @@
+# Players
+
+The Player API lets you interact with players—send messages, teleport, manage inventory, and apply effects.
+
+## How Player Works
+
+`Player` is a thin wrapper around an **entity ID**. When you call methods on it, each call makes a JNI request to Java to get or set data.
+
+```dart
+final player = Players.getPlayer(playerId);
+
+// Each of these is a separate JNI call
+final name = player.name;      // JNI call
+final health = player.health;  // JNI call
+player.sendMessage('Hi');      // JNI call
+```
+
+This design is efficient—we don't cache data that might become stale.
+
+## Getting Player References
+
+In callbacks, you receive a `playerId` (an integer). Wrap it to get a `Player`:
+
+```dart
+@override
+ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+  final player = Players.getPlayer(playerId);
+  if (player == null) return ActionResult.fail;  // Invalid ID
+
+  player.sendMessage('Hello!');
+  return ActionResult.success;
+}
+```
+
+For events, you often get the `Player` directly:
+
+```dart
+Events.onPlayerJoin((player) {
+  // Already a Player object
+  player.sendMessage('Welcome!');
+});
+```
+
+## Sending Messages
+
+Minecraft uses **§ (section sign)** for formatting codes:
+
+```dart
+player.sendMessage('Hello!');
+player.sendMessage('§aGreen text');
+player.sendMessage('§l§6Bold gold text');
+```
+
+Common codes:
+- Colors: `§0`-`§9`, `§a`-`§f` (black through white)
+- Styles: `§l` bold, `§o` italic, `§n` underline, `§r` reset
+
+### Titles and Action Bar
+
+```dart
+// Big centered title
+player.showTitle('§6Welcome!');
+player.showTitle('§6Welcome!', subtitle: 'Enjoy your stay');
+
+// Above hotbar
+player.sendActionBar('Health: 20/20');
+```
+
+## Movement
+
+```dart
+// Teleport to coordinates
+player.teleport(100.0, 64.0, 200.0);
+
+// Teleport with facing direction
+player.teleport(100.0, 64.0, 200.0, yaw: 90.0, pitch: 0.0);
+
+// Apply velocity (launch player)
+player.setVelocity(0.0, 1.5, 0.0);  // Up into the air
+```
+
+## Inventory
+
+```dart
+// Give items
+player.giveItem('minecraft:diamond', count: 64);
+player.giveItem('minecraft:diamond_sword');
+
+// Remove items
+player.clearItem('minecraft:dirt');  // Remove all dirt
+player.clearInventory();             // Clear everything
+
+// Check inventory
+final hasDiamonds = player.hasItem('minecraft:diamond');
+final count = player.countItem('minecraft:diamond');
+
+// Get held items
+final mainHand = player.mainHandItem;  // Block/item ID string
+final offHand = player.offHandItem;
+```
+
+## Status Effects
+
+Effects are temporary modifiers like speed boosts or invisibility:
+
+```dart
+// Apply effect
+player.addEffect(
+  Effect.speed,
+  duration: 200,    // Ticks (20 ticks = 1 second)
+  amplifier: 1,     // Level (0 = I, 1 = II, etc.)
+);
+
+// Remove effect
+player.removeEffect(Effect.speed);
+player.clearEffects();  // Remove all
+```
+
+Common effects: `speed`, `slowness`, `haste`, `strength`, `jumpBoost`, `regeneration`, `resistance`, `fireResistance`, `invisibility`, `nightVision`, `poison`, `wither`, `glowing`, `levitation`, `slowFalling`
+
+## Health and Food
+
+```dart
+// Health (0-20, where 20 = full hearts)
+player.setHealth(20.0);
+player.heal(5.0);     // Add health
+player.damage(2.0);   // Deal damage
+
+// Food (0-20)
+player.setFoodLevel(20);
+```
+
+## Experience
+
+```dart
+player.giveExperience(100);        // Add XP points
+player.setExperienceLevel(30);     // Set level directly
+```
+
+## Game Mode
+
+```dart
+player.setGameMode(GameMode.creative);
+player.setGameMode(GameMode.survival);
+player.setGameMode(GameMode.spectator);
+```
+
+## Reading Player State
+
+```dart
+player.name           // Display name
+player.uuid           // Unique identifier
+player.x, player.y, player.z    // Position
+player.yaw, player.pitch        // Look direction
+player.health         // Current health
+player.maxHealth      // Maximum health
+player.foodLevel      // Hunger
+player.experienceLevel
+player.gameMode
+player.isOnGround
+player.isSneaking
+player.isSprinting
+player.isFlying
+```
+
+## Example: Starter Kit
+
+Give new players a starter kit when they join:
+
+```dart
+final seenPlayers = <String>{};
+
+Events.onPlayerJoin((player) {
+  if (seenPlayers.contains(player.uuid)) {
+    player.sendMessage('§7Welcome back!');
+    return;
+  }
+
+  seenPlayers.add(player.uuid);
+
+  player.showTitle('§6Welcome!', subtitle: '§7Here are some items');
+
+  player.giveItem('minecraft:stone_sword');
+  player.giveItem('minecraft:stone_pickaxe');
+  player.giveItem('minecraft:bread', count: 16);
+
+  player.addEffect(Effect.resistance, duration: 600, amplifier: 0);
+});
+```
+
+Note: `seenPlayers` won't persist across restarts—for real persistence, you'd need to save to a file or database.

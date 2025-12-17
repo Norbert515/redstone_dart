@@ -1,0 +1,163 @@
+# Blocks
+
+Blocks are the heart of most Minecraft mods. In Redstone.Dart, you define block **behavior** in Dart while the actual block object lives in Java.
+
+## The Proxy Pattern
+
+When you create a `CustomBlock`, you're not creating a Minecraft block directly. You're defining:
+
+1. **Metadata** — ID, hardness, light level, texture
+2. **Behavior** — What happens when players interact with it
+
+During registration, Redstone creates a "proxy block" in Java that forwards all interactions to your Dart code. This separation is what enables hot reload—the Java proxy stays constant while your Dart behavior can change.
+
+## Creating a Block
+
+```dart
+class HelloBlock extends CustomBlock {
+  HelloBlock() : super(
+    id: 'mymod:hello_block',
+    settings: BlockSettings(hardness: 2.0, resistance: 6.0),
+    model: BlockModel.cubeAll(texture: 'assets/textures/block/hello.png'),
+  );
+
+  @override
+  ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+    Players.getPlayer(playerId)?.sendMessage('§aHello!');
+    return ActionResult.success;
+  }
+}
+```
+
+The `id` follows Minecraft's `namespace:path` convention. Your mod's namespace (like `mymod`) keeps your blocks separate from other mods.
+
+## Registration and the Main Function
+
+Your `main()` function sets up the Dart↔Minecraft bridge:
+
+```dart
+void main() {
+  // 1. Initialize the bridge to Java
+  Bridge.initialize();
+
+  // 2. Set up callback routing for block interactions
+  Events.registerProxyBlockHandlers();
+
+  // 3. Register your blocks (creates Java proxies)
+  BlockRegistry.register(HelloBlock());
+
+  // 4. Signal that registration is complete
+  BlockRegistry.freeze();
+}
+```
+
+**Why these steps?**
+
+- `Bridge.initialize()` — Opens the communication channel to Java. Without this, nothing works.
+- `Events.registerProxyBlockHandlers()` — Tells the native bridge how to route block events back to Dart. Without this, your `onUse()` etc. would never be called.
+- `BlockRegistry.freeze()` — Minecraft's registry freezes early in startup. This mirrors that constraint and ensures you don't try to register blocks too late.
+
+## Block Settings
+
+Settings define the physical properties of your block:
+
+```dart
+BlockSettings(
+  hardness: 2.0,        // How long to mine (stone = 1.5, obsidian = 50)
+  resistance: 6.0,      // Explosion resistance
+  luminance: 15,        // Light emitted (0-15, glowstone = 15)
+  requiresTool: true,   // Must use correct tool to get drops
+  ticksRandomly: true,  // Receives random ticks (for crops, decay)
+  slipperiness: 0.6,    // Surface friction (ice = 0.98)
+)
+```
+
+These are set once at registration and can't be changed via hot reload—they're stored in Java.
+
+## Callbacks
+
+Callbacks define behavior. These **can** be hot reloaded because they're just Dart methods.
+
+### onUse — Player Right-Clicks
+
+```dart
+@override
+ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+  // Return success to indicate you handled the interaction
+  // Return pass to let other handlers try
+  // Return fail to indicate interaction failed
+  return ActionResult.success;
+}
+```
+
+### onBreak — Player Breaks Block
+
+```dart
+@override
+bool onBreak(int worldId, int x, int y, int z, int playerId) {
+  // Return true to allow breaking
+  // Return false to prevent it
+  return true;
+}
+```
+
+### onSteppedOn — Entity Walks On Block
+
+```dart
+@override
+void onSteppedOn(int worldId, int x, int y, int z, int entityId) {
+  // entityId could be a player or any mob
+  // Use Players.getPlayer(entityId) - returns null if not a player
+}
+```
+
+### randomTick — Random Game Ticks
+
+For blocks that change over time (crops growing, fire spreading):
+
+```dart
+// Must enable in settings
+settings: BlockSettings(ticksRandomly: true)
+
+@override
+void randomTick(int worldId, int x, int y, int z) {
+  // Called randomly, not every tick
+}
+```
+
+## Working with IDs
+
+Callbacks receive raw IDs, not objects. This is efficient but means you need to wrap them:
+
+```dart
+@override
+ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+  // Wrap the player ID to get a Player object
+  final player = Players.getPlayer(playerId);
+  if (player == null) return ActionResult.fail;
+
+  // Now you can use player methods
+  player.sendMessage('Hello!');
+
+  return ActionResult.success;
+}
+```
+
+The wrapping is lightweight—`Player` is just a thin wrapper that makes JNI calls using the ID.
+
+## Textures
+
+Place 16x16 PNG files in `assets/textures/block/`. The CLI automatically copies them to the right Minecraft location.
+
+```
+assets/
+└── textures/
+    └── block/
+        └── hello.png
+```
+
+Reference them in your block model:
+
+```dart
+model: BlockModel.cubeAll(texture: 'assets/textures/block/hello.png')
+```

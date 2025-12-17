@@ -1,0 +1,41 @@
+# Introduction
+
+Redstone.Dart lets you write Minecraft mods in Dart instead of Java, with hot reload support.
+
+## The Big Idea
+
+In traditional Minecraft modding, you write Java code that gets compiled into the game. Change anything? Restart Minecraft. This takes 30+ seconds each time.
+
+Redstone.Dart flips this around. Your mod logic lives in Dart, running inside an embedded Dart VM. When you change your code, we just reload the Dart code—the game keeps running. Changes appear in under a second.
+
+## How It Works
+
+Your Dart code doesn't directly create Minecraft blocks. Instead, it defines **behavior** that gets attached to **proxy objects** in the game:
+
+1. You define a `CustomBlock` class with callbacks like `onUse()` and `onBreak()`
+2. When registered, a corresponding "proxy block" is created in Java/Minecraft
+3. When players interact with that block, Minecraft calls the proxy, which calls your Dart code
+4. Your Dart code runs and returns a result back to Minecraft
+
+This proxy pattern is why hot reload works—the proxy stays the same, but the Dart code it calls can change.
+
+## What You Can Build
+
+- **Custom Blocks** — Define what happens when players click, break, walk on, or otherwise interact with blocks
+- **Custom Items** — Create tools, weapons, and magical items with custom behaviors
+- **Game Logic** — React to events like players joining, blocks breaking, or game ticks
+- **World Manipulation** — Place blocks, spawn entities, play sounds, create explosions
+
+## Limitations
+
+Because Minecraft's registry system freezes early during startup:
+
+- You can't add new blocks/items after the game starts
+- Block properties (hardness, light level) are set at registration and can't change
+- Textures and models are loaded at startup
+
+But your **behavior code** (what happens when someone clicks a block) can change anytime via hot reload.
+
+## Next Steps
+
+[Get Started →](/guide/getting-started.html)

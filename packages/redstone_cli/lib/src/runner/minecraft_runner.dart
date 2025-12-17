@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -10,13 +11,21 @@ import '../util/logger.dart';
 /// Manages the Minecraft process lifecycle
 class MinecraftRunner {
   final RedstoneProject project;
+  final bool testMode;
   Process? _process;
   final _exitCompleter = Completer<int>();
 
-  MinecraftRunner(this.project);
+  /// Stream controller for stdout lines (only in test mode)
+  StreamController<String>? _stdoutController;
+
+  MinecraftRunner(this.project, {this.testMode = false});
 
   /// Exit code future - completes when Minecraft exits
   Future<int> get exitCode => _exitCompleter.future;
+
+  /// Stream of stdout lines (only available in test mode).
+  /// This is a broadcast stream so multiple listeners can subscribe.
+  Stream<String>? get stdoutLines => _stdoutController?.stream;
 
   /// Start Minecraft with the mod
   Future<void> start() async {
@@ -26,17 +35,50 @@ class MinecraftRunner {
     // Start Minecraft via Gradle
     final gradlew = Platform.isWindows ? 'gradlew.bat' : './gradlew';
 
-    Logger.debug('Starting Minecraft from ${project.minecraftDir}');
+    // Use runServer for test mode (headless server), runClient for normal mode
+    final gradleTask = testMode ? 'runServer' : 'runClient';
 
-    _process = await Process.start(
-      gradlew,
-      ['runClient'],
-      workingDirectory: project.minecraftDir,
-      mode: ProcessStartMode.inheritStdio,
-    );
+    Logger.debug('Starting Minecraft from ${project.minecraftDir} with task: $gradleTask');
+
+    if (testMode) {
+      // In test mode, capture stdout for parsing JSON events
+      _stdoutController = StreamController<String>.broadcast();
+
+      _process = await Process.start(
+        gradlew,
+        [gradleTask],
+        workingDirectory: project.minecraftDir,
+        mode: ProcessStartMode.normal,
+      );
+
+      // Forward stdout lines to the stream and also to console
+      _process!.stdout
+          .transform(const SystemEncoding().decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        _stdoutController?.add(line);
+      });
+
+      // Forward stderr to console
+      _process!.stderr
+          .transform(const SystemEncoding().decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        stderr.writeln(line);
+      });
+    } else {
+      // In normal mode, inherit stdio for interactive use
+      _process = await Process.start(
+        gradlew,
+        [gradleTask],
+        workingDirectory: project.minecraftDir,
+        mode: ProcessStartMode.inheritStdio,
+      );
+    }
 
     // Handle process exit
     _process!.exitCode.then((code) {
+      _stdoutController?.close();
       if (!_exitCompleter.isCompleted) {
         _exitCompleter.complete(code);
       }
@@ -61,6 +103,8 @@ class MinecraftRunner {
         _process!.kill(ProcessSignal.sigkill);
       }
 
+      await _stdoutController?.close();
+
       if (!_exitCompleter.isCompleted) {
         _exitCompleter.complete(0);
       }
@@ -77,6 +121,21 @@ class MinecraftRunner {
 
     // Copy native libs to run/natives/
     await _copyNativeLibs();
+
+    // In test mode, ensure EULA is accepted for server
+    if (testMode) {
+      await _ensureEula();
+    }
+  }
+
+  /// Ensure EULA is accepted for server mode
+  Future<void> _ensureEula() async {
+    final eulaFile = File(p.join(project.minecraftDir, 'run', 'eula.txt'));
+    if (!eulaFile.parent.existsSync()) {
+      eulaFile.parent.createSync(recursive: true);
+    }
+    eulaFile.writeAsStringSync('eula=true\n');
+    Logger.debug('Created EULA file at: ${eulaFile.path}');
   }
 
   Future<void> _generateAssets() async {
@@ -123,11 +182,39 @@ class MinecraftRunner {
     final targetLibDir = Directory(p.join(targetDir.path, 'lib'));
     await _copyDirectory(sourceDir, targetLibDir);
 
-    // Rename main.dart to dart_mc.dart if it exists (DartModLoader expects this name)
-    final mainDart = File(p.join(targetLibDir.path, 'main.dart'));
-    final dartMcDart = File(p.join(targetLibDir.path, 'dart_mc.dart'));
-    if (mainDart.existsSync() && !dartMcDart.existsSync()) {
-      mainDart.renameSync(dartMcDart.path);
+    if (testMode) {
+      // In test mode, use the generated test harness as entry point
+      final harnessFile = File(
+        p.join(project.rootDir, '.redstone', 'test', 'test_harness.dart'),
+      );
+      if (!harnessFile.existsSync()) {
+        throw StateError('Test harness not found. Run TestHarnessGenerator first.');
+      }
+
+      // Copy test harness as dart_mc.dart (entry point)
+      final dartMcDart = File(p.join(targetLibDir.path, 'dart_mc.dart'));
+      harnessFile.copySync(dartMcDart.path);
+
+      // Delete main.dart if it exists (we don't want it to conflict)
+      final mainDart = File(p.join(targetLibDir.path, 'main.dart'));
+      if (mainDart.existsSync()) {
+        mainDart.deleteSync();
+      }
+
+      // Copy test files INSIDE lib/ (as lib/test/) for proper resolution
+      // The native Dart VM has issues with ../test/ relative paths
+      final testDir = Directory(p.join(project.rootDir, 'test'));
+      if (testDir.existsSync()) {
+        final targetTestDir = Directory(p.join(targetLibDir.path, 'test'));
+        await _copyDirectory(testDir, targetTestDir);
+      }
+    } else {
+      // Normal mode: rename main.dart to dart_mc.dart if it exists
+      final mainDart = File(p.join(targetLibDir.path, 'main.dart'));
+      final dartMcDart = File(p.join(targetLibDir.path, 'dart_mc.dart'));
+      if (mainDart.existsSync() && !dartMcDart.existsSync()) {
+        mainDart.renameSync(dartMcDart.path);
+      }
     }
 
     // Copy pubspec.yaml

@@ -11,6 +11,10 @@ dependencies:
   dart_mc:
     path: /Users/norbertkozsir/IdeaProjects/vide_mc/packages/dart_mc
 
+dev_dependencies:
+  redstone_test:
+    path: /Users/norbertkozsir/IdeaProjects/vide_mc/packages/redstone_test
+
 # Redstone configuration
 redstone:
   minecraft_version: "1.21.11"

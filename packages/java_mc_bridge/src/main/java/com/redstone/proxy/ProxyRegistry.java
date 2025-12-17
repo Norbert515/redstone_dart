@@ -166,9 +166,9 @@ public class ProxyRegistry {
                 properties = properties.randomTicks();
             }
 
-            // Apply collidable (noCollission if not collidable)
+            // Apply collidable (noCollision if not collidable)
             if (!settings.collidable()) {
-                properties = properties.noCollission();
+                properties = properties.noCollision();
             }
 
             // Apply replaceable

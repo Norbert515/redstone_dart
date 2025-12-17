@@ -34,6 +34,15 @@ sourceSets {
     }
 }
 
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "basic-dart-mod-test"
+        enableGameTests = true
+        eula = true
+    }
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     mappings loom.officialMojangMappings()

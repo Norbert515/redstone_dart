@@ -1,0 +1,16 @@
+name: redstone_test
+description: Testing library for Minecraft mods built with dart_mc, built on top of package:test
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  test: ^1.24.0
+  matcher: ^0.12.0
+  dart_mc:
+    path: ../dart_mc
+
+dev_dependencies:
+  lints: ^5.0.0

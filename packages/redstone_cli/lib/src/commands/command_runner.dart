@@ -6,6 +6,7 @@ import 'devices_command.dart';
 import 'doctor_command.dart';
 import 'generate_command.dart';
 import 'run_command.dart';
+import 'test_command.dart';
 import 'upgrade_command.dart';
 
 const String version = '0.1.0';
@@ -35,6 +36,7 @@ class RedstoneCommandRunner extends CommandRunner<int> {
     addCommand(DoctorCommand());
     addCommand(GenerateCommand());
     addCommand(RunCommand());
+    addCommand(TestCommand());
     addCommand(UpgradeCommand());
   }
 

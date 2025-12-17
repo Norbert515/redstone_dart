@@ -30,6 +30,31 @@ extern "C" {
     void register_proxy_block_break_handler(ProxyBlockBreakCallback cb);
     void register_proxy_block_use_handler(ProxyBlockUseCallback cb);
 
+    // Additional proxy block callbacks
+    typedef void (*ProxyBlockSteppedOnCallback)(int64_t handler_id, int64_t world_id,
+                                                 int32_t x, int32_t y, int32_t z, int32_t entity_id);
+    typedef void (*ProxyBlockFallenUponCallback)(int64_t handler_id, int64_t world_id,
+                                                  int32_t x, int32_t y, int32_t z, int32_t entity_id, float fall_distance);
+    typedef void (*ProxyBlockRandomTickCallback)(int64_t handler_id, int64_t world_id,
+                                                  int32_t x, int32_t y, int32_t z);
+    typedef void (*ProxyBlockPlacedCallback)(int64_t handler_id, int64_t world_id,
+                                              int32_t x, int32_t y, int32_t z, int32_t player_id);
+    typedef void (*ProxyBlockRemovedCallback)(int64_t handler_id, int64_t world_id,
+                                               int32_t x, int32_t y, int32_t z);
+    typedef void (*ProxyBlockNeighborChangedCallback)(int64_t handler_id, int64_t world_id,
+                                                       int32_t x, int32_t y, int32_t z,
+                                                       int32_t neighbor_x, int32_t neighbor_y, int32_t neighbor_z);
+    typedef void (*ProxyBlockEntityInsideCallback)(int64_t handler_id, int64_t world_id,
+                                                    int32_t x, int32_t y, int32_t z, int32_t entity_id);
+
+    void register_proxy_block_stepped_on_handler(ProxyBlockSteppedOnCallback cb);
+    void register_proxy_block_fallen_upon_handler(ProxyBlockFallenUponCallback cb);
+    void register_proxy_block_random_tick_handler(ProxyBlockRandomTickCallback cb);
+    void register_proxy_block_placed_handler(ProxyBlockPlacedCallback cb);
+    void register_proxy_block_removed_handler(ProxyBlockRemovedCallback cb);
+    void register_proxy_block_neighbor_changed_handler(ProxyBlockNeighborChangedCallback cb);
+    void register_proxy_block_entity_inside_handler(ProxyBlockEntityInsideCallback cb);
+
     // Event dispatch (called from Java via JNI)
     int32_t dispatch_block_break(int32_t x, int32_t y, int32_t z, int64_t player_id);
     int32_t dispatch_block_interact(int32_t x, int32_t y, int32_t z, int64_t player_id, int32_t hand);
@@ -42,6 +67,23 @@ extern "C" {
     int32_t dispatch_proxy_block_use(int64_t handler_id, int64_t world_id,
                                       int32_t x, int32_t y, int32_t z,
                                       int64_t player_id, int32_t hand);
+
+    // Additional proxy block dispatch functions
+    void dispatch_proxy_block_stepped_on(int64_t handler_id, int64_t world_id,
+                                          int32_t x, int32_t y, int32_t z, int32_t entity_id);
+    void dispatch_proxy_block_fallen_upon(int64_t handler_id, int64_t world_id,
+                                           int32_t x, int32_t y, int32_t z, int32_t entity_id, float fall_distance);
+    void dispatch_proxy_block_random_tick(int64_t handler_id, int64_t world_id,
+                                           int32_t x, int32_t y, int32_t z);
+    void dispatch_proxy_block_placed(int64_t handler_id, int64_t world_id,
+                                      int32_t x, int32_t y, int32_t z, int32_t player_id);
+    void dispatch_proxy_block_removed(int64_t handler_id, int64_t world_id,
+                                       int32_t x, int32_t y, int32_t z);
+    void dispatch_proxy_block_neighbor_changed(int64_t handler_id, int64_t world_id,
+                                                int32_t x, int32_t y, int32_t z,
+                                                int32_t neighbor_x, int32_t neighbor_y, int32_t neighbor_z);
+    void dispatch_proxy_block_entity_inside(int64_t handler_id, int64_t world_id,
+                                             int32_t x, int32_t y, int32_t z, int32_t entity_id);
 
     // Dart -> Java communication (called from Dart, implemented via JNI callback)
     typedef void (*SendChatMessageCallback)(int64_t player_id, const char* message);
