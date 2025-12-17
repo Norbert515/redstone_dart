@@ -224,6 +224,7 @@ final class DoneEvent extends TestEvent {
 /// Emit a test event to stdout with the magic prefix.
 void emitEvent(TestEvent event) {
   final json = jsonEncode(event.toJson());
-  stdout.writeln('$testEventPrefix$json');
-  stdout.flush();
+  // Use print() instead of stdout.writeln() to avoid issues with
+  // stdout being piped/bound to a stream in the test environment
+  print('$testEventPrefix$json');
 }
