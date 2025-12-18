@@ -333,4 +333,18 @@ extern "C" {
     bool dispatch_proxy_entity_damage(int64_t handler_id, int32_t entity_id, const char* damage_source, double amount);
     void dispatch_proxy_entity_attack(int64_t handler_id, int32_t entity_id, int32_t target_id);
     void dispatch_proxy_entity_target(int64_t handler_id, int32_t entity_id, int32_t target_id);
+
+    // ==========================================================================
+    // Command System Callbacks
+    // ==========================================================================
+
+    // Command execute callback (called from Dart via FFI)
+    // Returns the command result (0 = failure, positive = success)
+    typedef int32_t (*CommandExecuteCallback)(int64_t command_id, int32_t player_id, const char* args_json);
+
+    // Command callback registration (called from Dart via FFI)
+    void register_command_execute_handler(CommandExecuteCallback cb);
+
+    // Command dispatch function (called from Java via JNI)
+    int32_t dispatch_command_execute(int64_t command_id, int32_t player_id, const char* args_json);
 }

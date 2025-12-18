@@ -84,6 +84,14 @@ typedef ProxyEntityTargetCallbackNative = Void Function(
     Int64 handlerId, Int32 entityId, Int32 targetId);
 
 // =============================================================================
+// Command System Callback Types
+// =============================================================================
+
+/// Command execute callback - returns the command result (0 = failure, positive = success)
+typedef CommandExecuteCallbackNative = Int32 Function(
+    Int64 commandId, Int32 playerId, Pointer<Utf8> argsJson);
+
+// =============================================================================
 // New Event Callback Types
 // =============================================================================
 
@@ -364,6 +372,15 @@ typedef RegisterProxyEntityTargetHandlerNative = Void Function(
     Pointer<NativeFunction<ProxyEntityTargetCallbackNative>> callback);
 typedef RegisterProxyEntityTargetHandler = void Function(
     Pointer<NativeFunction<ProxyEntityTargetCallbackNative>> callback);
+
+// =============================================================================
+// Command System Handler Registration Signatures
+// =============================================================================
+
+typedef RegisterCommandExecuteHandlerNative = Void Function(
+    Pointer<NativeFunction<CommandExecuteCallbackNative>> callback);
+typedef RegisterCommandExecuteHandler = void Function(
+    Pointer<NativeFunction<CommandExecuteCallbackNative>> callback);
 
 /// Chat message function signature
 typedef SendChatMessageNative = Void Function(Int64 playerId, Pointer<Utf8> message);
@@ -821,6 +838,19 @@ class Bridge {
       Pointer<NativeFunction<ProxyEntityTargetCallbackNative>> callback) {
     final register = library.lookupFunction<RegisterProxyEntityTargetHandlerNative,
         RegisterProxyEntityTargetHandler>('register_proxy_entity_target_handler');
+    register(callback);
+  }
+
+  // ===========================================================================
+  // Command System Handler Registration Methods
+  // ===========================================================================
+
+  /// Register a command execute handler.
+  /// This is called when a registered command is executed.
+  static void registerCommandExecuteHandler(
+      Pointer<NativeFunction<CommandExecuteCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterCommandExecuteHandlerNative,
+        RegisterCommandExecuteHandler>('register_command_execute_handler');
     register(callback);
   }
 

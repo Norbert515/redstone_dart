@@ -78,3 +78,13 @@ jar {
         rename { "${it}_${project.base.archivesName.get()}" }
     }
 }
+
+// Pass DART_SCRIPT_PATH to run tasks via JVM system property
+// This allows the CLI to specify the script location directly
+tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
+    // Read from Gradle project property (passed via -PdartScriptPath=...)
+    if (project.hasProperty('dartScriptPath')) {
+        def dartScriptPath = project.property('dartScriptPath')
+        jvmArgs("-DDART_SCRIPT_PATH=${dartScriptPath}")
+    }
+}

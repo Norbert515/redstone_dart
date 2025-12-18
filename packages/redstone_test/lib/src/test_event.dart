@@ -3,8 +3,8 @@
 /// Events are emitted via stdout with a magic prefix for real-time test reporting.
 library;
 
+import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 /// Magic prefix for test events in stdout.
 const testEventPrefix = '##REDSTONE_TEST##';
@@ -242,7 +242,9 @@ final class DoneEvent extends TestEvent {
 /// Emit a test event to stdout with the magic prefix.
 void emitEvent(TestEvent event) {
   final json = jsonEncode(event.toJson());
-  // Use print() instead of stdout.writeln() to avoid issues with
-  // stdout being piped/bound to a stream in the test environment
-  print('$testEventPrefix$json');
+  // Use Zone.root.print to bypass any custom zone handlers.
+  // This prevents infinite recursion when emitEvent is called from
+  // inside a zone's print handler (which would otherwise re-trigger
+  // the handler, calling emitEvent again, ad infinitum).
+  Zone.root.print('$testEventPrefix$json');
 }

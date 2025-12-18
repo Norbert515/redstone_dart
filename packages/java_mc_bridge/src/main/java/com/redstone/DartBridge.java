@@ -177,6 +177,9 @@ public class DartBridge {
     public static native void onProxyEntityAttack(long handlerId, int entityId, int targetId);
     public static native void onProxyEntityTarget(long handlerId, int entityId, int targetId);
 
+    // Command system native methods - called by CommandRegistry
+    public static native int onCommandExecute(long commandId, int playerId, String argsJson);
+
     // Service URL for hot reload/debugging
     private static native String getDartServiceUrl();
 
@@ -791,7 +794,7 @@ public class DartBridge {
     /**
      * Get a ServerPlayer by entity ID.
      */
-    private static ServerPlayer getPlayerById(int playerId) {
+    public static ServerPlayer getPlayerById(int playerId) {
         if (serverInstance == null) return null;
 
         for (ServerPlayer player : serverInstance.getPlayerList().getPlayers()) {

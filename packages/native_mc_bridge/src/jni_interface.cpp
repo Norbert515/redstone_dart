@@ -894,4 +894,22 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyEntityTarget(
                                   static_cast<int32_t>(targetId));
 }
 
+// ==========================================================================
+// Command System JNI
+// ==========================================================================
+
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onCommandExecute(
+    JNIEnv* env, jclass /* cls */,
+    jlong commandId, jint playerId, jstring argsJson) {
+    const char* args = argsJson ? env->GetStringUTFChars(argsJson, nullptr) : "";
+    jint result = static_cast<jint>(dispatch_command_execute(
+        static_cast<int64_t>(commandId),
+        static_cast<int32_t>(playerId),
+        args));
+    if (argsJson) {
+        env->ReleaseStringUTFChars(argsJson, args);
+    }
+    return result;
+}
+
 } // extern "C"

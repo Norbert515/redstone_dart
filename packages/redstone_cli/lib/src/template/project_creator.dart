@@ -154,6 +154,9 @@ class ProjectCreator {
     // .gitignore
     await _writeFile('.gitignore', _gitignore());
 
+    // analysis_options.yaml
+    await _writeFile('analysis_options.yaml', _analysisOptions());
+
     // Minecraft/Fabric files
     await _writeFile('minecraft/build.gradle', _buildGradle());
     await _writeFile('minecraft/settings.gradle', _settingsGradle());
@@ -608,6 +611,13 @@ minecraft/mc-sources/
 Thumbs.db
 ''';
 
+  String _analysisOptions() => '''
+analyzer:
+  exclude:
+    - minecraft/run/**
+    - minecraft/build/**
+''';
+
   String _buildGradle() => '''
 plugins {
     id 'net.fabricmc.fabric-loom-remap' version '{{loom_version}}'
@@ -684,6 +694,16 @@ jar {
 fabricApi {
     configureTests {
         enableGameTests = true
+    }
+}
+
+// Pass DART_SCRIPT_PATH to run tasks via JVM system property
+// This allows the CLI to specify the script location directly
+tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
+    // Read from Gradle project property (passed via -PdartScriptPath=...)
+    if (project.hasProperty('dartScriptPath')) {
+        def dartScriptPath = project.property('dartScriptPath')
+        jvmArgs("-DDART_SCRIPT_PATH=\${dartScriptPath}")
     }
 }
 ''';

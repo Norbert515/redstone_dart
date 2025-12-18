@@ -63,7 +63,13 @@ set_target_properties(dart_mc_bridge PROPERTIES
 )
 
 if(APPLE)
-    set_target_properties(dart_mc_bridge PROPERTIES SUFFIX ".dylib")
+    set_target_properties(dart_mc_bridge PROPERTIES
+        SUFFIX ".dylib"
+        # Use @loader_path so the library can find libdart_dll.dylib in the same directory
+        # This is needed because Java doesn't set @rpath correctly
+        INSTALL_RPATH "@loader_path"
+        BUILD_RPATH "@loader_path"
+    )
 elseif(WIN32)
     set_target_properties(dart_mc_bridge PROPERTIES SUFFIX ".dll")
 else()

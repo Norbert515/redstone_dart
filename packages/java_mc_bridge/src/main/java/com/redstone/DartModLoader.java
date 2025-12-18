@@ -43,8 +43,37 @@ public class DartModLoader implements ModInitializer {
 
     /**
      * Get the path to the Dart script file.
+     *
+     * Checks in order:
+     * 1. DART_SCRIPT_PATH system property (set by Gradle JVM args)
+     * 2. DART_SCRIPT_PATH environment variable (set by CLI)
+     * 3. Standard search paths relative to run directory
      */
     private static String getScriptPath() {
+        // First check for system property (used by redstone CLI via Gradle)
+        String propPath = System.getProperty("DART_SCRIPT_PATH");
+        if (propPath != null && !propPath.isEmpty()) {
+            File f = new File(propPath);
+            if (f.exists()) {
+                LOGGER.info("[{}] Using script path from system property DART_SCRIPT_PATH: {}", MOD_ID, propPath);
+                return f.getAbsolutePath();
+            } else {
+                LOGGER.warn("[{}] DART_SCRIPT_PATH property set but file not found: {}", MOD_ID, propPath);
+            }
+        }
+
+        // Then check for environment variable (used by redstone CLI)
+        String envPath = System.getenv("DART_SCRIPT_PATH");
+        if (envPath != null && !envPath.isEmpty()) {
+            File f = new File(envPath);
+            if (f.exists()) {
+                LOGGER.info("[{}] Using script path from DART_SCRIPT_PATH env var: {}", MOD_ID, envPath);
+                return f.getAbsolutePath();
+            } else {
+                LOGGER.warn("[{}] DART_SCRIPT_PATH env var set but file not found: {}", MOD_ID, envPath);
+            }
+        }
+
         // Look for dart_mc in several locations
         // Prefer the package structure (dart_mc/lib/dart_mc.dart) over single file
         String[] searchPaths = {

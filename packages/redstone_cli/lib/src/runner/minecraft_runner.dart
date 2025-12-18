@@ -30,7 +30,7 @@ class MinecraftRunner {
 
   /// Start Minecraft with the mod
   Future<void> start() async {
-    // First, copy files
+    // First, prepare files (assets, native libs, etc.)
     await _prepareFiles();
 
     // Start Minecraft via Gradle
@@ -41,13 +41,26 @@ class MinecraftRunner {
 
     Logger.debug('Starting Minecraft from ${project.minecraftDir} with task: $gradleTask');
 
+    // Determine the script path for Dart VM
+    final scriptPath = _getDartScriptPath();
+    Logger.debug('Dart script path: $scriptPath');
+
+    // Pass the script path via Gradle project property
+    // This is more reliable than environment variables because Gradle daemon
+    // uses its own environment that was set when it started
+    final gradleArgs = [
+      gradleTask,
+      '-PdartScriptPath=$scriptPath',
+    ];
+    Logger.debug('Gradle args: $gradleArgs');
+
     if (testMode) {
       // In test mode, capture stdout for parsing JSON events
       _stdoutController = StreamController<String>.broadcast();
 
       _process = await Process.start(
         gradlew,
-        [gradleTask],
+        gradleArgs,
         workingDirectory: project.minecraftDir,
         mode: ProcessStartMode.normal,
       );
@@ -71,7 +84,7 @@ class MinecraftRunner {
       // In normal mode, inherit stdio for interactive use
       _process = await Process.start(
         gradlew,
-        [gradleTask],
+        gradleArgs,
         workingDirectory: project.minecraftDir,
         mode: ProcessStartMode.inheritStdio,
       );
@@ -112,6 +125,20 @@ class MinecraftRunner {
     }
   }
 
+  /// Get the path to the Dart script that the Dart VM should load.
+  ///
+  /// In test mode, this is the generated test harness.
+  /// In normal mode, this is the project's lib/main.dart (renamed to dart_mc.dart).
+  String _getDartScriptPath() {
+    if (testMode) {
+      // Use the test harness as entry point
+      return p.join(project.rootDir, '.redstone', 'test', 'test_harness.dart');
+    } else {
+      // Use the project's main.dart as entry point
+      return p.join(project.rootDir, 'lib', 'main.dart');
+    }
+  }
+
   /// Prepare files before running
   Future<void> _prepareFiles() async {
     // Sync bridge code if source has changed
@@ -119,9 +146,6 @@ class MinecraftRunner {
 
     // Generate assets first (blockstates, models, textures)
     await _generateAssets();
-
-    // Copy Dart mod to run/mods/
-    await _copyDartMod();
 
     // Copy native libs to run/natives/
     await _copyNativeLibs();
@@ -169,68 +193,6 @@ class MinecraftRunner {
     await generator.generate();
   }
 
-  Future<void> _copyDartMod() async {
-    final sourceDir = Directory(project.libDir);
-    // DartModLoader expects the mod at mods/dart_mc/lib/dart_mc.dart
-    final targetDir = Directory(
-      p.join(project.minecraftDir, 'run', 'mods', 'dart_mc'),
-    );
-
-    // Create target directory
-    if (targetDir.existsSync()) {
-      targetDir.deleteSync(recursive: true);
-    }
-    targetDir.createSync(recursive: true);
-
-    // Copy lib/ contents
-    final targetLibDir = Directory(p.join(targetDir.path, 'lib'));
-    await _copyDirectory(sourceDir, targetLibDir);
-
-    if (testMode) {
-      // In test mode, use the generated test harness as entry point
-      final harnessFile = File(
-        p.join(project.rootDir, '.redstone', 'test', 'test_harness.dart'),
-      );
-      if (!harnessFile.existsSync()) {
-        throw StateError('Test harness not found. Run TestHarnessGenerator first.');
-      }
-
-      // Copy test harness as dart_mc.dart (entry point)
-      final dartMcDart = File(p.join(targetLibDir.path, 'dart_mc.dart'));
-      harnessFile.copySync(dartMcDart.path);
-
-      // Delete main.dart if it exists (we don't want it to conflict)
-      final mainDart = File(p.join(targetLibDir.path, 'main.dart'));
-      if (mainDart.existsSync()) {
-        mainDart.deleteSync();
-      }
-
-      // Copy test files INSIDE lib/ (as lib/test/) for proper resolution
-      // The native Dart VM has issues with ../test/ relative paths
-      final testDir = Directory(p.join(project.rootDir, 'test'));
-      if (testDir.existsSync()) {
-        final targetTestDir = Directory(p.join(targetLibDir.path, 'test'));
-        await _copyDirectory(testDir, targetTestDir);
-      }
-    } else {
-      // Normal mode: rename main.dart to dart_mc.dart if it exists
-      final mainDart = File(p.join(targetLibDir.path, 'main.dart'));
-      final dartMcDart = File(p.join(targetLibDir.path, 'dart_mc.dart'));
-      if (mainDart.existsSync() && !dartMcDart.existsSync()) {
-        mainDart.renameSync(dartMcDart.path);
-      }
-    }
-
-    // Copy pubspec.yaml
-    final pubspec = File(p.join(project.rootDir, 'pubspec.yaml'));
-    if (pubspec.existsSync()) {
-      pubspec.copySync(p.join(targetDir.path, 'pubspec.yaml'));
-    }
-
-    // Run pub get in the target directory
-    await Process.run('dart', ['pub', 'get'], workingDirectory: targetDir.path);
-  }
-
   Future<void> _copyNativeLibs() async {
     final nativeDir = Directory(project.nativeDir);
     final targetDir = Directory(p.join(project.minecraftDir, 'run', 'natives'));
@@ -252,20 +214,4 @@ class MinecraftRunner {
     }
   }
 
-  Future<void> _copyDirectory(Directory source, Directory target) async {
-    if (!source.existsSync()) return;
-
-    if (!target.existsSync()) {
-      target.createSync(recursive: true);
-    }
-
-    await for (final entity in source.list(recursive: false)) {
-      final targetPath = p.join(target.path, p.basename(entity.path));
-      if (entity is File) {
-        entity.copySync(targetPath);
-      } else if (entity is Directory) {
-        await _copyDirectory(entity, Directory(targetPath));
-      }
-    }
-  }
 }

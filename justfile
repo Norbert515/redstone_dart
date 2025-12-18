@@ -11,6 +11,10 @@ default:
 
 # Activate redstone CLI globally from local source
 cli-install:
+    # Delete cached snapshot to force fresh compilation
+    rm -f packages/redstone_cli/.dart_tool/pub/bin/redstone_cli/*.snapshot
+    # Stop Gradle daemons to ensure fresh JVM args are used
+    -cd packages/framework_tests/minecraft && ./gradlew --stop 2>/dev/null
     dart pub global activate --source path packages/redstone_cli
 
 # =============================================================================

@@ -269,6 +269,12 @@ public:
         proxy_entity_target_handler_ = cb;
     }
 
+    // Command callback setters
+    void setCommandExecuteHandler(CommandExecuteCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        command_execute_handler_ = cb;
+    }
+
     // Dispatch (called from Java via JNI)
     int32_t dispatchBlockBreak(int32_t x, int32_t y, int32_t z, int64_t player_id) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -755,6 +761,15 @@ public:
         }
     }
 
+    // Command dispatch
+    int32_t dispatchCommandExecute(int64_t command_id, int32_t player_id, const char* args_json) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (command_execute_handler_) {
+            return command_execute_handler_(command_id, player_id, args_json);
+        }
+        return 0; // Default: failure
+    }
+
     // Clear all handlers
     void clear() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -820,6 +835,8 @@ public:
         proxy_entity_damage_handler_ = nullptr;
         proxy_entity_attack_handler_ = nullptr;
         proxy_entity_target_handler_ = nullptr;
+        // Command handlers
+        command_execute_handler_ = nullptr;
     }
 
 private:
@@ -898,6 +915,9 @@ private:
     ProxyEntityDamageCallback proxy_entity_damage_handler_ = nullptr;
     ProxyEntityAttackCallback proxy_entity_attack_handler_ = nullptr;
     ProxyEntityTargetCallback proxy_entity_target_handler_ = nullptr;
+
+    // Command handlers
+    CommandExecuteCallback command_execute_handler_ = nullptr;
 };
 
 } // namespace dart_mc_bridge

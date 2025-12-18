@@ -55,7 +55,73 @@ class TestHarnessGenerator {
     final harnessFile = File(p.join(harnessDir.path, 'test_harness.dart'));
     harnessFile.writeAsStringSync(harnessCode);
 
+    // Create pubspec.yaml for the test harness that references the project's dependencies
+    await _createHarnessPubspec(harnessDir);
+
     return harnessFile;
+  }
+
+  /// Create a pubspec.yaml for the test harness directory.
+  ///
+  /// This allows the Dart VM to resolve packages when loading the test harness
+  /// directly from its location (via DART_SCRIPT_PATH).
+  Future<void> _createHarnessPubspec(Directory harnessDir) async {
+    // Read the project's pubspec to extract dependency paths
+    final projectPubspecFile = File(p.join(project.rootDir, 'pubspec.yaml'));
+    String? dartMcPath;
+    String? redstoneTestPath;
+
+    if (projectPubspecFile.existsSync()) {
+      final content = projectPubspecFile.readAsStringSync();
+      // Simple regex to find path dependencies - this is sufficient for our use case
+      final dartMcMatch = RegExp(r'dart_mc:\s*\n\s*path:\s*(.+)').firstMatch(content);
+      final redstoneTestMatch = RegExp(r'redstone_test:\s*\n\s*path:\s*(.+)').firstMatch(content);
+
+      if (dartMcMatch != null) {
+        final relativePath = dartMcMatch.group(1)!.trim();
+        dartMcPath = Uri.directory(project.rootDir).resolve(relativePath).toFilePath();
+      }
+      if (redstoneTestMatch != null) {
+        final relativePath = redstoneTestMatch.group(1)!.trim();
+        redstoneTestPath = Uri.directory(project.rootDir).resolve(relativePath).toFilePath();
+      }
+    }
+
+    // Create a minimal pubspec that includes dart_mc and redstone_test
+    final harnessPubspec = '''
+name: test_harness
+description: Generated test harness for ${project.name}
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  # dart_mc package for Bridge and Events
+  dart_mc:
+    path: ${dartMcPath ?? '../dart_mc'}
+  # redstone_test for test utilities
+  redstone_test:
+    path: ${redstoneTestPath ?? '../redstone_test'}
+  # Reference the main project
+  ${project.name}:
+    path: ${project.rootDir}
+''';
+
+    final pubspecFile = File(p.join(harnessDir.path, 'pubspec.yaml'));
+    pubspecFile.writeAsStringSync(harnessPubspec);
+
+    // Run pub get to create .dart_tool/package_config.json
+    Logger.debug('Running pub get for test harness...');
+    final result = await Process.run(
+      'dart',
+      ['pub', 'get'],
+      workingDirectory: harnessDir.path,
+    );
+
+    if (result.exitCode != 0) {
+      Logger.warning('pub get failed for test harness: ${result.stderr}');
+    }
   }
 
   /// Resolve test file paths and directories to a list of .dart test files.
@@ -161,29 +227,16 @@ class TestHarnessGenerator {
     return buffer.toString();
   }
 
-  /// Get the import path for a test file relative to the harness location.
-  /// The harness ends up at lib/dart_mc.dart, test files at lib/test/
-  /// (test files are copied inside lib/ to work around native Dart VM path issues)
+  /// Get the import path for a test file.
+  ///
+  /// Since the test harness is loaded directly from its location via
+  /// DART_SCRIPT_PATH, we use absolute file:// URIs for imports.
   String _getTestImportPath(String filePath) {
-    // Get relative path from project root
-    final relativePath = p.relative(filePath, from: project.rootDir);
-
-    // If it's in test/, the import from lib/dart_mc.dart is ./test/...
-    // (test files are copied to lib/test/ during build)
-    if (relativePath.startsWith('test/') ||
-        relativePath.startsWith('test${p.separator}')) {
-      return './$relativePath';
-    }
-
-    // If it's in lib/, use the filename directly with ./
-    if (relativePath.startsWith('lib/') ||
-        relativePath.startsWith('lib${p.separator}')) {
-      final libPath = relativePath.substring(4); // Remove 'lib/'
-      return './$libPath';
-    }
-
-    // Fallback: assume it's in the same directory
-    return './$relativePath';
+    // Use absolute file:// URI so imports work regardless of harness location
+    final absolutePath = p.isAbsolute(filePath)
+        ? filePath
+        : p.join(project.rootDir, filePath);
+    return Uri.file(absolutePath).toString();
   }
 
 }

@@ -665,6 +665,7 @@ void dispatch_server_started() {
     bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
     dart_mc_bridge::CallbackRegistry::instance().dispatchServerStarted();
+    DartDll_DrainMicrotaskQueue(); // Process async tasks from server started handlers
     Dart_ExitScope();
     safe_exit_isolate(did_enter);
 }
@@ -1275,6 +1276,25 @@ void dispatch_proxy_entity_target(int64_t handler_id, int32_t entity_id, int32_t
     dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityTarget(handler_id, entity_id, target_id);
     Dart_ExitScope();
     safe_exit_isolate(did_enter);
+}
+
+// ==========================================================================
+// Command System Registration and Dispatch
+// ==========================================================================
+
+void register_command_execute_handler(CommandExecuteCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setCommandExecuteHandler(cb);
+}
+
+int32_t dispatch_command_execute(int64_t command_id, int32_t player_id, const char* args_json) {
+    if (!g_initialized || g_isolate == nullptr) return 0; // Failure if not initialized
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchCommandExecute(
+        command_id, player_id, args_json);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
 }
 
 } // extern "C"

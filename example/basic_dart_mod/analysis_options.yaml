@@ -1,0 +1,4 @@
+analyzer:
+  exclude:
+    - minecraft/run/**
+    - minecraft/build/**
