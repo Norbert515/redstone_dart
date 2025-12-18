@@ -51,14 +51,16 @@ class MinecraftBinding {
   /// attach to a different binding.
   void attach(TerminalBinding binding) {
     _binding = binding;
-    binding.onBufferPainted = _onBufferPainted;
+    // TODO add back in when we have a way to test this
+    //binding.onBufferPainted = _onBufferPainted;
   }
 
   /// Detach from the current binding.
   ///
   /// After detaching, buffer updates will no longer be rendered to Minecraft.
   void detach() {
-    _binding?.onBufferPainted = null;
+    // TODO add back in when we have a way to test this
+    //_binding?.onBufferPainted = null;
     _binding = null;
   }
 
@@ -80,10 +82,7 @@ class MinecraftBinding {
         if (bgColor != null && !bgColor.isDefault) {
           // Convert Color to ARGB int for ColorMapper
           // Color stores alpha, red, green, blue as separate int fields
-          final argb = (bgColor.alpha << 24) |
-              (bgColor.red << 16) |
-              (bgColor.green << 8) |
-              bgColor.blue;
+          final argb = (bgColor.alpha << 24) | (bgColor.red << 16) | (bgColor.green << 8) | bgColor.blue;
           final block = ColorMapper.getBlockFromArgb(argb);
           final worldPos = screen.bufferToWorld(x, y);
           changes.add(BlockChange(worldPos, block));
