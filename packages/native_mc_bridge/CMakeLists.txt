@@ -65,10 +65,11 @@ set_target_properties(dart_mc_bridge PROPERTIES
 if(APPLE)
     set_target_properties(dart_mc_bridge PROPERTIES
         SUFFIX ".dylib"
-        # Use @loader_path so the library can find libdart_dll.dylib in the same directory
-        # This is needed because Java doesn't set @rpath correctly
-        INSTALL_RPATH "@loader_path"
-        BUILD_RPATH "@loader_path"
+        # Use absolute path to deps/dart_dll/lib for local development (redstone test/run)
+        # This avoids needing to copy libdart_dll.dylib to the natives folder
+        # For production builds (redstone build), this will be handled differently
+        INSTALL_RPATH "${DART_DLL_PATH}/lib"
+        BUILD_RPATH "${DART_DLL_PATH}/lib"
     )
 elseif(WIN32)
     set_target_properties(dart_mc_bridge PROPERTIES SUFFIX ".dll")
