@@ -70,6 +70,10 @@ class Entity {
   // ==========================================================================
 
   /// Get the entity type identifier (e.g., "minecraft:pig", "minecraft:zombie").
+  /// Alias for [type] for API consistency.
+  String get entityType => type;
+
+  /// Get the entity type identifier (e.g., "minecraft:pig", "minecraft:zombie").
   String get type {
     return GenericJniBridge.callStaticStringMethod(
           _dartBridge,
@@ -98,6 +102,17 @@ class Entity {
       '(I)Z',
       [id],
     );
+  }
+
+  /// Get the dimension/world this entity is in.
+  World get dimension {
+    final dimensionId = GenericJniBridge.callStaticStringMethod(
+      _dartBridge,
+      'getEntityDimension',
+      '(I)Ljava/lang/String;',
+      [id],
+    );
+    return World(dimensionId ?? 'minecraft:overworld');
   }
 
   // ==========================================================================
@@ -417,6 +432,17 @@ class Entity {
     GenericJniBridge.callStaticVoidMethod(
       _dartBridge,
       'discardEntity',
+      '(I)V',
+      [id],
+    );
+  }
+
+  /// Kill the entity (applies death damage).
+  /// For LivingEntity, this sets health to 0.
+  void kill() {
+    GenericJniBridge.callStaticVoidMethod(
+      _dartBridge,
+      'killEntity',
       '(I)V',
       [id],
     );

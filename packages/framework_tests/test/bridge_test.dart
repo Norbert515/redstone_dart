@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:redstone_test/redstone_test.dart';
+import 'package:test/test.dart' as dart_test;
 
 Future<void> main() async {
   await group('Bridge initialization', () async {
@@ -94,14 +95,17 @@ Future<void> main() async {
     });
 
     await testMinecraft('waitUntilOrThrow throws on timeout', (game) async {
-      expect(
-        () async => await game.waitUntilOrThrow(
+      var didThrow = false;
+      try {
+        await game.waitUntilOrThrow(
           () => false,
           maxTicks: 5,
           reason: 'Test timeout',
-        ),
-        throwsA(isA<TimeoutException>()),
-      );
+        );
+      } on TimeoutException {
+        didThrow = true;
+      }
+      expect(didThrow, isTrue, reason: 'Expected TimeoutException to be thrown');
     });
   });
 
