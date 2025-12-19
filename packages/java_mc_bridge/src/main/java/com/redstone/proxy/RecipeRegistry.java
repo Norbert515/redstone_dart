@@ -5,6 +5,8 @@ import com.google.gson.JsonObject;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -12,6 +14,7 @@ import net.minecraft.world.item.crafting.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Field;
 import java.util.*;
 
 /**
@@ -396,5 +399,166 @@ public class RecipeRegistry {
         removedRecipes.clear();
         removedByOutput.clear();
         LOGGER.info("Cleared all registered recipes");
+    }
+
+    // ========== Runtime Recipe Injection via Fabric Events ==========
+
+    private static Field recipeMapField = null;
+    private static boolean recipeMapFieldSearched = false;
+
+    /**
+     * Reset the field search state. Call this when RecipeManager might have changed
+     * (e.g., after a data pack reload).
+     */
+    public static void resetFieldSearch() {
+        recipeMapField = null;
+        recipeMapFieldSearched = false;
+        LOGGER.debug("Recipe map field search reset");
+    }
+
+    /**
+     * Inject all registered Dart recipes into the running server's RecipeManager.
+     * This is called from Fabric lifecycle events (SERVER_STARTED and END_DATA_PACK_RELOAD).
+     *
+     * In Minecraft 1.21.x, RecipeMap is immutable, so we need to:
+     * 1. Get all existing recipes
+     * 2. Add our Dart recipes
+     * 3. Create a new RecipeMap
+     * 4. Replace the recipes field in RecipeManager
+     *
+     * @param server The Minecraft server instance
+     */
+    public static void injectRecipes(MinecraftServer server) {
+        LOGGER.info("=== RecipeRegistry.injectRecipes called ===");
+
+        if (server == null) {
+            LOGGER.error("Server is null, cannot inject recipes");
+            return;
+        }
+
+        RecipeManager recipeManager = server.getRecipeManager();
+        if (recipeManager == null) {
+            LOGGER.error("RecipeManager is null, cannot inject recipes");
+            return;
+        }
+
+        LOGGER.info("RecipeManager obtained: {}", recipeManager.getClass().getName());
+
+        Map<Identifier, Recipe<?>> dartRecipes = buildRecipes();
+        LOGGER.info("Built {} Dart recipes for injection", dartRecipes.size());
+
+        if (dartRecipes.isEmpty() && removedRecipes.isEmpty() && removedByOutput.isEmpty()) {
+            LOGGER.info("No Dart recipes to inject and none to remove");
+            return;
+        }
+
+        try {
+            // Get the RecipeMap field from RecipeManager
+            Field recipesField = findRecipeMapField(recipeManager);
+            if (recipesField == null) {
+                LOGGER.error("Could not find recipes field in RecipeManager");
+                return;
+            }
+
+            recipesField.setAccessible(true);
+            Object currentRecipeMap = recipesField.get(recipeManager);
+
+            // Get all existing recipes from the current RecipeMap
+            List<RecipeHolder<?>> allRecipes = new ArrayList<>();
+
+            // Use RecipeMap.values() to get existing recipes
+            if (currentRecipeMap != null) {
+                try {
+                    java.lang.reflect.Method valuesMethod = currentRecipeMap.getClass().getMethod("values");
+                    @SuppressWarnings("unchecked")
+                    Collection<RecipeHolder<?>> existingRecipes = (Collection<RecipeHolder<?>>) valuesMethod.invoke(currentRecipeMap);
+
+                    // Filter out recipes marked for removal
+                    for (RecipeHolder<?> holder : existingRecipes) {
+                        Identifier recipeId = holder.id().identifier();  // ResourceKey.identifier() returns Identifier
+                        ItemStack result = getRecipeResult(holder.value());
+
+                        if (!shouldRemoveRecipe(recipeId, result)) {
+                            allRecipes.add(holder);
+                        } else {
+                            LOGGER.debug("Filtering out removed recipe: {}", recipeId);
+                        }
+                    }
+                    LOGGER.info("Kept {} existing recipes (after filtering removals)", allRecipes.size());
+                } catch (Exception e) {
+                    LOGGER.error("Failed to get existing recipes: {}", e.getMessage(), e);
+                    return;
+                }
+            }
+
+            // Add Dart recipes
+            int added = 0;
+            for (Map.Entry<Identifier, Recipe<?>> entry : dartRecipes.entrySet()) {
+                Identifier id = entry.getKey();
+                Recipe<?> recipe = entry.getValue();
+
+                try {
+                    @SuppressWarnings("unchecked")
+                    RecipeHolder<?> holder = new RecipeHolder<>(
+                        ResourceKey.create(net.minecraft.core.registries.Registries.RECIPE, id),
+                        recipe
+                    );
+                    allRecipes.add(holder);
+                    added++;
+                    LOGGER.debug("Added Dart recipe: {}", id);
+                } catch (Exception e) {
+                    LOGGER.error("Failed to create RecipeHolder for {}: {}", id, e.getMessage(), e);
+                }
+            }
+
+            // Create a new RecipeMap using RecipeMap.create()
+            java.lang.reflect.Method createMethod = RecipeMap.class.getMethod("create", Iterable.class);
+            Object newRecipeMap = createMethod.invoke(null, allRecipes);
+
+            // Set the new RecipeMap on the RecipeManager
+            recipesField.set(recipeManager, newRecipeMap);
+
+            LOGGER.info("=== Recipe injection complete: {} added, {} total recipes ===", added, allRecipes.size());
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to inject recipes: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Find the RecipeMap field in RecipeManager.
+     */
+    private static Field findRecipeMapField(RecipeManager recipeManager) {
+        if (recipeMapField != null) {
+            return recipeMapField;
+        }
+
+        Class<?> clazz = recipeManager.getClass();
+        while (clazz != null && clazz != Object.class) {
+            for (Field field : clazz.getDeclaredFields()) {
+                if (field.getType().getSimpleName().equals("RecipeMap")) {
+                    recipeMapField = field;
+                    LOGGER.info("Found RecipeMap field: {} in {}", field.getName(), clazz.getSimpleName());
+                    return field;
+                }
+            }
+            clazz = clazz.getSuperclass();
+        }
+
+        LOGGER.error("Could not find RecipeMap field in RecipeManager");
+        return null;
+    }
+
+    /**
+     * Get the result ItemStack from a recipe.
+     */
+    private static ItemStack getRecipeResult(Recipe<?> recipe) {
+        try {
+            // Different recipe types have different ways to get results
+            // For now, return empty - removal by output can be enhanced later
+            return ItemStack.EMPTY;
+        } catch (Exception e) {
+            return ItemStack.EMPTY;
+        }
     }
 }
