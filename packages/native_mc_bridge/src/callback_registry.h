@@ -344,7 +344,7 @@ public:
     }
 
     void dispatchProxyBlockPlaced(int64_t handler_id, int64_t world_id,
-                                   int32_t x, int32_t y, int32_t z, int32_t player_id) {
+                                   int32_t x, int32_t y, int32_t z, int64_t player_id) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (proxy_block_placed_handler_) {
             proxy_block_placed_handler_(handler_id, world_id, x, y, z, player_id);

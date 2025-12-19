@@ -38,7 +38,7 @@ extern "C" {
     typedef void (*ProxyBlockRandomTickCallback)(int64_t handler_id, int64_t world_id,
                                                   int32_t x, int32_t y, int32_t z);
     typedef void (*ProxyBlockPlacedCallback)(int64_t handler_id, int64_t world_id,
-                                              int32_t x, int32_t y, int32_t z, int32_t player_id);
+                                              int32_t x, int32_t y, int32_t z, int64_t player_id);
     typedef void (*ProxyBlockRemovedCallback)(int64_t handler_id, int64_t world_id,
                                                int32_t x, int32_t y, int32_t z);
     typedef void (*ProxyBlockNeighborChangedCallback)(int64_t handler_id, int64_t world_id,
@@ -76,7 +76,7 @@ extern "C" {
     void dispatch_proxy_block_random_tick(int64_t handler_id, int64_t world_id,
                                            int32_t x, int32_t y, int32_t z);
     void dispatch_proxy_block_placed(int64_t handler_id, int64_t world_id,
-                                      int32_t x, int32_t y, int32_t z, int32_t player_id);
+                                      int32_t x, int32_t y, int32_t z, int64_t player_id);
     void dispatch_proxy_block_removed(int64_t handler_id, int64_t world_id,
                                        int32_t x, int32_t y, int32_t z);
     void dispatch_proxy_block_neighbor_changed(int64_t handler_id, int64_t world_id,

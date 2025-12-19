@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../assets/asset_generator.dart';
 import '../project/bridge_sync.dart';
+import '../project/native_build_sync.dart';
 import '../project/redstone_project.dart';
 import '../util/logger.dart';
 
@@ -142,7 +143,16 @@ class MinecraftRunner {
   /// Prepare files before running
   Future<void> _prepareFiles() async {
     // Sync bridge code if source has changed
-    await BridgeSync.syncIfNeeded(project.rootDir);
+    final bridgeSynced = await BridgeSync.syncIfNeeded(project.rootDir);
+    if (bridgeSynced) {
+      Logger.info('Bridge code updated');
+    }
+
+    // Rebuild native library if sources changed
+    final nativeRebuilt = await NativeBuildSync.rebuildIfNeeded(project.rootDir);
+    if (nativeRebuilt) {
+      Logger.info('Native library rebuilt');
+    }
 
     // Generate assets first (blockstates, models, textures)
     await _generateAssets();

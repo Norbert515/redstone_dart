@@ -218,6 +218,22 @@ JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onProxyBlockUse(
 
 /*
  * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockPlaced
+ * Signature: (JJIIIJ)V
+ *
+ * Called from Java proxy blocks when they are placed in the world.
+ * Routes to Dart's BlockRegistry.dispatchBlockPlaced().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyBlockPlaced(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z, jlong player_id) {
+
+    dispatch_proxy_block_placed(handler_id, world_id, x, y, z, player_id);
+}
+
+/*
+ * Class:     com_redstone_DartBridge
  * Method:    getDartServiceUrl
  * Signature: ()Ljava/lang/String;
  *

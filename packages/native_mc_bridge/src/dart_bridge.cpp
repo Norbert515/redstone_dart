@@ -353,7 +353,7 @@ void dispatch_proxy_block_random_tick(int64_t handler_id, int64_t world_id,
 }
 
 void dispatch_proxy_block_placed(int64_t handler_id, int64_t world_id,
-                                  int32_t x, int32_t y, int32_t z, int32_t player_id) {
+                                  int32_t x, int32_t y, int32_t z, int64_t player_id) {
     if (!g_initialized || g_isolate == nullptr) return;
     bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
