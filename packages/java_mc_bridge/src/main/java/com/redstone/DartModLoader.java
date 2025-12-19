@@ -21,6 +21,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import com.redstone.proxy.DartBlockProxy;
+import com.redstone.proxy.RecipeRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -346,6 +347,23 @@ public class DartModLoader implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             if (DartBridge.isInitialized()) {
                 DartBridge.dispatchServerStarted();
+            }
+
+            // Inject Dart recipes after server has fully started
+            // This ensures recipes are available for crafting
+            LOGGER.info("[{}] Injecting Dart recipes on server start...", MOD_ID);
+            RecipeRegistry.injectRecipes(server);
+        });
+
+        // Also inject recipes after data pack reload (e.g., /reload command)
+        ServerLifecycleEvents.END_DATA_PACK_RELOAD.register((server, resourceManager, success) -> {
+            if (success) {
+                LOGGER.info("[{}] Data pack reload complete, re-injecting Dart recipes...", MOD_ID);
+                // Reset the field search so we find the new RecipeManager's field
+                RecipeRegistry.resetFieldSearch();
+                RecipeRegistry.injectRecipes(server);
+            } else {
+                LOGGER.warn("[{}] Data pack reload failed, skipping recipe injection", MOD_ID);
             }
         });
 

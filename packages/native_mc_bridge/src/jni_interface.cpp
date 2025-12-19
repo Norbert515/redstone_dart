@@ -234,6 +234,140 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyBlockPlaced(
 
 /*
  * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockSteppedOn
+ * Signature: (JJIIII)V
+ *
+ * Called when an entity steps on a Dart-defined block.
+ * Routes to Dart's BlockRegistry.dispatchBlockSteppedOn().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyBlockSteppedOn(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z, jint entity_id) {
+
+    dispatch_proxy_block_stepped_on(
+        static_cast<int64_t>(handler_id),
+        static_cast<int64_t>(world_id),
+        static_cast<int32_t>(x),
+        static_cast<int32_t>(y),
+        static_cast<int32_t>(z),
+        static_cast<int32_t>(entity_id));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockFallenUpon
+ * Signature: (JJIIIIF)V
+ *
+ * Called when an entity falls upon a Dart-defined block.
+ * Routes to Dart's BlockRegistry.dispatchBlockFallenUpon().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyBlockFallenUpon(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z, jint entity_id, jfloat fall_distance) {
+
+    dispatch_proxy_block_fallen_upon(
+        static_cast<int64_t>(handler_id),
+        static_cast<int64_t>(world_id),
+        static_cast<int32_t>(x),
+        static_cast<int32_t>(y),
+        static_cast<int32_t>(z),
+        static_cast<int32_t>(entity_id),
+        static_cast<float>(fall_distance));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockRandomTick
+ * Signature: (JJIII)V
+ *
+ * Called on random tick for a Dart-defined block.
+ * Routes to Dart's BlockRegistry.dispatchBlockRandomTick().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyBlockRandomTick(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z) {
+
+    dispatch_proxy_block_random_tick(
+        static_cast<int64_t>(handler_id),
+        static_cast<int64_t>(world_id),
+        static_cast<int32_t>(x),
+        static_cast<int32_t>(y),
+        static_cast<int32_t>(z));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockRemoved
+ * Signature: (JJIII)V
+ *
+ * Called when a Dart-defined block is removed from the world.
+ * Routes to Dart's BlockRegistry.dispatchBlockRemoved().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyBlockRemoved(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z) {
+
+    dispatch_proxy_block_removed(
+        static_cast<int64_t>(handler_id),
+        static_cast<int64_t>(world_id),
+        static_cast<int32_t>(x),
+        static_cast<int32_t>(y),
+        static_cast<int32_t>(z));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockNeighborChanged
+ * Signature: (JJIIIII)V
+ *
+ * Called when a neighbor of a Dart-defined block changes.
+ * Routes to Dart's BlockRegistry.dispatchBlockNeighborChanged().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyBlockNeighborChanged(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z,
+    jint neighbor_x, jint neighbor_y, jint neighbor_z) {
+
+    dispatch_proxy_block_neighbor_changed(
+        static_cast<int64_t>(handler_id),
+        static_cast<int64_t>(world_id),
+        static_cast<int32_t>(x),
+        static_cast<int32_t>(y),
+        static_cast<int32_t>(z),
+        static_cast<int32_t>(neighbor_x),
+        static_cast<int32_t>(neighbor_y),
+        static_cast<int32_t>(neighbor_z));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockEntityInside
+ * Signature: (JJIIII)V
+ *
+ * Called when an entity is inside a Dart-defined block.
+ * Routes to Dart's BlockRegistry.dispatchBlockEntityInside().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyBlockEntityInside(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z, jint entity_id) {
+
+    dispatch_proxy_block_entity_inside(
+        static_cast<int64_t>(handler_id),
+        static_cast<int64_t>(world_id),
+        static_cast<int32_t>(x),
+        static_cast<int32_t>(y),
+        static_cast<int32_t>(z),
+        static_cast<int32_t>(entity_id));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
  * Method:    getDartServiceUrl
  * Signature: ()Ljava/lang/String;
  *

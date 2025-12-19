@@ -45,6 +45,7 @@ export 'entity.dart';
 export 'entity_registry.dart';
 export 'inventory.dart';
 export 'item.dart';
+export 'items.dart';
 export 'item_model.dart';
 export 'item_registry.dart';
 export 'loot_tables.dart';

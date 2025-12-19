@@ -16,7 +16,8 @@
     "client": []
   },
   "mixins": [
-    "framework_tests.mixins.json"
+    "framework_tests.mixins.json",
+    "redstone_bridge.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
