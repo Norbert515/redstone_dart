@@ -82,13 +82,19 @@ class MinecraftRunner {
         stderr.writeln(line);
       });
     } else {
-      // In normal mode, inherit stdio for interactive use
+      // In normal mode, use normal mode and manually pipe stdout/stderr
+      // This allows the parent process to keep stdin for hot reload input
       _process = await Process.start(
         gradlew,
         gradleArgs,
         workingDirectory: project.minecraftDir,
-        mode: ProcessStartMode.inheritStdio,
+        mode: ProcessStartMode.normal,
       );
+
+      // Forward stdout and stderr to the terminal
+      // Note: We intentionally do NOT pipe stdin to allow hot reload input
+      _process!.stdout.listen(stdout.add);
+      _process!.stderr.listen(stderr.add);
     }
 
     // Handle process exit

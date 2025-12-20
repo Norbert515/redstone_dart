@@ -698,7 +698,8 @@ void main() {
   // =========================================================================
   _registerEventHandlers();
 
-  print('Basic Dart Mod ready with ${BlockRegistry.blockCount} custom blocks and ${EntityRegistry.entityCount} custom entities!');
+  print(
+      'Basic Dart Mod ready with ${BlockRegistry.blockCount} custom blocks and ${EntityRegistry.entityCount} custom entities!');
   print('  Commands: /heal, /feed, /fly, /spawn, /time, /spawnzombie, /spawncow, /fireball');
   print('  Items: DartItem, EffectWand');
   print('  Blocks: HelloBlock, TerraformerBlock, MidasBlock, LightningRodBlock,');
@@ -721,7 +722,8 @@ void _registerCommands() {
       if (amount != null && amount > 0) {
         final newHealth = (player.health + amount).clamp(0.0, player.maxHealth);
         player.health = newHealth;
-        context.sendFeedback('§a[Heal] §fHealed for §c$amount§f hearts. Health: §c${newHealth.toInt()}§f/§c${player.maxHealth.toInt()}');
+        context.sendFeedback(
+            '§a[Heal] §fHealed for §c$amount§f hearts. Health: §c${newHealth.toInt()}§f/§c${player.maxHealth.toInt()}');
       } else {
         player.health = player.maxHealth;
         context.sendFeedback('§a[Heal] §fFully healed to §c${player.maxHealth.toInt()}§f hearts!');
