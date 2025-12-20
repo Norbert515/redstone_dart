@@ -177,6 +177,13 @@ public class DartBridge {
     public static native void onProxyEntityAttack(long handlerId, int entityId, int targetId);
     public static native void onProxyEntityTarget(long handlerId, int entityId, int targetId);
 
+    // Projectile proxy native methods - called by DartProjectileProxy
+    public static native void onProxyProjectileHitEntity(long handlerId, int projectileId, int targetId);
+    public static native void onProxyProjectileHitBlock(long handlerId, int projectileId, int x, int y, int z, String side);
+
+    // Animal proxy native methods - called by DartAnimalProxy
+    public static native void onProxyAnimalBreed(long handlerId, int parentId, int partnerId, int babyId);
+
     // Command system native methods - called by CommandRegistry
     public static native int onCommandExecute(long commandId, int playerId, String argsJson);
 
@@ -1573,7 +1580,7 @@ public class DartBridge {
         }
 
         // Get the EntityType from the registry using the handler ID
-        EntityType<com.redstone.proxy.DartEntityProxy> entityType =
+        EntityType<?> entityType =
             com.redstone.proxy.EntityProxyRegistry.getEntityType(handlerId);
         if (entityType == null) {
             LOGGER.warn("spawnDartEntity: No entity type registered for handler ID {}", handlerId);

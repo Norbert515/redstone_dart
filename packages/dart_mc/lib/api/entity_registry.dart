@@ -52,19 +52,40 @@ class EntityRegistry {
     final path = parts[1];
 
     // Create the proxy entity in Java
-    final handlerId = GenericJniBridge.callStaticLongMethod(
-      'com/redstone/proxy/EntityProxyRegistry',
-      'createEntity',
-      '(FFFFFI)J',
-      [
-        entity.settings.width,
-        entity.settings.height,
-        entity.settings.maxHealth,
-        entity.settings.movementSpeed,
-        entity.settings.attackDamage,
-        entity.settings.spawnGroup.index,
-      ],
-    );
+    // For animals, we need to pass the breeding item
+    final int handlerId;
+    if (entity is CustomAnimal) {
+      handlerId = GenericJniBridge.callStaticLongMethod(
+        'com/redstone/proxy/EntityProxyRegistry',
+        'createEntityWithBreedingItem',
+        '(FFFFFIILjava/lang/String;)J',
+        [
+          entity.settings.width,
+          entity.settings.height,
+          entity.settings.maxHealth,
+          entity.settings.movementSpeed,
+          entity.settings.attackDamage,
+          entity.settings.spawnGroup.index,
+          entity.settings.baseType.index,
+          entity.settings.breedingItem,
+        ],
+      );
+    } else {
+      handlerId = GenericJniBridge.callStaticLongMethod(
+        'com/redstone/proxy/EntityProxyRegistry',
+        'createEntity',
+        '(FFFFFII)J',
+        [
+          entity.settings.width,
+          entity.settings.height,
+          entity.settings.maxHealth,
+          entity.settings.movementSpeed,
+          entity.settings.attackDamage,
+          entity.settings.spawnGroup.index,
+          entity.settings.baseType.index,
+        ],
+      );
+    }
 
     if (handlerId == 0) {
       throw StateError('Failed to create proxy entity for: ${entity.id}');
@@ -170,6 +191,54 @@ class EntityRegistry {
     final entity = _entities[handlerId];
     if (entity != null) {
       entity.onTargetAcquired(entityId, targetId);
+    }
+  }
+
+  // ==========================================================================
+  // Projectile dispatch methods - called from native code via events.dart
+  // ==========================================================================
+
+  /// Dispatch a projectile hit entity event to the appropriate handler.
+  static void dispatchProjectileHitEntity(
+    int handlerId,
+    int projectileId,
+    int targetId,
+  ) {
+    final entity = _entities[handlerId];
+    if (entity is CustomProjectile) {
+      entity.onHitEntity(projectileId, targetId);
+    }
+  }
+
+  /// Dispatch a projectile hit block event to the appropriate handler.
+  static void dispatchProjectileHitBlock(
+    int handlerId,
+    int projectileId,
+    int x,
+    int y,
+    int z,
+    String side,
+  ) {
+    final entity = _entities[handlerId];
+    if (entity is CustomProjectile) {
+      entity.onHitBlock(projectileId, x, y, z, side);
+    }
+  }
+
+  // ==========================================================================
+  // Animal dispatch methods - called from native code via events.dart
+  // ==========================================================================
+
+  /// Dispatch an animal breed event to the appropriate handler.
+  static void dispatchAnimalBreed(
+    int handlerId,
+    int entityId,
+    int partnerId,
+    int babyId,
+  ) {
+    final entity = _entities[handlerId];
+    if (entity is CustomAnimal) {
+      entity.onBreed(entityId, partnerId, babyId);
     }
   }
 }

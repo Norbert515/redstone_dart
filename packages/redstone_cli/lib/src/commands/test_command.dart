@@ -204,6 +204,7 @@ class TestCommand extends Command<int> {
     runner.exitCode.then((code) {
       if (!completer.isCompleted) {
         completer.complete(1);
+        shutdownApp(); // Exit the TUI when process exits without DoneEvent
       }
     });
 

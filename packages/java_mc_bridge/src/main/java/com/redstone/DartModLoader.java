@@ -137,6 +137,8 @@ public class DartModLoader implements ModInitializer {
             LOGGER.info("[{}] Init result: {}", MOD_ID, initResult);
             if (!initResult) {
                 LOGGER.error("[{}] Failed to initialize Dart VM!", MOD_ID);
+                LOGGER.error("[{}] Exiting due to Dart initialization failure.", MOD_ID);
+                System.exit(1);
             } else {
                 LOGGER.info("[{}] Dart VM initialized successfully!", MOD_ID);
             }

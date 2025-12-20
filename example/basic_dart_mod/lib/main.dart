@@ -499,6 +499,135 @@ class EffectWand extends CustomItem {
   }
 }
 
+// =============================================================================
+// CUSTOM ENTITIES SHOWCASE
+// =============================================================================
+//
+// The entity system allows you to create custom mobs with Dart behavior.
+// There are three base types:
+//
+// 1. CustomMonster - Hostile mobs that attack players (zombies, skeletons, etc.)
+// 2. CustomAnimal - Passive mobs that can be bred (cows, pigs, etc.)
+// 3. CustomProjectile - Throwable/shootable entities (arrows, fireballs, etc.)
+//
+// Each entity type has specific settings and lifecycle hooks you can override.
+// =============================================================================
+
+/// A hostile zombie-like mob that burns in daylight.
+///
+/// Demonstrates: CustomMonster with hostile AI behavior.
+/// This mob will attack players on sight and burns in sunlight.
+class DartZombie extends CustomMonster {
+  DartZombie()
+      : super(
+          id: 'basic_dart_mod:dart_zombie',
+          settings: const MonsterSettings(
+            maxHealth: 30,
+            attackDamage: 4,
+            movementSpeed: 0.25,
+            burnsInDaylight: true,
+          ),
+        );
+
+  @override
+  void onSpawn(int entityId, int worldId) {
+    print('[DartZombie] Spawned with entity ID: $entityId in world: $worldId');
+  }
+
+  @override
+  void onTick(int entityId) {
+    // Custom behavior every tick - use sparingly for performance!
+    // Example: Could add special abilities, check conditions, etc.
+  }
+
+  @override
+  void onDeath(int entityId, String damageSource) {
+    print('[DartZombie] Died from: $damageSource');
+  }
+
+  @override
+  bool onDamage(int entityId, String damageSource, double amount) {
+    // Example: Take half damage from fire
+    if (damageSource.contains('fire')) {
+      print('[DartZombie] Resisting fire damage!');
+      // Still take damage but we logged it
+    }
+    return true; // Allow the damage
+  }
+
+  @override
+  void onAttack(int entityId, int targetId) {
+    print('[DartZombie] Attacking target: $targetId');
+  }
+}
+
+/// A friendly cow-like animal that can be bred with wheat.
+///
+/// Demonstrates: CustomAnimal with breeding mechanics.
+/// This animal is passive and can be bred using wheat.
+class DartCow extends CustomAnimal {
+  DartCow()
+      : super(
+          id: 'basic_dart_mod:dart_cow',
+          settings: const AnimalSettings(
+            maxHealth: 15,
+            movementSpeed: 0.2,
+            width: 0.9,
+            height: 1.4,
+            breedingItem: 'minecraft:wheat',
+          ),
+        );
+
+  @override
+  void onSpawn(int entityId, int worldId) {
+    print('[DartCow] Moo! Spawned with entity ID: $entityId');
+  }
+
+  @override
+  void onBreed(int entityId, int partnerId, int babyId) {
+    print('[DartCow] Baby cow born! Parent: $entityId, Partner: $partnerId, Baby: $babyId');
+  }
+
+  @override
+  void onDeath(int entityId, String damageSource) {
+    print('[DartCow] A DartCow has died from: $damageSource');
+  }
+}
+
+/// A fireball projectile that explodes on impact.
+///
+/// Demonstrates: CustomProjectile with hit detection.
+/// This projectile has low gravity and explodes when hitting blocks or entities.
+class DartFireball extends CustomProjectile {
+  DartFireball()
+      : super(
+          id: 'basic_dart_mod:dart_fireball',
+          settings: const ProjectileSettings(
+            width: 0.5,
+            height: 0.5,
+            gravity: 0.01, // Low gravity for longer range
+            noClip: false,
+          ),
+        );
+
+  @override
+  void onSpawn(int entityId, int worldId) {
+    print('[DartFireball] Launched with entity ID: $entityId');
+  }
+
+  @override
+  void onHitEntity(int projectileId, int targetId) {
+    print('[DartFireball] Hit entity: $targetId - dealing fire damage!');
+    // The actual damage/explosion logic would be handled by the Java proxy
+  }
+
+  @override
+  void onHitBlock(int projectileId, int x, int y, int z, String side) {
+    print('[DartFireball] Hit block at ($x, $y, $z) from side: $side - exploding!');
+    // The actual explosion logic would be handled by the Java proxy
+  }
+}
+
 /// Main entry point for your mod.
 ///
 /// This is called when the Dart VM is initialized by the native bridge.
@@ -537,6 +666,15 @@ void main() {
   BlockRegistry.freeze();
 
   // =========================================================================
+  // Register custom entities
+  // Demonstrates the Entity System API (CustomMonster, CustomAnimal, CustomProjectile)
+  // =========================================================================
+  EntityRegistry.register(DartZombie()); // Hostile mob that burns in daylight
+  EntityRegistry.register(DartCow()); // Passive animal that can be bred
+  EntityRegistry.register(DartFireball()); // Projectile entity
+  EntityRegistry.freeze();
+
+  // =========================================================================
   // NEW: Register custom commands
   // Demonstrates the Commands API
   // =========================================================================
@@ -560,11 +698,12 @@ void main() {
   // =========================================================================
   _registerEventHandlers();
 
-  print('Basic Dart Mod ready with ${BlockRegistry.blockCount} custom blocks!');
-  print('  Commands: /heal, /feed, /fly, /spawn, /time');
+  print('Basic Dart Mod ready with ${BlockRegistry.blockCount} custom blocks and ${EntityRegistry.entityCount} custom entities!');
+  print('  Commands: /heal, /feed, /fly, /spawn, /time, /spawnzombie, /spawncow, /fireball');
   print('  Items: DartItem, EffectWand');
   print('  Blocks: HelloBlock, TerraformerBlock, MidasBlock, LightningRodBlock,');
   print('          MobSpawnerBlock, PartyBlock, WeatherControlBlock, EntityRadarBlock');
+  print('  Entities: DartZombie (monster), DartCow (animal), DartFireball (projectile)');
 }
 
 // =============================================================================
@@ -687,7 +826,79 @@ void _registerCommands() {
     ],
   );
 
-  print('Commands: Registered 5 custom commands');
+  // =========================================================================
+  // Custom Entity Spawn Commands
+  // These commands make it easy to test the custom entities
+  // =========================================================================
+
+  // /spawnzombie - Spawns a DartZombie at the player's location
+  Commands.register(
+    'spawnzombie',
+    execute: (context) {
+      final player = context.source;
+      final world = World.overworld;
+
+      final entity = Entities.spawn(world, 'basic_dart_mod:dart_zombie', player.precisePosition);
+      if (entity != null) {
+        context.sendFeedback('§c[DartZombie] §fSpawned a hostile Dart Zombie!');
+        world.spawnParticles(Particles.smoke, player.precisePosition, count: 30, delta: Vec3(0.5, 1.0, 0.5));
+        world.playSound(player.precisePosition, Sounds.hurt, volume: 1.0);
+        return 1;
+      }
+      context.sendError('§c[DartZombie] §fFailed to spawn entity');
+      return 0;
+    },
+    description: 'Spawns a custom DartZombie at your location',
+  );
+
+  // /spawncow - Spawns a DartCow at the player's location
+  Commands.register(
+    'spawncow',
+    execute: (context) {
+      final player = context.source;
+      final world = World.overworld;
+
+      final entity = Entities.spawn(world, 'basic_dart_mod:dart_cow', player.precisePosition);
+      if (entity != null) {
+        context.sendFeedback('§a[DartCow] §fSpawned a friendly Dart Cow! (Breed with wheat)');
+        world.spawnParticles(Particles.heart, player.precisePosition, count: 10, delta: Vec3(0.5, 0.5, 0.5));
+        world.playSound(player.precisePosition, Sounds.eat, volume: 1.0);
+        return 1;
+      }
+      context.sendError('§a[DartCow] §fFailed to spawn entity');
+      return 0;
+    },
+    description: 'Spawns a custom DartCow at your location',
+  );
+
+  // /fireball - Spawns a DartFireball projectile in the player's facing direction
+  Commands.register(
+    'fireball',
+    execute: (context) {
+      final player = context.source;
+      final world = World.overworld;
+
+      // Spawn the fireball slightly in front of the player
+      final yawRad = player.yaw * (pi / 180.0);
+      final dx = -sin(yawRad);
+      final dz = cos(yawRad);
+
+      final spawnPos = player.precisePosition + Vec3(dx * 2, 1.5, dz * 2);
+
+      final entity = Entities.spawn(world, 'basic_dart_mod:dart_fireball', spawnPos);
+      if (entity != null) {
+        context.sendFeedback('§6[DartFireball] §fLaunched a fireball!');
+        world.spawnParticles(Particles.flame, spawnPos, count: 20, delta: Vec3(0.2, 0.2, 0.2));
+        world.playSound(player.precisePosition, Sounds.explosion, volume: 0.5);
+        return 1;
+      }
+      context.sendError('§6[DartFireball] §fFailed to spawn projectile');
+      return 0;
+    },
+    description: 'Spawns a custom DartFireball projectile',
+  );
+
+  print('Commands: Registered 8 custom commands');
 }
 
 // =============================================================================
