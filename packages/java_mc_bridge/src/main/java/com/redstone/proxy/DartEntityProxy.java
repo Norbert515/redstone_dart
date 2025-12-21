@@ -34,9 +34,12 @@ public class DartEntityProxy extends PathfinderMob {
     @Override
     public void tick() {
         super.tick();
-        if (!level().isClientSide() && DartBridge.isInitialized()) {
-            DartBridge.onProxyEntityTick(dartHandlerId, getId());
-        }
+        // NOTE: Tick callbacks disabled for performance.
+        // Each tick callback requires JNI -> Native -> Dart isolate entry/exit.
+        // TODO: Add needsTickCallback flag to EntityProxyRegistry
+        // if (!level().isClientSide() && DartBridge.isInitialized()) {
+        //     DartBridge.onProxyEntityTick(dartHandlerId, getId());
+        // }
     }
 
     /**

@@ -13,7 +13,9 @@
     "main": [
       "com.redstone.DartModLoader"
     ],
-    "client": []
+    "client": [
+      "com.redstone.DartModClientLoader"
+    ]
   },
   "mixins": [
     "basic_dart_mod.mixins.json"

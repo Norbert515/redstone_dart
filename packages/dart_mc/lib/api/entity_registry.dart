@@ -58,7 +58,7 @@ class EntityRegistry {
       handlerId = GenericJniBridge.callStaticLongMethod(
         'com/redstone/proxy/EntityProxyRegistry',
         'createEntityWithBreedingItem',
-        '(FFFFFIILjava/lang/String;)J',
+        '(DDDDDIILjava/lang/String;)J',
         [
           entity.settings.width,
           entity.settings.height,
@@ -74,7 +74,7 @@ class EntityRegistry {
       handlerId = GenericJniBridge.callStaticLongMethod(
         'com/redstone/proxy/EntityProxyRegistry',
         'createEntity',
-        '(FFFFFII)J',
+        '(DDDDDII)J',
         [
           entity.settings.width,
           entity.settings.height,

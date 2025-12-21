@@ -28,8 +28,14 @@ loom {
 sourceSets {
     main {
         java {
-            // Include Redstone bridge code
+            // Include Redstone bridge code (server-side)
             srcDir '../.redstone/bridge/java'
+        }
+    }
+    client {
+        java {
+            // Include Redstone client bridge code (uses client-only APIs)
+            srcDir '../.redstone/bridge/client/java'
         }
     }
 }

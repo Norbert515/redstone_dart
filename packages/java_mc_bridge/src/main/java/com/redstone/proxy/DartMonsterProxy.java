@@ -43,12 +43,17 @@ public class DartMonsterProxy extends Monster {
     @Override
     public void tick() {
         super.tick();
-        if (!level().isClientSide() && DartBridge.isInitialized()) {
-            // Handle burning in daylight like zombies
+        if (!level().isClientSide()) {
+            // Handle burning in daylight like zombies (this is cheap, keep it)
             if (burnsInDaylight) {
                 handleBurnsInDaylight();
             }
-            DartBridge.onProxyEntityTick(dartHandlerId, getId());
+            // NOTE: Tick callbacks disabled for performance.
+            // Each tick callback requires JNI -> Native -> Dart isolate entry/exit.
+            // TODO: Add needsTickCallback flag to EntityProxyRegistry
+            // if (DartBridge.isInitialized()) {
+            //     DartBridge.onProxyEntityTick(dartHandlerId, getId());
+            // }
         }
     }
 

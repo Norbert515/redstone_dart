@@ -11,13 +11,15 @@
 #include <cstring>
 #include <mutex>
 #include <thread>
+#include <chrono>
 
 // Dart VM state
 static Dart_Isolate g_isolate = nullptr;
 static bool g_initialized = false;
 
 // Thread synchronization for isolate access
-static std::mutex g_isolate_mutex;
+// Using recursive_mutex to allow the same thread to check ownership while holding the lock
+static std::recursive_mutex g_isolate_mutex;
 static std::thread::id g_isolate_owner_thread;
 static int g_isolate_entry_count = 0;  // For re-entrant calls from same thread
 
@@ -27,6 +29,12 @@ static JavaVM* g_jvm_ref = nullptr;
 // Java callback for sending chat messages
 static SendChatMessageCallback g_send_chat_callback = nullptr;
 
+// Debug: Call counters for profiling
+static int g_tick_count = 0;
+static int g_entity_tick_count = 0;
+static int g_other_callback_count = 0;
+static auto g_last_report_time = std::chrono::steady_clock::now();
+
 // Helper to safely enter isolate with thread synchronization
 // Returns true if we entered (and thus need to exit), false if already entered by this thread
 static bool safe_enter_isolate() {
@@ -34,7 +42,7 @@ static bool safe_enter_isolate() {
 
     // Check if we already own the isolate on this thread (re-entrant call)
     {
-        std::lock_guard<std::mutex> lock(g_isolate_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_isolate_mutex);
         if (g_isolate_owner_thread == this_thread && g_isolate_entry_count > 0) {
             // Already entered on this thread, just bump the count
             g_isolate_entry_count++;
@@ -179,7 +187,7 @@ void dart_bridge_shutdown() {
 
     // Shutdown Dart
     if (g_isolate != nullptr) {
-        std::lock_guard<std::mutex> lock(g_isolate_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_isolate_mutex);
         Dart_EnterIsolate(g_isolate);
         Dart_ShutdownIsolate();
         g_isolate = nullptr;
@@ -281,6 +289,22 @@ int32_t dispatch_block_interact(int32_t x, int32_t y, int32_t z, int64_t player_
 
 void dispatch_tick(int64_t tick) {
     if (!g_initialized || g_isolate == nullptr) return;
+
+    g_tick_count++;
+
+    // Report stats every second
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - g_last_report_time).count();
+    if (elapsed >= 1) {
+        std::cerr << "[PROFILE] tick=" << g_tick_count
+                  << " entity_tick=" << g_entity_tick_count
+                  << " other=" << g_other_callback_count
+                  << " (per " << elapsed << "s)" << std::endl;
+        g_tick_count = 0;
+        g_entity_tick_count = 0;
+        g_other_callback_count = 0;
+        g_last_report_time = now;
+    }
 
     bool did_enter = safe_enter_isolate();
     Dart_EnterScope();

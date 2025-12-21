@@ -45,6 +45,11 @@ class EntitySettings {
   /// The spawn group (determines despawning behavior and spawn caps).
   final SpawnGroup spawnGroup;
 
+  /// Whether the entity needs tick callbacks.
+  /// Set to true only if you override onTick with meaningful behavior.
+  /// Tick callbacks are expensive (20 times/second per entity).
+  final bool needsTickCallback;
+
   /// The base type determines which Java proxy class is used.
   EntityBaseType get baseType => EntityBaseType.pathfinderMob;
 
@@ -55,6 +60,7 @@ class EntitySettings {
     this.movementSpeed = 0.25,
     this.attackDamage = 2.0,
     this.spawnGroup = SpawnGroup.creature,
+    this.needsTickCallback = false,
   });
 }
 
@@ -73,6 +79,7 @@ class MonsterSettings extends EntitySettings {
     super.movementSpeed = 0.23,
     super.attackDamage = 3,
     this.burnsInDaylight = false,
+    super.needsTickCallback = false,
   }) : super(spawnGroup: SpawnGroup.monster);
 
   @override
@@ -95,6 +102,7 @@ class AnimalSettings extends EntitySettings {
     super.movementSpeed = 0.2,
     super.attackDamage = 0,
     this.breedingItem,
+    super.needsTickCallback = false,
   }) : super(spawnGroup: SpawnGroup.creature);
 
   @override
@@ -117,6 +125,7 @@ class ProjectileSettings extends EntitySettings {
     super.height = 0.25,
     this.gravity = 0.03,
     this.noClip = false,
+    super.needsTickCallback = false,
   }) : super(
           maxHealth: 1,
           movementSpeed: 0,
