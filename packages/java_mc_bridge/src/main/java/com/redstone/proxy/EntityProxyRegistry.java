@@ -38,7 +38,30 @@ public class EntityProxyRegistry {
     private static final Map<Long, EntityType<?>> entityTypes = new HashMap<>();
     private static final Map<Long, EntitySettings> pendingSettings = new HashMap<>();
     private static final Map<Long, Item> animalBreedingItems = new HashMap<>();
+    private static final Map<Long, Integer> entityBaseTypes = new HashMap<>();
     private static long nextHandlerId = 1;
+
+    // Callback for entity registration (used by client to register renderers)
+    private static EntityRegistrationCallback registrationCallback = null;
+
+    @FunctionalInterface
+    public interface EntityRegistrationCallback {
+        void onEntityRegistered(EntityType<?> entityType, long handlerId);
+    }
+
+    /**
+     * Set a callback to be notified when entities are registered.
+     * Used by client-side code to register renderers.
+     */
+    public static void setRegistrationCallback(EntityRegistrationCallback callback) {
+        registrationCallback = callback;
+        LOGGER.info("Entity registration callback set");
+
+        // Call callback for any already-registered entities
+        for (var entry : entityTypes.entrySet()) {
+            callback.onEntityRegistered(entry.getValue(), entry.getKey());
+        }
+    }
 
     // Base type constants matching Dart side
     public static final int BASE_TYPE_PATHFINDER_MOB = 0;
@@ -50,7 +73,7 @@ public class EntityProxyRegistry {
      * Holds entity settings between createEntity() and registerEntity() calls.
      */
     private record EntitySettings(
-        float width, float height, double maxHealth,
+        double width, double height, double maxHealth,
         double movementSpeed, double attackDamage, int spawnGroup, int baseType,
         String breedingItem
     ) {}
@@ -70,8 +93,8 @@ public class EntityProxyRegistry {
      * @param baseType Entity base type (0=PathfinderMob, 1=Monster, 2=Animal, 3=Projectile).
      * @return The handler ID to use when registering the entity.
      */
-    public static long createEntity(float width, float height, float maxHealth,
-                                     float movementSpeed, float attackDamage, int spawnGroup, int baseType) {
+    public static long createEntity(double width, double height, double maxHealth,
+                                     double movementSpeed, double attackDamage, int spawnGroup, int baseType) {
         return createEntityWithBreedingItem(width, height, maxHealth, movementSpeed, attackDamage, spawnGroup, baseType, null);
     }
 
@@ -91,8 +114,8 @@ public class EntityProxyRegistry {
      * @param breedingItem The breeding item identifier (e.g., "minecraft:wheat"), or null if not applicable.
      * @return The handler ID to use when registering the entity.
      */
-    public static long createEntityWithBreedingItem(float width, float height, float maxHealth,
-                                     float movementSpeed, float attackDamage, int spawnGroup, int baseType,
+    public static long createEntityWithBreedingItem(double width, double height, double maxHealth,
+                                     double movementSpeed, double attackDamage, int spawnGroup, int baseType,
                                      String breedingItem) {
         long handlerId = nextHandlerId++;
 
@@ -149,7 +172,7 @@ public class EntityProxyRegistry {
                 // Projectiles don't use createMob - use create() instead
                 entityType = FabricEntityTypeBuilder.<DartProjectileProxy>create(category,
                         (type, level) -> new DartProjectileProxy(type, level, capturedHandlerId))
-                    .dimensions(EntityDimensions.fixed(settings.width(), settings.height()))
+                    .dimensions(EntityDimensions.fixed((float) settings.width(), (float) settings.height()))
                     .trackRangeChunks(4)
                     .trackedUpdateRate(10)
                     .build(key);
@@ -164,7 +187,7 @@ public class EntityProxyRegistry {
                 EntityType<DartMonsterProxy> monsterEntityType = FabricEntityTypeBuilder.<DartMonsterProxy>createMob()
                     .spawnGroup(category)
                     .entityFactory((type, level) -> new DartMonsterProxy(type, level, capturedHandlerId))
-                    .dimensions(EntityDimensions.fixed(settings.width(), settings.height()))
+                    .dimensions(EntityDimensions.fixed((float) settings.width(), (float) settings.height()))
                     .build(key);
 
                 // Register with Minecraft's entity type registry
@@ -203,7 +226,7 @@ public class EntityProxyRegistry {
                 EntityType<DartAnimalProxy> animalEntityType = FabricEntityTypeBuilder.<DartAnimalProxy>createMob()
                     .spawnGroup(category)
                     .entityFactory((type, level) -> new DartAnimalProxy(type, level, capturedHandlerId, capturedBreedingItem))
-                    .dimensions(EntityDimensions.fixed(settings.width(), settings.height()))
+                    .dimensions(EntityDimensions.fixed((float) settings.width(), (float) settings.height()))
                     .build(key);
 
                 // Register with Minecraft's entity type registry
@@ -224,7 +247,7 @@ public class EntityProxyRegistry {
                 EntityType<DartEntityProxy> mobEntityType = FabricEntityTypeBuilder.<DartEntityProxy>createMob()
                     .spawnGroup(category)
                     .entityFactory((type, level) -> new DartEntityProxy(type, level, capturedHandlerId))
-                    .dimensions(EntityDimensions.fixed(settings.width(), settings.height()))
+                    .dimensions(EntityDimensions.fixed((float) settings.width(), (float) settings.height()))
                     .build(key);
 
                 // Register with Minecraft's entity type registry
@@ -240,7 +263,13 @@ public class EntityProxyRegistry {
             }
 
             entityTypes.put(handlerId, entityType);
+            entityBaseTypes.put(handlerId, settings.baseType());
             pendingSettings.remove(handlerId);
+
+            // Notify callback (for client-side renderer registration)
+            if (registrationCallback != null) {
+                registrationCallback.onEntityRegistered(entityType, handlerId);
+            }
 
             return true;
         } catch (Exception e) {
@@ -255,6 +284,17 @@ public class EntityProxyRegistry {
      */
     public static EntityType<?> getEntityType(long handlerId) {
         return entityTypes.get(handlerId);
+    }
+
+    /**
+     * Get the base type for a handler ID.
+     *
+     * @param handlerId The handler ID of the entity.
+     * @return The base type constant, or -1 if not found.
+     */
+    public static int getBaseType(long handlerId) {
+        Integer baseType = entityBaseTypes.get(handlerId);
+        return baseType != null ? baseType : -1;
     }
 
     /**

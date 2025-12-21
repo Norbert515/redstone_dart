@@ -113,11 +113,18 @@ class BridgeSync {
     return null;
   }
 
-  /// Get the source bridge directory path
+  /// Get the source bridge directory path (main source set)
   static String? getSourceBridgeDir() {
     final packagesDir = findPackagesDir();
     if (packagesDir == null) return null;
     return p.join(packagesDir, 'java_mc_bridge', 'src', 'main');
+  }
+
+  /// Get the client source bridge directory path (client source set)
+  static String? getClientSourceBridgeDir() {
+    final packagesDir = findPackagesDir();
+    if (packagesDir == null) return null;
+    return p.join(packagesDir, 'java_mc_bridge', 'src', 'client');
   }
 
   /// Copy bridge code from source to target directory
@@ -174,7 +181,7 @@ class BridgeSync {
       return false;
     }
 
-    final currentHash = computeDirectoryHash(sourceDir);
+    final currentHash = computeSourceBridgeHash();
     final storedHash = getStoredBridgeHash(projectDir);
 
     if (storedHash == currentHash) {
@@ -184,8 +191,20 @@ class BridgeSync {
     // Need to sync
     Logger.info('Bridge code updated (hash mismatch detected)');
 
+    // Sync main bridge code
     final targetDir = Directory(p.join(projectDir, '.redstone', 'bridge'));
     await copyBridgeCode(sourceDir, targetDir);
+
+    // Sync client bridge code if it exists
+    final clientSourceDirPath = getClientSourceBridgeDir();
+    if (clientSourceDirPath != null) {
+      final clientSourceDir = Directory(clientSourceDirPath);
+      if (clientSourceDir.existsSync()) {
+        final clientTargetDir = Directory(p.join(projectDir, '.redstone', 'bridge', 'client'));
+        await copyBridgeCode(clientSourceDir, clientTargetDir);
+      }
+    }
+
     updateBridgeHash(projectDir, currentHash);
 
     return true;
@@ -193,14 +212,30 @@ class BridgeSync {
 
   /// Compute the current source bridge hash
   ///
+  /// Includes both main and client source directories.
   /// Returns empty string if source not found.
   static String computeSourceBridgeHash() {
-    final sourceDirPath = getSourceBridgeDir();
-    if (sourceDirPath == null) return '';
+    final mainSourceDirPath = getSourceBridgeDir();
+    if (mainSourceDirPath == null) return '';
 
-    final sourceDir = Directory(sourceDirPath);
-    if (!sourceDir.existsSync()) return '';
+    final mainSourceDir = Directory(mainSourceDirPath);
+    if (!mainSourceDir.existsSync()) return '';
 
-    return computeDirectoryHash(sourceDir);
+    // Compute hash for main source
+    final mainHash = computeDirectoryHash(mainSourceDir);
+
+    // Include client source in hash if it exists
+    final clientSourceDirPath = getClientSourceBridgeDir();
+    if (clientSourceDirPath != null) {
+      final clientSourceDir = Directory(clientSourceDirPath);
+      if (clientSourceDir.existsSync()) {
+        final clientHash = computeDirectoryHash(clientSourceDir);
+        // Combine both hashes
+        final combinedInput = 'main:$mainHash\nclient:$clientHash';
+        return sha256.convert(utf8.encode(combinedInput)).toString();
+      }
+    }
+
+    return mainHash;
   }
 }

@@ -131,6 +131,7 @@ class ProjectCreator {
       'minecraft/gradle/wrapper',
       '.redstone/native',
       '.redstone/bridge/java/com/redstone/proxy',
+      '.redstone/bridge/client/com/redstone',
     ];
 
     for (final dir in dirs) {
@@ -227,15 +228,24 @@ class ProjectCreator {
       return;
     }
 
-    final sourceDir = Directory(p.join(packagesDir, 'java_mc_bridge', 'src', 'main'));
+    // Copy main bridge code (server-side)
+    final mainSourceDir = Directory(p.join(packagesDir, 'java_mc_bridge', 'src', 'main'));
     final targetBridgeDir = Directory(p.join(targetDir, '.redstone', 'bridge'));
 
-    if (!sourceDir.existsSync()) {
-      Logger.warning('Java bridge package not found at ${sourceDir.path}');
+    if (!mainSourceDir.existsSync()) {
+      Logger.warning('Java bridge package not found at ${mainSourceDir.path}');
       return;
     }
 
-    await _copyDirectory(sourceDir, targetBridgeDir);
+    await _copyDirectory(mainSourceDir, targetBridgeDir);
+
+    // Copy client bridge code (client-side, uses client-only APIs)
+    final clientSourceDir = Directory(p.join(packagesDir, 'java_mc_bridge', 'src', 'client'));
+    final targetClientBridgeDir = Directory(p.join(targetDir, '.redstone', 'bridge', 'client'));
+
+    if (clientSourceDir.existsSync()) {
+      await _copyDirectory(clientSourceDir, targetClientBridgeDir);
+    }
   }
 
   Future<void> _writeVersionFile() async {
@@ -649,8 +659,14 @@ loom {
 sourceSets {
     main {
         java {
-            // Include Redstone bridge code
+            // Include Redstone bridge code (server-side)
             srcDir '../.redstone/bridge/java'
+        }
+    }
+    client {
+        java {
+            // Include Redstone client bridge code (uses client-only APIs)
+            srcDir '../.redstone/bridge/client/java'
         }
     }
 }
@@ -753,7 +769,9 @@ org.gradle.configuration-cache=false
     "main": [
       "com.redstone.DartModLoader"
     ],
-    "client": []
+    "client": [
+      "com.redstone.DartModClientLoader"
+    ]
   },
   "mixins": [
     "{{project_name}}.mixins.json"
