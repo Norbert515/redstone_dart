@@ -318,6 +318,10 @@ extern "C" {
     typedef void (*ProxyEntityAttackCallback)(int64_t handler_id, int32_t entity_id, int32_t target_id);
     typedef void (*ProxyEntityTargetCallback)(int64_t handler_id, int32_t entity_id, int32_t target_id);
 
+    // Item proxy callbacks (called from Dart via FFI, invoked from Java proxy classes)
+    // ProxyItemAttackEntityCallback returns true to allow attack, false to cancel
+    typedef bool (*ProxyItemAttackEntityCallback)(int64_t handler_id, int32_t world_id, int32_t attacker_id, int32_t target_id);
+
     // Entity proxy callback registration (called from Dart via FFI)
     void register_proxy_entity_spawn_handler(ProxyEntitySpawnCallback cb);
     void register_proxy_entity_tick_handler(ProxyEntityTickCallback cb);
@@ -326,6 +330,9 @@ extern "C" {
     void register_proxy_entity_attack_handler(ProxyEntityAttackCallback cb);
     void register_proxy_entity_target_handler(ProxyEntityTargetCallback cb);
 
+    // Item proxy callback registration (called from Dart via FFI)
+    void register_proxy_item_attack_entity_handler(ProxyItemAttackEntityCallback cb);
+
     // Entity proxy dispatch functions (called from Java via JNI)
     void dispatch_proxy_entity_spawn(int64_t handler_id, int32_t entity_id, int64_t world_id);
     void dispatch_proxy_entity_tick(int64_t handler_id, int32_t entity_id);
@@ -333,6 +340,10 @@ extern "C" {
     bool dispatch_proxy_entity_damage(int64_t handler_id, int32_t entity_id, const char* damage_source, double amount);
     void dispatch_proxy_entity_attack(int64_t handler_id, int32_t entity_id, int32_t target_id);
     void dispatch_proxy_entity_target(int64_t handler_id, int32_t entity_id, int32_t target_id);
+
+    // Item proxy dispatch functions (called from Java via JNI)
+    // Returns true to allow attack, false to cancel
+    bool dispatch_proxy_item_attack_entity(int64_t handler_id, int32_t world_id, int32_t attacker_id, int32_t target_id);
 
     // ==========================================================================
     // Command System Callbacks

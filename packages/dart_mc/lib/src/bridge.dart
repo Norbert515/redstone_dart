@@ -84,6 +84,14 @@ typedef ProxyEntityTargetCallbackNative = Void Function(
     Int64 handlerId, Int32 entityId, Int32 targetId);
 
 // =============================================================================
+// Proxy Item Callback Types (for custom Dart-defined items)
+// =============================================================================
+
+/// Item attack entity callback - returns true to indicate the attack was handled
+typedef ProxyItemAttackEntityCallbackNative = Bool Function(
+    Int64 handlerId, Int32 worldId, Int32 attackerId, Int32 targetId);
+
+// =============================================================================
 // Command System Callback Types
 // =============================================================================
 
@@ -372,6 +380,15 @@ typedef RegisterProxyEntityTargetHandlerNative = Void Function(
     Pointer<NativeFunction<ProxyEntityTargetCallbackNative>> callback);
 typedef RegisterProxyEntityTargetHandler = void Function(
     Pointer<NativeFunction<ProxyEntityTargetCallbackNative>> callback);
+
+// =============================================================================
+// Proxy Item Handler Registration Signatures
+// =============================================================================
+
+typedef RegisterProxyItemAttackEntityHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyItemAttackEntityCallbackNative>> callback);
+typedef RegisterProxyItemAttackEntityHandler = void Function(
+    Pointer<NativeFunction<ProxyItemAttackEntityCallbackNative>> callback);
 
 // =============================================================================
 // Command System Handler Registration Signatures
@@ -838,6 +855,19 @@ class Bridge {
       Pointer<NativeFunction<ProxyEntityTargetCallbackNative>> callback) {
     final register = library.lookupFunction<RegisterProxyEntityTargetHandlerNative,
         RegisterProxyEntityTargetHandler>('register_proxy_entity_target_handler');
+    register(callback);
+  }
+
+  // ===========================================================================
+  // Proxy Item Handler Registration Methods
+  // ===========================================================================
+
+  /// Register a proxy item attack entity handler.
+  /// This is called when a player attacks an entity with a Dart-defined custom item.
+  static void registerProxyItemAttackEntityHandler(
+      Pointer<NativeFunction<ProxyItemAttackEntityCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyItemAttackEntityHandlerNative,
+        RegisterProxyItemAttackEntityHandler>('register_proxy_item_attack_entity_handler');
     register(callback);
   }
 

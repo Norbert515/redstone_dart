@@ -12,6 +12,7 @@ import 'bridge.dart';
 import 'types.dart';
 import '../api/block_registry.dart';
 import '../api/entity_registry.dart';
+import '../api/item_registry.dart';
 import '../api/player.dart';
 import '../api/entity.dart';
 import '../api/item.dart';
@@ -33,6 +34,7 @@ BlockInteractHandler? _blockInteractHandler;
 final List<TickHandler> _tickListeners = [];
 bool _proxyHandlersRegistered = false;
 bool _proxyEntityHandlersRegistered = false;
+bool _proxyItemHandlersRegistered = false;
 
 // New event handlers
 void Function(Player player)? _playerJoinHandler;
@@ -288,6 +290,15 @@ void _onProxyEntityTarget(int handlerId, int entityId, int targetId) {
   EntityRegistry.dispatchTargetAcquired(handlerId, entityId, targetId);
 }
 
+// =============================================================================
+// Proxy Item Callback Trampolines - route to ItemRegistry
+// =============================================================================
+
+@pragma('vm:entry-point')
+bool _onProxyItemAttackEntity(int handlerId, int worldId, int attackerId, int targetId) {
+  return ItemRegistry.dispatchItemAttackEntity(handlerId, worldId, attackerId, targetId);
+}
+
 /// Event registration API.
 class Events {
   Events._();
@@ -446,6 +457,28 @@ class Events {
     Bridge.registerProxyEntityTargetHandler(targetCallback);
 
     print('Events: Proxy entity handlers registered');
+  }
+
+  /// Register proxy item callback handlers with native code.
+  ///
+  /// This is called automatically during mod initialization.
+  /// It routes proxy item events to ItemRegistry which dispatches
+  /// to the appropriate CustomItem instances.
+  static void registerProxyItemHandlers() {
+    if (_proxyItemHandlersRegistered) return;
+    _proxyItemHandlersRegistered = true;
+
+    if (Bridge.isDatagenMode) {
+      print('Events: Skipping proxy item handlers (datagen mode)');
+      return;
+    }
+
+    // Attack entity callback - default: allow attack (return true)
+    final attackEntityCallback = Pointer.fromFunction<ProxyItemAttackEntityCallbackNative>(
+        _onProxyItemAttackEntity, true);
+    Bridge.registerProxyItemAttackEntityHandler(attackEntityCallback);
+
+    print('Events: Proxy item handlers registered');
   }
 
   // ==========================================================================

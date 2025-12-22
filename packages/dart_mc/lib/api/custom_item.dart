@@ -1,5 +1,53 @@
 import 'item_model.dart';
 
+/// Combat attributes for weapon items.
+///
+/// These attributes affect how much damage the item deals when used as a weapon.
+class CombatAttributes {
+  /// Additional attack damage (added to base player damage of 1)
+  final double attackDamage;
+
+  /// Attack speed modifier (default player speed is 4.0, swords use -2.4)
+  final double attackSpeed;
+
+  /// Additional knockback applied on hit
+  final double attackKnockback;
+
+  const CombatAttributes({
+    required this.attackDamage,
+    this.attackSpeed = -2.4,
+    this.attackKnockback = 0.0,
+  });
+
+  /// Creates combat attributes for a sword-like weapon.
+  /// Swords have faster attack speed than axes.
+  factory CombatAttributes.sword({
+    required double damage,
+    double speed = -2.4,
+    double knockback = 0.0,
+  }) {
+    return CombatAttributes(
+      attackDamage: damage,
+      attackSpeed: speed,
+      attackKnockback: knockback,
+    );
+  }
+
+  /// Creates combat attributes for an axe-like weapon.
+  /// Axes are slower but can deal more damage per hit.
+  factory CombatAttributes.axe({
+    required double damage,
+    double speed = -3.0,
+    double knockback = 0.0,
+  }) {
+    return CombatAttributes(
+      attackDamage: damage,
+      attackSpeed: speed,
+      attackKnockback: knockback,
+    );
+  }
+}
+
 /// Settings for creating an item.
 class ItemSettings {
   /// Maximum stack size (1-64, default 64)
@@ -11,10 +59,14 @@ class ItemSettings {
   /// Whether the item survives fire/lava
   final bool fireResistant;
 
+  /// Combat attributes for weapon items (optional)
+  final CombatAttributes? combat;
+
   const ItemSettings({
     this.maxStackSize = 64,
     this.maxDamage = 0,
     this.fireResistant = false,
+    this.combat,
   });
 }
 
@@ -111,5 +163,16 @@ abstract class CustomItem {
     int hand,
   ) {
     return ItemActionResult.pass;
+  }
+
+  /// Called when the item is used to attack an entity (left-click hit).
+  ///
+  /// [worldId] - The world where the attack occurred
+  /// [attackerId] - The entity ID of the attacker (usually the player)
+  /// [targetId] - The entity ID of the entity that was hit
+  ///
+  /// Return true to indicate the attack was handled specially.
+  bool onAttackEntity(int worldId, int attackerId, int targetId) {
+    return false; // Not handled by default
   }
 }

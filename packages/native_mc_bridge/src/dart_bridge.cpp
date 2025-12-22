@@ -1243,6 +1243,14 @@ void register_proxy_entity_target_handler(ProxyEntityTargetCallback cb) {
 }
 
 // ==========================================================================
+// Item Proxy Callback Registration (called from Dart via FFI)
+// ==========================================================================
+
+void register_proxy_item_attack_entity_handler(ProxyItemAttackEntityCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyItemAttackEntityHandler(cb);
+}
+
+// ==========================================================================
 // Entity Proxy Dispatch (called from Java via JNI)
 // ==========================================================================
 
@@ -1300,6 +1308,21 @@ void dispatch_proxy_entity_target(int64_t handler_id, int32_t entity_id, int32_t
     dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityTarget(handler_id, entity_id, target_id);
     Dart_ExitScope();
     safe_exit_isolate(did_enter);
+}
+
+// ==========================================================================
+// Item Proxy Dispatch (called from Java via JNI)
+// ==========================================================================
+
+bool dispatch_proxy_item_attack_entity(int64_t handler_id, int32_t world_id, int32_t attacker_id, int32_t target_id) {
+    if (!g_initialized || g_isolate == nullptr) return true; // Allow attack if not initialized
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemAttackEntity(
+        handler_id, world_id, attacker_id, target_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
 }
 
 // ==========================================================================

@@ -6,9 +6,15 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.entity.EquipmentSlotGroup;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.item.component.Weapon;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,7 +63,14 @@ public class ProxyRegistry {
     /**
      * Holds item settings between createItem() and registerItem() calls.
      */
-    private record ItemSettings(int maxStackSize, int maxDamage, boolean fireResistant) {}
+    private record ItemSettings(
+        int maxStackSize,
+        int maxDamage,
+        boolean fireResistant,
+        double attackDamage,
+        double attackSpeed,
+        double attackKnockback
+    ) {}
 
     /**
      * Create a new DartBlockProxy with the given settings.
@@ -237,11 +250,23 @@ public class ProxyRegistry {
      * @param maxStackSize Maximum stack size (1-64)
      * @param maxDamage Maximum durability (0 for non-damageable)
      * @param fireResistant Whether item survives fire/lava
+     * @param attackDamage Attack damage bonus (NaN if not set)
+     * @param attackSpeed Attack speed modifier (NaN if not set)
+     * @param attackKnockback Attack knockback bonus (NaN if not set)
      * @return Handler ID for this item
      */
-    public static long createItem(int maxStackSize, int maxDamage, boolean fireResistant) {
+    public static long createItem(
+            int maxStackSize,
+            int maxDamage,
+            boolean fireResistant,
+            double attackDamage,
+            double attackSpeed,
+            double attackKnockback) {
         long handlerId = nextHandlerId++;
-        pendingItemSettings.put(handlerId, new ItemSettings(maxStackSize, maxDamage, fireResistant));
+        pendingItemSettings.put(handlerId, new ItemSettings(
+            maxStackSize, maxDamage, fireResistant,
+            attackDamage, attackSpeed, attackKnockback
+        ));
         LOGGER.info("Created item settings with handler ID: {}", handlerId);
         return handlerId;
     }
@@ -275,6 +300,57 @@ public class ProxyRegistry {
             }
             if (settings.fireResistant()) {
                 props = props.fireResistant();
+            }
+
+            // Apply combat attributes if set (NaN means not set)
+            if (!Double.isNaN(settings.attackDamage()) ||
+                !Double.isNaN(settings.attackSpeed()) ||
+                !Double.isNaN(settings.attackKnockback())) {
+
+                ItemAttributeModifiers.Builder attrBuilder = ItemAttributeModifiers.builder();
+
+                if (!Double.isNaN(settings.attackDamage())) {
+                    attrBuilder.add(
+                        Attributes.ATTACK_DAMAGE,
+                        new AttributeModifier(
+                            Item.BASE_ATTACK_DAMAGE_ID,
+                            settings.attackDamage(),
+                            AttributeModifier.Operation.ADD_VALUE
+                        ),
+                        EquipmentSlotGroup.MAINHAND
+                    );
+                }
+
+                if (!Double.isNaN(settings.attackSpeed())) {
+                    attrBuilder.add(
+                        Attributes.ATTACK_SPEED,
+                        new AttributeModifier(
+                            Item.BASE_ATTACK_SPEED_ID,
+                            settings.attackSpeed(),
+                            AttributeModifier.Operation.ADD_VALUE
+                        ),
+                        EquipmentSlotGroup.MAINHAND
+                    );
+                }
+
+                if (!Double.isNaN(settings.attackKnockback())) {
+                    attrBuilder.add(
+                        Attributes.ATTACK_KNOCKBACK,
+                        new AttributeModifier(
+                            Identifier.fromNamespaceAndPath(namespace, path + "_knockback"),
+                            settings.attackKnockback(),
+                            AttributeModifier.Operation.ADD_VALUE
+                        ),
+                        EquipmentSlotGroup.MAINHAND
+                    );
+                }
+
+                props = props.attributes(attrBuilder.build());
+
+                // Add WEAPON component - required for postHurtEnemy to be called
+                // The Weapon component takes itemDamagePerAttack (durability cost per hit)
+                props = props.component(DataComponents.WEAPON, new Weapon(1));
+                LOGGER.info("Added WEAPON component to item {}:{}", namespace, path);
             }
 
             // Create proxy item that routes callbacks to Dart

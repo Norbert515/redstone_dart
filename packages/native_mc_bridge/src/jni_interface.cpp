@@ -1045,6 +1045,30 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyEntityTarget(
 }
 
 // ==========================================================================
+// Item Proxy JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyItemAttackEntity
+ * Signature: (JIII)Z
+ *
+ * Called when a Dart-defined item is used to attack an entity.
+ * Routes to Dart's ItemRegistry.dispatchItemAttackEntity().
+ * Returns true to allow attack, false to cancel.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_onProxyItemAttackEntity(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handlerId, jint worldId, jint attackerId, jint targetId) {
+    bool result = dispatch_proxy_item_attack_entity(
+        static_cast<int64_t>(handlerId),
+        static_cast<int32_t>(worldId),
+        static_cast<int32_t>(attackerId),
+        static_cast<int32_t>(targetId));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// ==========================================================================
 // Command System JNI
 // ==========================================================================
 

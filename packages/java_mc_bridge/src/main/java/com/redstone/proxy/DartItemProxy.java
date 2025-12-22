@@ -1,5 +1,6 @@
 package com.redstone.proxy;
 
+import com.redstone.DartBridge;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
@@ -63,5 +64,18 @@ public class DartItemProxy extends Item {
         // TODO: Dispatch to Dart via DartBridge when callback system is ready
         LOGGER.debug("DartItemProxy.interactLivingEntity called for handler ID: {}", handlerId);
         return InteractionResult.PASS;
+    }
+
+    @Override
+    public void postHurtEnemy(ItemStack stack, LivingEntity target, LivingEntity attacker) {
+        if (!attacker.level().isClientSide() && DartBridge.isInitialized()) {
+            DartBridge.onProxyItemAttackEntity(
+                handlerId,
+                attacker.level().hashCode(),
+                attacker.getId(),
+                target.getId()
+            );
+        }
+        super.postHurtEnemy(stack, target, attacker);
     }
 }
