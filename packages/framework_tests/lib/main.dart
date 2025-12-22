@@ -1,79 +1,141 @@
 // framework_tests - A Minecraft mod built with Redstone
 //
-// This is your mod's entry point. Register your blocks, entities,
-// and other game objects here.
+// Tests for the onAttackEntity callback system.
 
-// Dart MC API imports
 import 'package:dart_mc/dart_mc.dart';
 
-/// Example custom block that shows a message when right-clicked.
-///
-/// This demonstrates how to create custom blocks in Dart.
-/// The block will appear in the creative menu under "Building Blocks".
-class HelloBlock extends CustomBlock {
-  HelloBlock() : super(
-    id: 'framework_tests:hello_block',
-    settings: BlockSettings(
-      hardness: 1.0,
-      resistance: 1.0,
-      requiresTool: false,
-    ),
-  );
+// ===========================================================================
+// Test Items - onAttackEntity callback testing
+// ===========================================================================
+
+/// Test sword that logs when onAttackEntity is called and spawns lightning.
+class TestLightningSword extends CustomItem {
+  static int attackCount = 0;
+
+  TestLightningSword()
+      : super(
+          id: 'framework_tests:test_lightning_sword',
+          settings: ItemSettings(
+            maxStackSize: 1,
+            maxDamage: 100,
+            combat: CombatAttributes.sword(damage: 10.0),
+          ),
+          model: ItemModel.handheld(
+            texture: 'assets/textures/item/test_sword.png',
+          ),
+        );
 
   @override
-  ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
-    // Get player info and send a message
-    final player = Players.getPlayer(playerId);
-    if (player != null) {
-      player.sendMessage('Hello from Framework Tests! You clicked at ($x, $y, $z)');
+  bool onAttackEntity(int worldId, int attackerId, int targetId) {
+    attackCount++;
+    print('=== TEST: onAttackEntity CALLBACK FIRED ===');
+    print('  attackCount: $attackCount');
+    print('  worldId: $worldId');
+    print('  attackerId: $attackerId');
+    print('  targetId: $targetId');
+
+    try {
+      final target = Entity(targetId);
+      final pos = target.position;
+      print('  target position: $pos');
+
+      final world = World.overworld;
+      world.spawnLightning(pos);
+      print('  Lightning spawned successfully!');
+    } catch (e, st) {
+      print('  ERROR: $e');
+      print('  Stack: $st');
     }
-    return ActionResult.success;
-  }
 
-  @override
-  bool onBreak(int worldId, int x, int y, int z, int playerId) {
-    print('HelloBlock broken at ($x, $y, $z) by player $playerId');
-    return true; // Allow the block to be broken
+    return true;
   }
 }
 
-/// Main entry point for your mod.
-///
-/// This is called when the Dart VM is initialized by the native bridge.
+/// Simple test sword that just logs (no lightning) to isolate issues.
+class TestSimpleSword extends CustomItem {
+  static int hitCount = 0;
+
+  TestSimpleSword()
+      : super(
+          id: 'framework_tests:test_simple_sword',
+          settings: ItemSettings(
+            maxStackSize: 1,
+            maxDamage: 100,
+            combat: CombatAttributes.sword(damage: 5.0),
+          ),
+          model: ItemModel.handheld(
+            texture: 'assets/textures/item/test_sword.png',
+          ),
+        );
+
+  @override
+  bool onAttackEntity(int worldId, int attackerId, int targetId) {
+    hitCount++;
+    print('=== TEST: TestSimpleSword.onAttackEntity ===');
+    print('  hitCount: $hitCount');
+    print('  worldId=$worldId, attackerId=$attackerId, targetId=$targetId');
+    return true;
+  }
+}
+
+// ===========================================================================
+// Test Block
+// ===========================================================================
+
+class HelloBlock extends CustomBlock {
+  HelloBlock()
+      : super(
+          id: 'framework_tests:hello_block',
+          settings: BlockSettings(
+            hardness: 1.0,
+            resistance: 1.0,
+            requiresTool: false,
+          ),
+        );
+
+  @override
+  ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+    final player = Players.getPlayer(playerId);
+    if (player != null) {
+      player.sendMessage('Hello from Framework Tests!');
+      player.sendMessage('TestSimpleSword hits: ${TestSimpleSword.hitCount}');
+      player.sendMessage('TestLightningSword hits: ${TestLightningSword.attackCount}');
+    }
+    return ActionResult.success;
+  }
+}
+
+// ===========================================================================
+// Main entry point
+// ===========================================================================
+
 void main() {
-  print('Framework Tests mod initialized!');
+  print('=== Framework Tests - onAttackEntity Testing ===');
 
   // Initialize the native bridge
   Bridge.initialize();
 
-  // Register proxy block handlers (required for custom blocks)
+  // Register proxy handlers
   Events.registerProxyBlockHandlers();
+  Events.registerProxyItemHandlers();
+  print('Proxy handlers registered (blocks + items)');
 
-  // =========================================================================
-  // Register your custom blocks here
-  // This MUST happen before the registry freezes (during mod initialization)
-  // =========================================================================
+  // Register test items BEFORE blocks
+  print('Registering test items...');
+  ItemRegistry.register(TestSimpleSword());
+  ItemRegistry.register(TestLightningSword());
+  ItemRegistry.freeze();
+  print('Items registered: ${ItemRegistry.itemCount}');
+
+  // Register test blocks
   BlockRegistry.register(HelloBlock());
-
-  // Add more blocks here:
-  // BlockRegistry.register(MyOtherBlock());
-
-  // Freeze the block registry (no more blocks can be registered after this)
   BlockRegistry.freeze();
+  print('Blocks registered: ${BlockRegistry.blockCount}');
 
-  // =========================================================================
-  // Register event handlers (optional)
-  // =========================================================================
-  Events.onBlockBreak((x, y, z, playerId) {
-    // Called when ANY block is broken
-    // Return EventResult.deny to prevent breaking
-    return EventResult.allow;
-  });
-
-  Events.addTickListener((tick) {
-    // Called every game tick (20 times per second)
-    // Use for animations, timers, etc.
-  });
-
-  print('Framework Tests ready with ${BlockRegistry.blockCount} custom blocks!');
+  // Log when we're ready
+  print('=== Framework Tests Ready ===');
+  print('Test items:');
+  print('  /give @p framework_tests:test_simple_sword');
+  print('  /give @p framework_tests:test_lightning_sword');
+  print('Hit any mob with these swords to test onAttackEntity callback.');
 }

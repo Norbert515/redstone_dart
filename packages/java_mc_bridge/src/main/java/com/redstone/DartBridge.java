@@ -184,6 +184,9 @@ public class DartBridge {
     // Animal proxy native methods - called by DartAnimalProxy
     public static native void onProxyAnimalBreed(long handlerId, int parentId, int partnerId, int babyId);
 
+    // Item proxy native methods - called by DartItemProxy
+    public static native boolean onProxyItemAttackEntity(long handlerId, int worldId, int attackerId, int targetId);
+
     // Command system native methods - called by CommandRegistry
     public static native int onCommandExecute(long commandId, int playerId, String argsJson);
 

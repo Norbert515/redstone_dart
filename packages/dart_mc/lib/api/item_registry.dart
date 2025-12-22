@@ -53,15 +53,24 @@ class ItemRegistry {
     final namespace = parts[0];
     final path = parts[1];
 
+    // Extract combat values (use NaN for "not set")
+    final combat = item.settings.combat;
+    final attackDamage = combat?.attackDamage ?? double.nan;
+    final attackSpeed = combat?.attackSpeed ?? double.nan;
+    final attackKnockback = combat?.attackKnockback ?? double.nan;
+
     // Create the proxy item in Java
     final handlerId = GenericJniBridge.callStaticLongMethod(
       'com/redstone/proxy/ProxyRegistry',
       'createItem',
-      '(IIZ)J',
+      '(IIZDDD)J',
       [
         item.settings.maxStackSize,
         item.settings.maxDamage,
         item.settings.fireResistant,
+        attackDamage,
+        attackSpeed,
+        attackKnockback,
       ],
     );
 
@@ -200,5 +209,20 @@ class ItemRegistry {
       return result.index;
     }
     return ItemActionResult.pass.index;
+  }
+
+  /// Dispatches an attack entity event to the appropriate item.
+  /// Called from native code when a player attacks an entity with a custom item.
+  static bool dispatchItemAttackEntity(
+    int handlerId,
+    int worldId,
+    int attackerId,
+    int targetId,
+  ) {
+    final item = _items[handlerId];
+    if (item != null) {
+      return item.onAttackEntity(worldId, attackerId, targetId);
+    }
+    return false;
   }
 }

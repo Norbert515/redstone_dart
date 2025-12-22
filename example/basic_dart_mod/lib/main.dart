@@ -32,7 +32,18 @@ class DartItem extends CustomItem {
         );
 }
 
+/// A stick made from obsidian - used to craft the Peer Schwert.
+class ObsidianStick extends CustomItem {
+  ObsidianStick()
+      : super(
+          id: 'basic_dart_mod:obsidian_stick',
+          settings: ItemSettings(maxStackSize: 64),
+          model: ItemModel.generated(texture: 'assets/textures/item/obsidian_stick.png'),
+        );
+}
+
 /// A custom sword item - the Peer Schwert.
+/// Summons lightning on hit!
 class PeerSchwert extends CustomItem {
   PeerSchwert()
       : super(
@@ -40,11 +51,20 @@ class PeerSchwert extends CustomItem {
           settings: ItemSettings(
             maxStackSize: 1, // Swords don't stack
             maxDamage: 250, // Durability (iron sword level)
+            combat: CombatAttributes.sword(damage: 6.0),
           ),
           model: ItemModel.handheld(
             texture: 'assets/textures/item/peer-schwert.png',
           ),
         );
+
+  @override
+  bool onAttackEntity(int worldId, int attackerId, int targetId) {
+    final target = Entity(targetId);
+    final world = World.overworld;
+    world.spawnLightning(target.position);
+    return true;
+  }
 }
 
 /// Example custom block that shows a message when right-clicked.
@@ -658,8 +678,9 @@ void main() {
   // Initialize the native bridge
   Bridge.initialize();
 
-  // Register proxy block handlers (required for custom blocks)
+  // Register proxy handlers (required for custom blocks and items)
   Events.registerProxyBlockHandlers();
+  Events.registerProxyItemHandlers();
 
   // =========================================================================
   // Register your custom items here
@@ -667,6 +688,7 @@ void main() {
   // =========================================================================
   ItemRegistry.register(DartItem());
   ItemRegistry.register(EffectWand()); // NEW: Effect wand item
+  ItemRegistry.register(ObsidianStick()); // Obsidian stick for crafting
   ItemRegistry.register(PeerSchwert()); // Custom sword item
   ItemRegistry.freeze();
 
@@ -1009,7 +1031,39 @@ void _registerRecipes() {
     experience: 1.0,
   );
 
-  print('Recipes: Registered 6 custom recipes');
+  // Shaped recipe: Obsidian Stick (stick + 2 obsidian)
+  Recipes.shaped(
+    'basic_dart_mod:obsidian_stick',
+    pattern: [
+      'O',
+      'O',
+      'S',
+    ],
+    keys: {
+      'O': 'minecraft:obsidian',
+      'S': 'minecraft:stick',
+    },
+    result: 'basic_dart_mod:obsidian_stick',
+    count: 1,
+  );
+
+  // Shaped recipe: Peer Schwert (obsidian stick + 2 obsidian)
+  Recipes.shaped(
+    'basic_dart_mod:peer_schwert',
+    pattern: [
+      'O',
+      'O',
+      'I',
+    ],
+    keys: {
+      'O': 'minecraft:obsidian',
+      'I': 'basic_dart_mod:obsidian_stick',
+    },
+    result: 'basic_dart_mod:peer_schwert',
+    count: 1,
+  );
+
+  print('Recipes: Registered 8 custom recipes');
 }
 
 // =============================================================================

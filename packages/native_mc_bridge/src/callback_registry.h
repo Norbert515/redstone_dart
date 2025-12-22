@@ -269,6 +269,12 @@ public:
         proxy_entity_target_handler_ = cb;
     }
 
+    // Item proxy callback setters
+    void setProxyItemAttackEntityHandler(ProxyItemAttackEntityCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        proxy_item_attack_entity_handler_ = cb;
+    }
+
     // Command callback setters
     void setCommandExecuteHandler(CommandExecuteCallback cb) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -761,6 +767,16 @@ public:
         }
     }
 
+    // Item proxy dispatch methods
+    // Returns true to allow attack, false to cancel
+    bool dispatchProxyItemAttackEntity(int64_t handler_id, int32_t world_id, int32_t attacker_id, int32_t target_id) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (proxy_item_attack_entity_handler_) {
+            return proxy_item_attack_entity_handler_(handler_id, world_id, attacker_id, target_id);
+        }
+        return true; // Default: allow attack
+    }
+
     // Command dispatch
     int32_t dispatchCommandExecute(int64_t command_id, int32_t player_id, const char* args_json) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -835,6 +851,8 @@ public:
         proxy_entity_damage_handler_ = nullptr;
         proxy_entity_attack_handler_ = nullptr;
         proxy_entity_target_handler_ = nullptr;
+        // Item proxy handlers
+        proxy_item_attack_entity_handler_ = nullptr;
         // Command handlers
         command_execute_handler_ = nullptr;
     }
@@ -915,6 +933,9 @@ private:
     ProxyEntityDamageCallback proxy_entity_damage_handler_ = nullptr;
     ProxyEntityAttackCallback proxy_entity_attack_handler_ = nullptr;
     ProxyEntityTargetCallback proxy_entity_target_handler_ = nullptr;
+
+    // Item proxy handlers
+    ProxyItemAttackEntityCallback proxy_item_attack_entity_handler_ = nullptr;
 
     // Command handlers
     CommandExecuteCallback command_execute_handler_ = nullptr;
