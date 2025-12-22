@@ -18,6 +18,7 @@ class AssetGenerator {
 
     final blocks = manifest['blocks'] as List<dynamic>? ?? [];
     final items = manifest['items'] as List<dynamic>? ?? [];
+    final entities = manifest['entities'] as List<dynamic>? ?? [];
 
     for (final block in blocks) {
       await _generateBlockAssets(block as Map<String, dynamic>);
@@ -32,6 +33,7 @@ class AssetGenerator {
     await _generateLootTables(blocks);
 
     await _copyTextures();
+    await _copyEntityTextures(entities);
     await _generateLangFile(blocks, items);
   }
 
@@ -293,6 +295,38 @@ class AssetGenerator {
     );
 
     await _copyDirectory(sourceDir, targetDir);
+  }
+
+  /// Copy entity textures from manifest entries to the minecraft assets folder.
+  Future<void> _copyEntityTextures(List<dynamic> entities) async {
+    for (final entity in entities) {
+      final entityMap = entity as Map<String, dynamic>;
+      final id = entityMap['id'] as String;
+      final model = entityMap['model'] as Map<String, dynamic>?;
+      if (model == null) continue;
+
+      final texture = model['texture'] as String?;
+      if (texture == null) continue;
+
+      final namespace = id.split(':')[0];
+
+      // Source: project assets directory + texture path (e.g., assets/textures/entity/custom_zombie.png)
+      final sourceFile = File(p.join(project.rootDir, texture));
+      if (!sourceFile.existsSync()) continue;
+
+      // Target: minecraft assets directory (e.g., assets/<namespace>/textures/entity/<filename>)
+      final filename = p.basename(texture);
+      final targetPath = p.join(
+        project.minecraftAssetsDir(namespace),
+        'textures',
+        'entity',
+        filename,
+      );
+
+      final targetFile = File(targetPath);
+      await targetFile.parent.create(recursive: true);
+      await sourceFile.copy(targetPath);
+    }
   }
 
   Future<void> _generateLangFile(List<dynamic> blocks, List<dynamic> items) async {

@@ -1,6 +1,8 @@
 /// API for defining custom entities in Dart.
 library;
 
+import 'entity_model.dart';
+
 /// Spawn groups for entity category.
 enum SpawnGroup {
   monster,
@@ -50,6 +52,10 @@ class EntitySettings {
   /// Tick callbacks are expensive (20 times/second per entity).
   final bool needsTickCallback;
 
+  /// The entity model for rendering.
+  /// If null, a default model will be used.
+  final EntityModel? model;
+
   /// The base type determines which Java proxy class is used.
   EntityBaseType get baseType => EntityBaseType.pathfinderMob;
 
@@ -61,6 +67,7 @@ class EntitySettings {
     this.attackDamage = 2.0,
     this.spawnGroup = SpawnGroup.creature,
     this.needsTickCallback = false,
+    this.model,
   });
 }
 
@@ -80,6 +87,7 @@ class MonsterSettings extends EntitySettings {
     super.attackDamage = 3,
     this.burnsInDaylight = false,
     super.needsTickCallback = false,
+    super.model,
   }) : super(spawnGroup: SpawnGroup.monster);
 
   @override
@@ -103,6 +111,7 @@ class AnimalSettings extends EntitySettings {
     super.attackDamage = 0,
     this.breedingItem,
     super.needsTickCallback = false,
+    super.model,
   }) : super(spawnGroup: SpawnGroup.creature);
 
   @override
@@ -126,6 +135,7 @@ class ProjectileSettings extends EntitySettings {
     this.gravity = 0.03,
     this.noClip = false,
     super.needsTickCallback = false,
+    super.model,
   }) : super(
           maxHealth: 1,
           movementSpeed: 0,

@@ -51,6 +51,7 @@ export 'api/custom_block.dart';
 export 'api/block_model.dart';
 export 'api/block_registry.dart';
 export 'api/custom_entity.dart';
+export 'api/entity_model.dart';
 export 'api/entity_registry.dart';
 export 'api/custom_item.dart';
 export 'api/item_model.dart';

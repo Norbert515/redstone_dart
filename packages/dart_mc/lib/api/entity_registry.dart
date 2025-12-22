@@ -1,6 +1,9 @@
 /// Registry for Dart-defined custom entities.
 library;
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'custom_entity.dart';
 import '../src/jni/generic_bridge.dart';
 
@@ -103,12 +106,81 @@ class EntityRegistry {
       throw StateError('Failed to register entity with Minecraft: ${entity.id}');
     }
 
+    // Register model config if the entity has a model
+    final model = entity.settings.model;
+    if (model != null) {
+      final modelJson = model.toJson();
+      final modelType = modelJson['type'] as String;
+      final texturePath = modelJson['texture'] as String;
+      final scale = (modelJson['scale'] as num?)?.toDouble() ?? 1.0;
+
+      GenericJniBridge.callStaticVoidMethod(
+        'com/redstone/proxy/EntityProxyRegistry',
+        'registerModelConfig',
+        '(JLjava/lang/String;Ljava/lang/String;F)V',
+        [handlerId, modelType, texturePath, scale],
+      );
+
+      print('EntityRegistry: Registered model config for ${entity.id} '
+          '(type: $modelType, texture: $texturePath, scale: $scale)');
+    }
+
     // Store the entity and set its handler ID
     entity.setHandlerId(handlerId);
     _entities[handlerId] = entity;
 
+    // Write manifest after each registration
+    _writeManifest();
+
     print('EntityRegistry: Registered ${entity.id} with handler ID $handlerId');
     return handlerId;
+  }
+
+  /// Write the entity manifest to `.redstone/manifest.json`.
+  ///
+  /// This file is read by the CLI to generate Minecraft resource files.
+  static void _writeManifest() {
+    final entities = <Map<String, dynamic>>[];
+
+    for (final entity in _entities.values) {
+      final entityEntry = <String, dynamic>{
+        'id': entity.id,
+        'baseType': entity.settings.baseType.name,
+      };
+
+      // Only include model if present
+      if (entity.settings.model != null) {
+        entityEntry['model'] = entity.settings.model!.toJson();
+      }
+
+      entities.add(entityEntry);
+    }
+
+    // Read existing manifest to preserve blocks and items
+    Map<String, dynamic> manifest = {};
+    final manifestFile = File('.redstone/manifest.json');
+    if (manifestFile.existsSync()) {
+      try {
+        manifest =
+            jsonDecode(manifestFile.readAsStringSync()) as Map<String, dynamic>;
+      } catch (_) {
+        // Ignore parse errors
+      }
+    }
+
+    manifest['entities'] = entities;
+
+    // Create .redstone directory if it doesn't exist
+    final redstoneDir = Directory('.redstone');
+    if (!redstoneDir.existsSync()) {
+      redstoneDir.createSync(recursive: true);
+    }
+
+    // Write manifest with pretty formatting
+    final encoder = JsonEncoder.withIndent('  ');
+    manifestFile.writeAsStringSync(encoder.convert(manifest));
+
+    print('EntityRegistry: Wrote manifest with ${entities.length} entities');
   }
 
   /// Get an entity by its handler ID.

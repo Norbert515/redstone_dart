@@ -8,6 +8,12 @@ import '../runner/minecraft_runner.dart';
 import '../runner/hot_reload_client.dart';
 import '../util/logger.dart';
 
+/// Exception thrown when the process exits before an operation completes.
+class ProcessExitException implements Exception {
+  final int exitCode;
+  ProcessExitException(this.exitCode);
+}
+
 class RunCommand extends Command<int> {
   @override
   final name = 'run';
@@ -60,7 +66,26 @@ class RunCommand extends Command<int> {
         Logger.info('Hot reload enabled. Connecting to Dart VM...');
 
         final hotReload = HotReloadClient();
-        final connected = await hotReload.connect();
+
+        // Race connection against process exit to detect build failures early
+        bool connected = false;
+        try {
+          connected = await Future.any([
+            hotReload.connect(),
+            runner.exitCode.then((code) {
+              // Process exited before we could connect
+              throw ProcessExitException(code);
+            }),
+          ]);
+        } on ProcessExitException catch (e) {
+          Logger.error(
+              'Process exited with code ${e.exitCode} before hot reload could connect');
+          hotReload.cancel();
+          await runner.stop();
+          // Use exit() to force quit - the hotReload.connect() Future.delayed
+          // timer may still be pending and would keep the event loop alive
+          exit(e.exitCode);
+        }
 
         if (connected) {
           Logger.success('Connected to Dart VM service');
@@ -68,22 +93,35 @@ class RunCommand extends Command<int> {
           _printHelp();
           Logger.newLine();
 
+          // Set up a completer that resolves when we should exit
+          final exitCompleter = Completer<int>();
+
+          // Monitor process exit
+          runner.exitCode.then((code) {
+            if (!exitCompleter.isCompleted) {
+              Logger.newLine();
+              Logger.info('Process exited with code $code');
+              exitCompleter.complete(code);
+            }
+          });
+
           // Listen for keyboard input
           stdin.echoMode = false;
           stdin.lineMode = false;
 
-          await for (final input in stdin) {
+          final stdinSubscription = stdin.listen((input) {
             final char = String.fromCharCode(input.first);
 
             switch (char) {
               case 'r':
                 Logger.info('Performing hot reload...');
-                final success = await hotReload.reload();
-                if (success) {
-                  Logger.success('Hot reload completed');
-                } else {
-                  Logger.error('Hot reload failed');
-                }
+                hotReload.reload().then((success) {
+                  if (success) {
+                    Logger.success('Hot reload completed');
+                  } else {
+                    Logger.error('Hot reload failed');
+                  }
+                });
                 break;
               case 'R':
                 Logger.info('Performing hot restart...');
@@ -92,8 +130,11 @@ class RunCommand extends Command<int> {
                 break;
               case 'q':
                 Logger.info('Quitting...');
-                await runner.stop();
-                return 0;
+                runner.stop();
+                if (!exitCompleter.isCompleted) {
+                  exitCompleter.complete(0);
+                }
+                break;
               case 'c':
                 // Clear screen
                 stdout.write('\x1B[2J\x1B[H');
@@ -104,7 +145,12 @@ class RunCommand extends Command<int> {
                 _printHelp();
                 break;
             }
-          }
+          });
+
+          // Wait for exit (either from process dying or user pressing 'q')
+          final exitCode = await exitCompleter.future;
+          await stdinSubscription.cancel();
+          return exitCode;
         } else {
           Logger.warning('Could not connect to Dart VM. Hot reload disabled.');
         }

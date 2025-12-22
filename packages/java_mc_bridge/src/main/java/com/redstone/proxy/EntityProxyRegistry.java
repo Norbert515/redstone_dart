@@ -39,7 +39,17 @@ public class EntityProxyRegistry {
     private static final Map<Long, EntitySettings> pendingSettings = new HashMap<>();
     private static final Map<Long, Item> animalBreedingItems = new HashMap<>();
     private static final Map<Long, Integer> entityBaseTypes = new HashMap<>();
+    private static final Map<Long, EntityModelConfig> entityModelConfigs = new HashMap<>();
     private static long nextHandlerId = 1;
+
+    /**
+     * Model configuration for entity rendering on the client side.
+     *
+     * @param modelType The base model type ("humanoid", "quadruped", "simple")
+     * @param texturePath The texture path (e.g., "minecraft:textures/entity/zombie/zombie.png")
+     * @param scale The scale factor for rendering
+     */
+    public record EntityModelConfig(String modelType, String texturePath, float scale) {}
 
     // Callback for entity registration (used by client to register renderers)
     private static EntityRegistrationCallback registrationCallback = null;
@@ -305,6 +315,41 @@ public class EntityProxyRegistry {
      */
     public static Item getBreedingItem(long handlerId) {
         return animalBreedingItems.get(handlerId);
+    }
+
+    /**
+     * Register model configuration for entity rendering.
+     * Called from Dart via JNI to configure how an entity should be rendered.
+     *
+     * @param handlerId The handler ID of the entity.
+     * @param modelType The base model type ("humanoid", "quadruped", "simple").
+     * @param texturePath The texture path (e.g., "minecraft:textures/entity/zombie/zombie.png").
+     * @param scale The scale factor for rendering.
+     */
+    public static void registerModelConfig(long handlerId, String modelType, String texturePath, float scale) {
+        entityModelConfigs.put(handlerId, new EntityModelConfig(modelType, texturePath, scale));
+        LOGGER.info("Registered model config for handler {}: modelType={}, texture={}, scale={}",
+            handlerId, modelType, texturePath, scale);
+    }
+
+    /**
+     * Get the model configuration for an entity.
+     *
+     * @param handlerId The handler ID of the entity.
+     * @return The model configuration, or null if not registered.
+     */
+    public static EntityModelConfig getModelConfig(long handlerId) {
+        return entityModelConfigs.get(handlerId);
+    }
+
+    /**
+     * Check if a model configuration exists for an entity.
+     *
+     * @param handlerId The handler ID of the entity.
+     * @return true if a model configuration exists, false otherwise.
+     */
+    public static boolean hasModelConfig(long handlerId) {
+        return entityModelConfigs.containsKey(handlerId);
     }
 
     /**

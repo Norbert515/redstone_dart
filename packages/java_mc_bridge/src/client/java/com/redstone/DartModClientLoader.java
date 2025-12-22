@@ -1,11 +1,14 @@
 package com.redstone;
 
 import com.redstone.proxy.EntityProxyRegistry;
+import com.redstone.render.DartEntityRenderer;
+import com.redstone.render.EntityModelRegistry;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.minecraft.client.renderer.entity.NoopRenderer;
+import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,10 +42,37 @@ public class DartModClientLoader implements ClientModInitializer {
                 case EntityProxyRegistry.BASE_TYPE_PROJECTILE -> "projectile";
                 default -> "mob";
             };
-            LOGGER.info("[DartModClientLoader] Registering NoopRenderer for {} entity (handler: {})", baseTypeName, handlerId);
-            // TODO: Use proper renderers (cow model for animals, zombie model for monsters)
-            // For now, entities are invisible but functional
-            EntityRendererRegistry.register(entityType, NoopRenderer::new);
+
+            // Check if there's a model configuration for this entity
+            EntityProxyRegistry.EntityModelConfig modelConfig = EntityProxyRegistry.getModelConfig(handlerId);
+            if (modelConfig != null) {
+                // Register model config to client-side registry for renderer access
+                EntityModelRegistry.registerConfig(
+                    handlerId,
+                    modelConfig.modelType(),
+                    modelConfig.texturePath(),
+                    modelConfig.scale()
+                );
+
+                LOGGER.info("[DartModClientLoader] Registering DartEntityRenderer for {} entity (handler: {}, model: {}, texture: {})",
+                    baseTypeName, handlerId, modelConfig.modelType(), modelConfig.texturePath());
+
+                // Use DartEntityRenderer with the configured model and texture
+                @SuppressWarnings("unchecked")
+                var mobEntityType = (net.minecraft.world.entity.EntityType<net.minecraft.world.entity.Mob>) entityType;
+                EntityRendererRegistry.register(mobEntityType, context -> {
+                    Identifier texture = Identifier.tryParse(modelConfig.texturePath());
+                    if (texture == null) {
+                        texture = Identifier.withDefaultNamespace(modelConfig.texturePath());
+                    }
+                    return new DartEntityRenderer<>(context, modelConfig.modelType(), texture, modelConfig.scale());
+                });
+            } else {
+                LOGGER.info("[DartModClientLoader] Registering NoopRenderer for {} entity (handler: {}) - no model config",
+                    baseTypeName, handlerId);
+                // No model config - use NoopRenderer (invisible entity)
+                EntityRendererRegistry.register(entityType, NoopRenderer::new);
+            }
         });
 
         LOGGER.info("[DartModClientLoader] Entity renderer callback registered!");

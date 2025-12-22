@@ -13,13 +13,23 @@ class HotReloadClient {
 
   final String uri;
   VmService? _service;
+  bool _cancelled = false;
 
   HotReloadClient({this.uri = defaultUri});
+
+  /// Cancel any ongoing connection attempts
+  void cancel() {
+    _cancelled = true;
+  }
 
   /// Connect to the Dart VM service
   /// Returns true if connected successfully
   Future<bool> connect() async {
     for (var attempt = 0; attempt < maxRetries; attempt++) {
+      if (_cancelled) {
+        Logger.debug('Connection cancelled');
+        return false;
+      }
       try {
         Logger.debug('Connecting to Dart VM (attempt ${attempt + 1}/$maxRetries)...');
         _service = await vmServiceConnectUri(uri);
@@ -28,6 +38,10 @@ class HotReloadClient {
         await _service!.getVersion();
         return true;
       } catch (e) {
+        if (_cancelled) {
+          Logger.debug('Connection cancelled');
+          return false;
+        }
         Logger.debug('Connection failed: $e');
         await Future.delayed(retryDelay);
       }

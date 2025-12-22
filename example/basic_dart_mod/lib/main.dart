@@ -32,6 +32,21 @@ class DartItem extends CustomItem {
         );
 }
 
+/// A custom sword item - the Peer Schwert.
+class PeerSchwert extends CustomItem {
+  PeerSchwert()
+      : super(
+          id: 'basic_dart_mod:peer_schwert',
+          settings: ItemSettings(
+            maxStackSize: 1, // Swords don't stack
+            maxDamage: 250, // Durability (iron sword level)
+          ),
+          model: ItemModel.handheld(
+            texture: 'assets/textures/item/peer-schwert.png',
+          ),
+        );
+}
+
 /// Example custom block that shows a message when right-clicked.
 ///
 /// This demonstrates how to create custom blocks in Dart.
@@ -521,11 +536,14 @@ class DartZombie extends CustomMonster {
   DartZombie()
       : super(
           id: 'basic_dart_mod:dart_zombie',
-          settings: const MonsterSettings(
+          settings: MonsterSettings(
             maxHealth: 30,
             attackDamage: 4,
             movementSpeed: 0.25,
             burnsInDaylight: true,
+            model: EntityModel.humanoid(
+              texture: 'textures/entity/dart_zombie.png',
+            ),
           ),
         );
 
@@ -569,12 +587,15 @@ class DartCow extends CustomAnimal {
   DartCow()
       : super(
           id: 'basic_dart_mod:dart_cow',
-          settings: const AnimalSettings(
+          settings: AnimalSettings(
             maxHealth: 15,
             movementSpeed: 0.2,
             width: 0.9,
             height: 1.4,
             breedingItem: 'minecraft:wheat',
+            model: EntityModel.quadruped(
+              texture: 'textures/entity/dart_cow.png',
+            ),
           ),
         );
 
@@ -646,6 +667,7 @@ void main() {
   // =========================================================================
   ItemRegistry.register(DartItem());
   ItemRegistry.register(EffectWand()); // NEW: Effect wand item
+  ItemRegistry.register(PeerSchwert()); // Custom sword item
   ItemRegistry.freeze();
 
   // =========================================================================

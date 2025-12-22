@@ -16,6 +16,8 @@ class MinecraftRunner {
   final bool testMode;
   Process? _process;
   final _exitCompleter = Completer<int>();
+  StreamSubscription<List<int>>? _stdoutSubscription;
+  StreamSubscription<List<int>>? _stderrSubscription;
 
   /// Stream controller for stdout lines (only in test mode)
   StreamController<String>? _stdoutController;
@@ -93,8 +95,8 @@ class MinecraftRunner {
 
       // Forward stdout and stderr to the terminal
       // Note: We intentionally do NOT pipe stdin to allow hot reload input
-      _process!.stdout.listen(stdout.add);
-      _process!.stderr.listen(stderr.add);
+      _stdoutSubscription = _process!.stdout.listen(stdout.add);
+      _stderrSubscription = _process!.stderr.listen(stderr.add);
     }
 
     // Handle process exit
@@ -109,8 +111,6 @@ class MinecraftRunner {
   /// Stop Minecraft gracefully
   Future<void> stop() async {
     if (_process != null) {
-      Logger.debug('Stopping Minecraft...');
-
       // Try graceful shutdown first
       _process!.kill(ProcessSignal.sigterm);
 
@@ -120,10 +120,11 @@ class MinecraftRunner {
 
       if (exited == -1) {
         // Force kill if didn't exit gracefully
-        Logger.debug('Force killing Minecraft...');
         _process!.kill(ProcessSignal.sigkill);
       }
 
+      await _stdoutSubscription?.cancel();
+      await _stderrSubscription?.cancel();
       await _stdoutController?.close();
 
       if (!_exitCompleter.isCompleted) {
