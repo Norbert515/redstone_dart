@@ -14,6 +14,7 @@ import '../util/logger.dart';
 class MinecraftRunner {
   final RedstoneProject project;
   final bool testMode;
+  final bool clientTestMode;
   Process? _process;
   final _exitCompleter = Completer<int>();
   StreamSubscription<List<int>>? _stdoutSubscription;
@@ -22,7 +23,7 @@ class MinecraftRunner {
   /// Stream controller for stdout lines (only in test mode)
   StreamController<String>? _stdoutController;
 
-  MinecraftRunner(this.project, {this.testMode = false});
+  MinecraftRunner(this.project, {this.testMode = false, this.clientTestMode = false});
 
   /// Exit code future - completes when Minecraft exits
   Future<int> get exitCode => _exitCompleter.future;
@@ -39,8 +40,11 @@ class MinecraftRunner {
     // Start Minecraft via Gradle
     final gradlew = Platform.isWindows ? 'gradlew.bat' : './gradlew';
 
-    // Use runServer for test mode (headless server), runClient for normal mode
-    final gradleTask = testMode ? 'runServer' : 'runClient';
+    // Determine which Gradle task to use:
+    // - clientTestMode: runClient (client tests with visual testing)
+    // - testMode: runServer (headless server tests)
+    // - normal: runClient (interactive development)
+    final gradleTask = testMode && !clientTestMode ? 'runServer' : 'runClient';
 
     Logger.debug('Starting Minecraft from ${project.minecraftDir} with task: $gradleTask');
 
@@ -57,8 +61,8 @@ class MinecraftRunner {
     ];
     Logger.debug('Gradle args: $gradleArgs');
 
-    if (testMode) {
-      // In test mode, capture stdout for parsing JSON events
+    if (testMode || clientTestMode) {
+      // In test mode (server or client), capture stdout for parsing JSON events
       _stdoutController = StreamController<String>.broadcast();
 
       _process = await Process.start(
@@ -135,12 +139,14 @@ class MinecraftRunner {
 
   /// Get the path to the Dart script that the Dart VM should load.
   ///
-  /// In test mode, this is the generated test harness.
+  /// In test mode (server or client), this is the generated test harness.
   /// In normal mode, this is the project's lib/main.dart (renamed to dart_mc.dart).
   String _getDartScriptPath() {
-    if (testMode) {
+    if (testMode || clientTestMode) {
       // Use the test harness as entry point
-      return p.join(project.rootDir, '.redstone', 'test', 'test_harness.dart');
+      // Client tests use a different harness file
+      final harnessName = clientTestMode ? 'client_test_harness.dart' : 'test_harness.dart';
+      return p.join(project.rootDir, '.redstone', 'test', harnessName);
     } else {
       // Use the project's main.dart as entry point
       return p.join(project.rootDir, 'lib', 'main.dart');
@@ -167,8 +173,8 @@ class MinecraftRunner {
     // Copy native libs to run/natives/
     await _copyNativeLibs();
 
-    // In test mode, ensure EULA is accepted for server
-    if (testMode) {
+    // In server test mode, ensure EULA is accepted for server
+    if (testMode && !clientTestMode) {
       await _ensureEula();
     }
   }

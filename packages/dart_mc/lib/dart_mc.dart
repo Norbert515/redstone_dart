@@ -37,6 +37,7 @@ library dart_mc;
 
 // Core bridge and events
 export 'src/bridge.dart';
+export 'src/client_bridge.dart';
 export 'src/events.dart';
 export 'src/types.dart';
 

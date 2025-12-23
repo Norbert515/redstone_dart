@@ -18,7 +18,7 @@ class TestHarnessGenerator {
 
   TestHarnessGenerator(this.project);
 
-  /// Generate a test harness file.
+  /// Generate a test harness file for server-side tests.
   ///
   /// [testFiles] - List of test file paths or directories
   /// [filterArgs] - Arguments to pass to the test runner (--name, --tags, etc.)
@@ -53,6 +53,49 @@ class TestHarnessGenerator {
     }
 
     final harnessFile = File(p.join(harnessDir.path, 'test_harness.dart'));
+    harnessFile.writeAsStringSync(harnessCode);
+
+    // Create pubspec.yaml for the test harness that references the project's dependencies
+    await _createHarnessPubspec(harnessDir);
+
+    return harnessFile;
+  }
+
+  /// Generate a test harness file for client-side visual tests.
+  ///
+  /// [testFiles] - List of test file paths or directories
+  /// [filterArgs] - Arguments to pass to the test runner (--name, --tags, etc.)
+  ///
+  /// Returns the generated harness file.
+  Future<File> generateClientHarness({
+    required List<String> testFiles,
+    required List<String> filterArgs,
+  }) async {
+    // Resolve all test files
+    final resolvedTestFiles = await _resolveTestFiles(testFiles);
+
+    if (resolvedTestFiles.isEmpty) {
+      throw StateError('No test files found in: $testFiles');
+    }
+
+    Logger.debug('Found ${resolvedTestFiles.length} client test file(s)');
+    for (final file in resolvedTestFiles) {
+      Logger.debug('  - $file');
+    }
+
+    // Generate the client harness code
+    final harnessCode = _generateClientHarnessCode(
+      testFiles: resolvedTestFiles,
+      filterArgs: filterArgs,
+    );
+
+    // Write to a temporary location that will be copied by MinecraftRunner
+    final harnessDir = Directory(p.join(project.rootDir, '.redstone', 'test'));
+    if (!harnessDir.existsSync()) {
+      harnessDir.createSync(recursive: true);
+    }
+
+    final harnessFile = File(p.join(harnessDir.path, 'client_test_harness.dart'));
     harnessFile.writeAsStringSync(harnessCode);
 
     // Create pubspec.yaml for the test harness that references the project's dependencies
@@ -222,6 +265,120 @@ dependencies:
     buffer.writeln("    print('Tests complete, stopping server...');");
     buffer.writeln('    Bridge.stopServer();');
     buffer.writeln('  });');
+    buffer.writeln('}');
+
+    return buffer.toString();
+  }
+
+  /// Generate the Dart code for the client test harness.
+  String _generateClientHarnessCode({
+    required List<String> testFiles,
+    required List<String> filterArgs,
+  }) {
+    final buffer = StringBuffer();
+
+    // File header
+    buffer.writeln('// Generated client test harness - do not edit');
+    buffer.writeln('// ignore_for_file: depend_on_referenced_packages');
+    buffer.writeln();
+
+    // Core imports
+    buffer.writeln("import 'dart:async';");
+    buffer.writeln("import 'package:dart_mc/dart_mc.dart';");
+    buffer.writeln("import 'package:redstone_test/redstone_test.dart';");
+    buffer.writeln();
+
+    // Import the mod's main.dart to register blocks, items, and entities
+    final modMainPath = p.join(project.rootDir, 'lib', 'main.dart');
+    buffer.writeln("import 'file://$modMainPath' as mod_main;");
+    buffer.writeln();
+
+    // Generate imports for each test file with unique aliases
+    for (var i = 0; i < testFiles.length; i++) {
+      final testFile = testFiles[i];
+      final relativePath = _getTestImportPath(testFile);
+      buffer.writeln("import '$relativePath' as test_$i;");
+    }
+
+    buffer.writeln();
+
+    // State tracking
+    buffer.writeln('bool _clientReady = false;');
+    buffer.writeln('bool _testsRunning = false;');
+    buffer.writeln();
+
+    // Client ready handler function
+    buffer.writeln('Future<void> _runClientTests() async {');
+    buffer.writeln('  if (_testsRunning) return;');
+    buffer.writeln('  _testsRunning = true;');
+    buffer.writeln();
+    buffer.writeln('  print("Client ready - running visual tests...");');
+    buffer.writeln();
+    buffer.writeln('  // Give the client a moment to stabilize');
+    buffer.writeln('  await Future.delayed(Duration(seconds: 2));');
+    buffer.writeln();
+    buffer.writeln('  try {');
+
+    // Call each test file's main function with suite events
+    buffer.writeln('    // Run all test files');
+    for (var i = 0; i < testFiles.length; i++) {
+      final testFile = testFiles[i];
+      final fileName = testFile.split('/').last;
+      buffer.writeln("    emitEvent(SuiteStartEvent(name: '$fileName'));");
+      buffer.writeln("    print('Running: $fileName');");
+      buffer.writeln('    await test_$i.main();');
+      buffer.writeln("    emitEvent(SuiteEndEvent(name: '$fileName'));");
+      buffer.writeln("    print('Completed: $fileName');");
+    }
+
+    buffer.writeln('  } catch (e, st) {');
+    buffer.writeln('    print("Test harness error: \$e");');
+    buffer.writeln('    print(st);');
+    buffer.writeln('  }');
+    buffer.writeln();
+    buffer.writeln('  // Print summary');
+    buffer.writeln('  testResults.printSummary();');
+    buffer.writeln();
+    buffer.writeln('  // Emit done event with final counts');
+    buffer.writeln('  emitEvent(DoneEvent(');
+    buffer.writeln('    passed: testResults.passed,');
+    buffer.writeln('    failed: testResults.failed,');
+    buffer.writeln('    skipped: testResults.skipped,');
+    buffer.writeln('    exitCode: testResults.exitCode,');
+    buffer.writeln('  ));');
+    buffer.writeln();
+    buffer.writeln('  // Stop the server and exit');
+    buffer.writeln("  print('Tests complete, stopping server...');");
+    buffer.writeln('  Bridge.stopServer();');
+    buffer.writeln('}');
+    buffer.writeln();
+
+    // Main function for client tests - uses polling via server tick events
+    buffer.writeln('void main() async {');
+    buffer.writeln('  // Initialize bridge');
+    buffer.writeln('  Bridge.initialize();');
+    buffer.writeln();
+    buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
+    buffer.writeln('  // This is important for visual tests that need custom entities to be registered');
+    buffer.writeln('  mod_main.main();');
+    buffer.writeln();
+    buffer.writeln('  // Enable visual test mode to auto-join test world');
+    buffer.writeln('  ClientBridge.setVisualTestMode(true);');
+    buffer.writeln();
+    buffer.writeln('  // Use server tick events to poll for client readiness.');
+    buffer.writeln('  // In singleplayer mode, the integrated server runs alongside the client.');
+    buffer.writeln('  // This avoids needing complex FFI callbacks for client events.');
+    buffer.writeln('  Events.addTickListener((tick) {');
+    buffer.writeln('    // Check if client is ready (has player and world)');
+    buffer.writeln('    if (!_clientReady && ClientBridge.isClientReady()) {');
+    buffer.writeln('      _clientReady = true;');
+    buffer.writeln('      print("Client ready detected at tick \$tick");');
+    buffer.writeln('      // Run tests asynchronously so we don\'t block the tick handler');
+    buffer.writeln('      Future(() => _runClientTests());');
+    buffer.writeln('    }');
+    buffer.writeln('  });');
+    buffer.writeln();
+    buffer.writeln('  print("Client test harness initialized, waiting for client to be ready...");');
     buffer.writeln('}');
 
     return buffer.toString();

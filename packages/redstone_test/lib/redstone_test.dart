@@ -77,6 +77,9 @@ library redstone_test;
 // Test function and result tracking
 export 'src/minecraft_test.dart' show testMinecraft, group, testResults, TestResults;
 
+// Client test function for visual testing
+export 'src/client_test.dart' show testMinecraftClient, clientGroup;
+
 // Test events for structured output
 export 'src/test_event.dart'
     show
@@ -96,9 +99,11 @@ export 'src/test_event.dart'
 
 // Game context
 export 'src/game_context.dart' show MinecraftGameContext;
+export 'src/client_game_context.dart' show ClientGameContext;
 
 // Test binding
 export 'src/test_binding.dart' show MinecraftTestBinding;
+export 'src/client_test_binding.dart' show ClientTestBinding;
 
 // Programmatic runner
 export 'src/programmatic_runner.dart'
