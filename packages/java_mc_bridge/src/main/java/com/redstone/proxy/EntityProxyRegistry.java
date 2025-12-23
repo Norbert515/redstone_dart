@@ -326,8 +326,9 @@ public class EntityProxyRegistry {
      * @param texturePath The texture path (e.g., "minecraft:textures/entity/zombie/zombie.png").
      * @param scale The scale factor for rendering.
      */
-    public static void registerModelConfig(long handlerId, String modelType, String texturePath, float scale) {
-        entityModelConfigs.put(handlerId, new EntityModelConfig(modelType, texturePath, scale));
+    public static void registerModelConfig(long handlerId, String modelType, String texturePath, double scale) {
+        // Cast to float for the EntityModelConfig which uses float internally
+        entityModelConfigs.put(handlerId, new EntityModelConfig(modelType, texturePath, (float) scale));
         LOGGER.info("Registered model config for handler {}: modelType={}, texture={}, scale={}",
             handlerId, modelType, texturePath, scale);
     }

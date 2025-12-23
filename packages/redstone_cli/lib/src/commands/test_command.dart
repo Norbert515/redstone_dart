@@ -57,6 +57,12 @@ class TestCommand extends Command<int> {
       help: 'Show verbose output.',
       negatable: false,
     );
+    argParser.addFlag(
+      'client',
+      abbr: 'c',
+      help: 'Run client-side visual tests (uses testMinecraftClient).',
+      negatable: false,
+    );
   }
 
   @override
@@ -69,8 +75,14 @@ class TestCommand extends Command<int> {
       return 1;
     }
 
+    final clientMode = argResults!['client'] as bool;
+
     Logger.newLine();
-    Logger.header('🧪 Running tests for ${project.name}');
+    if (clientMode) {
+      Logger.header('🎮 Running client visual tests for ${project.name}');
+    } else {
+      Logger.header('🧪 Running tests for ${project.name}');
+    }
     Logger.newLine();
 
     // Collect test files from args (positional arguments that look like paths)
@@ -117,16 +129,32 @@ class TestCommand extends Command<int> {
     // Generate test harness
     Logger.info('Generating test harness...');
     final generator = TestHarnessGenerator(project);
-    final harnessFile = await generator.generate(
-      testFiles: testFiles,
-      filterArgs: filterArgs,
-    );
+    final File harnessFile;
+    if (clientMode) {
+      harnessFile = await generator.generateClientHarness(
+        testFiles: testFiles,
+        filterArgs: filterArgs,
+      );
+    } else {
+      harnessFile = await generator.generate(
+        testFiles: testFiles,
+        filterArgs: filterArgs,
+      );
+    }
 
     Logger.info('Test harness generated at: ${harnessFile.path}');
 
     // Start Minecraft with the test harness
-    Logger.info('Starting Minecraft with test harness...');
-    final runner = MinecraftRunner(project, testMode: true);
+    if (clientMode) {
+      Logger.info('Starting Minecraft client with visual test harness...');
+    } else {
+      Logger.info('Starting Minecraft server with test harness...');
+    }
+    final runner = MinecraftRunner(
+      project,
+      testMode: !clientMode,
+      clientTestMode: clientMode,
+    );
     final verbose = argResults!['verbose'] as bool;
 
     try {

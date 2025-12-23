@@ -94,19 +94,9 @@ class EntityRegistry {
       throw StateError('Failed to create proxy entity for: ${entity.id}');
     }
 
-    // Register with Minecraft's registry
-    final success = GenericJniBridge.callStaticBoolMethod(
-      'com/redstone/proxy/EntityProxyRegistry',
-      'registerEntity',
-      '(JLjava/lang/String;Ljava/lang/String;)Z',
-      [handlerId, namespace, path],
-    );
-
-    if (!success) {
-      throw StateError('Failed to register entity with Minecraft: ${entity.id}');
-    }
-
-    // Register model config if the entity has a model
+    // Register model config BEFORE registering entity with Minecraft.
+    // This is important because registerEntity() triggers a callback that
+    // checks for model config to decide which renderer to use.
     final model = entity.settings.model;
     if (model != null) {
       final modelJson = model.toJson();
@@ -117,12 +107,24 @@ class EntityRegistry {
       GenericJniBridge.callStaticVoidMethod(
         'com/redstone/proxy/EntityProxyRegistry',
         'registerModelConfig',
-        '(JLjava/lang/String;Ljava/lang/String;F)V',
+        '(JLjava/lang/String;Ljava/lang/String;D)V',
         [handlerId, modelType, texturePath, scale],
       );
 
       print('EntityRegistry: Registered model config for ${entity.id} '
           '(type: $modelType, texture: $texturePath, scale: $scale)');
+    }
+
+    // Register with Minecraft's registry (triggers renderer registration callback)
+    final success = GenericJniBridge.callStaticBoolMethod(
+      'com/redstone/proxy/EntityProxyRegistry',
+      'registerEntity',
+      '(JLjava/lang/String;Ljava/lang/String;)Z',
+      [handlerId, namespace, path],
+    );
+
+    if (!success) {
+      throw StateError('Failed to register entity with Minecraft: ${entity.id}');
     }
 
     // Store the entity and set its handler ID
