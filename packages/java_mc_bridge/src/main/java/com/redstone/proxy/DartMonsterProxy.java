@@ -41,6 +41,27 @@ public class DartMonsterProxy extends Monster {
     }
 
     @Override
+    protected void registerGoals() {
+        // Get handlerId from ThreadLocal since this is called during super() before field assignment
+        Long handlerId = EntityProxyRegistry.getCurrentHandlerId();
+        if (handlerId == null) {
+            // Fallback to instance field (for cases where entity is created outside factory)
+            handlerId = this.dartHandlerId;
+        }
+
+        // Get goal configs from registry
+        String goalsJson = EntityProxyRegistry.getGoalConfig(handlerId);
+        String targetGoalsJson = EntityProxyRegistry.getTargetGoalConfig(handlerId);
+
+        // If custom goals are configured, use them
+        if (goalsJson != null || targetGoalsJson != null) {
+            GoalFactory.registerGoals(this, goalsJson);
+            GoalFactory.registerTargetGoals(this, targetGoalsJson);
+        }
+        // If no goals configured, monster has no AI (intentional - user must configure)
+    }
+
+    @Override
     public void tick() {
         super.tick();
         if (!level().isClientSide()) {

@@ -1,0 +1,6 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "framework_tests:item/test_lightning_sword"
+  }
+}

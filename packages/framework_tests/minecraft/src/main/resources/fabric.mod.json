@@ -21,6 +21,7 @@
     "framework_tests.mixins.json",
     "redstone_bridge.mixins.json"
   ],
+  "accessWidener": "redstone.accesswidener",
   "depends": {
     "fabricloader": ">=${loader_version}",
     "minecraft": "~1.21.11",

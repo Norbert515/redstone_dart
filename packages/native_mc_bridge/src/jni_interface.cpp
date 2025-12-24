@@ -1086,4 +1086,82 @@ JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onCommandExecute(
     return result;
 }
 
+// ==========================================================================
+// Custom Goal JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    nativeOnCustomGoalCanUse
+ * Signature: (Ljava/lang/String;I)Z
+ *
+ * Called from Java DartGoal to check if the goal can start.
+ * Returns true if the goal can be used, false otherwise.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_nativeOnCustomGoalCanUse(
+    JNIEnv* env, jclass /* cls */, jstring goalId, jint entityId) {
+    const char* goal_id = env->GetStringUTFChars(goalId, nullptr);
+    bool result = dispatch_custom_goal_can_use(goal_id, static_cast<int32_t>(entityId));
+    env->ReleaseStringUTFChars(goalId, goal_id);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    nativeOnCustomGoalCanContinueToUse
+ * Signature: (Ljava/lang/String;I)Z
+ *
+ * Called from Java DartGoal to check if the goal should continue running.
+ * Returns true if the goal should continue, false to stop.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_nativeOnCustomGoalCanContinueToUse(
+    JNIEnv* env, jclass /* cls */, jstring goalId, jint entityId) {
+    const char* goal_id = env->GetStringUTFChars(goalId, nullptr);
+    bool result = dispatch_custom_goal_can_continue_to_use(goal_id, static_cast<int32_t>(entityId));
+    env->ReleaseStringUTFChars(goalId, goal_id);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    nativeOnCustomGoalStart
+ * Signature: (Ljava/lang/String;I)V
+ *
+ * Called from Java DartGoal when the goal starts running.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_nativeOnCustomGoalStart(
+    JNIEnv* env, jclass /* cls */, jstring goalId, jint entityId) {
+    const char* goal_id = env->GetStringUTFChars(goalId, nullptr);
+    dispatch_custom_goal_start(goal_id, static_cast<int32_t>(entityId));
+    env->ReleaseStringUTFChars(goalId, goal_id);
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    nativeOnCustomGoalTick
+ * Signature: (Ljava/lang/String;I)V
+ *
+ * Called from Java DartGoal every tick while the goal is active.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_nativeOnCustomGoalTick(
+    JNIEnv* env, jclass /* cls */, jstring goalId, jint entityId) {
+    const char* goal_id = env->GetStringUTFChars(goalId, nullptr);
+    dispatch_custom_goal_tick(goal_id, static_cast<int32_t>(entityId));
+    env->ReleaseStringUTFChars(goalId, goal_id);
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    nativeOnCustomGoalStop
+ * Signature: (Ljava/lang/String;I)V
+ *
+ * Called from Java DartGoal when the goal stops running.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_nativeOnCustomGoalStop(
+    JNIEnv* env, jclass /* cls */, jstring goalId, jint entityId) {
+    const char* goal_id = env->GetStringUTFChars(goalId, nullptr);
+    dispatch_custom_goal_stop(goal_id, static_cast<int32_t>(entityId));
+    env->ReleaseStringUTFChars(goalId, goal_id);
+}
+
 } // extern "C"

@@ -212,6 +212,11 @@ dependencies:
     buffer.writeln("import 'package:redstone_test/redstone_test.dart';");
     buffer.writeln();
 
+    // Import the mod's main.dart to register blocks, items, and entities
+    final modMainPath = p.join(project.rootDir, 'lib', 'main.dart');
+    buffer.writeln("import 'file://$modMainPath' as mod_main;");
+    buffer.writeln();
+
     // Generate imports for each test file with unique aliases
     // Harness ends up in lib/dart_mc.dart, test files in test/
     for (var i = 0; i < testFiles.length; i++) {
@@ -226,6 +231,9 @@ dependencies:
     buffer.writeln('void main() async {');
     buffer.writeln('  // Initialize bridge');
     buffer.writeln('  Bridge.initialize();');
+    buffer.writeln();
+    buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
+    buffer.writeln('  mod_main.main();');
     buffer.writeln();
     buffer.writeln('  // Wait for server to be ready');
     buffer.writeln('  Events.onServerStarted(() async {');

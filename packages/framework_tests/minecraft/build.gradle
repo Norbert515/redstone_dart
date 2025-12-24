@@ -17,6 +17,9 @@ repositories {
 loom {
     splitEnvironmentSourceSets()
 
+    // Access widener to expose protected Mob fields (goalSelector, targetSelector)
+    accessWidenerPath = file("../.redstone/bridge/resources/redstone.accesswidener")
+
     mods {
         "framework_tests" {
             sourceSet sourceSets.main

@@ -20,6 +20,7 @@
   "mixins": [
     "basic_dart_mod.mixins.json"
   ],
+  "accessWidener": "redstone.accesswidener",
   "depends": {
     "fabricloader": ">=${loader_version}",
     "minecraft": "~1.21.11",

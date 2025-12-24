@@ -358,4 +358,39 @@ extern "C" {
 
     // Command dispatch function (called from Java via JNI)
     int32_t dispatch_command_execute(int64_t command_id, int32_t player_id, const char* args_json);
+
+    // ==========================================================================
+    // Custom Goal Callbacks (for custom Dart entity goals)
+    // ==========================================================================
+
+    // Custom goal callbacks (called from Dart via FFI, invoked from Java goal classes)
+    // CustomGoalCanUseCallback returns true if the goal can start, false otherwise
+    typedef bool (*CustomGoalCanUseCallback)(const char* goal_id, int32_t entity_id);
+    // CustomGoalCanContinueToUseCallback returns true if the goal should continue, false to stop
+    typedef bool (*CustomGoalCanContinueToUseCallback)(const char* goal_id, int32_t entity_id);
+    // CustomGoalStartCallback is called when the goal starts
+    typedef void (*CustomGoalStartCallback)(const char* goal_id, int32_t entity_id);
+    // CustomGoalTickCallback is called every tick while the goal is active
+    typedef void (*CustomGoalTickCallback)(const char* goal_id, int32_t entity_id);
+    // CustomGoalStopCallback is called when the goal stops
+    typedef void (*CustomGoalStopCallback)(const char* goal_id, int32_t entity_id);
+
+    // Custom goal callback registration (called from Dart via FFI)
+    void register_custom_goal_can_use_handler(CustomGoalCanUseCallback cb);
+    void register_custom_goal_can_continue_to_use_handler(CustomGoalCanContinueToUseCallback cb);
+    void register_custom_goal_start_handler(CustomGoalStartCallback cb);
+    void register_custom_goal_tick_handler(CustomGoalTickCallback cb);
+    void register_custom_goal_stop_handler(CustomGoalStopCallback cb);
+
+    // Custom goal dispatch functions (called from Java via JNI)
+    // Returns true if the goal can start
+    bool dispatch_custom_goal_can_use(const char* goal_id, int32_t entity_id);
+    // Returns true if the goal should continue
+    bool dispatch_custom_goal_can_continue_to_use(const char* goal_id, int32_t entity_id);
+    // Called when the goal starts
+    void dispatch_custom_goal_start(const char* goal_id, int32_t entity_id);
+    // Called every tick while the goal is active
+    void dispatch_custom_goal_tick(const char* goal_id, int32_t entity_id);
+    // Called when the goal stops
+    void dispatch_custom_goal_stop(const char* goal_id, int32_t entity_id);
 }

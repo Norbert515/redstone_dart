@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'custom_entity.dart';
+import 'entity_goal.dart';
 import '../src/jni/generic_bridge.dart';
 
 /// Registry for Dart-defined entities.
@@ -25,6 +26,12 @@ class EntityRegistry {
   static bool _frozen = false;
 
   EntityRegistry._(); // Private constructor - all static
+
+  /// Serialize a list of goals to JSON string, or null if empty/null.
+  static String? _serializeGoals(List<EntityGoal>? goals) {
+    if (goals == null || goals.isEmpty) return null;
+    return jsonEncode(goals.map((g) => g.toJson()).toList());
+  }
 
   /// Register a custom entity.
   ///
@@ -113,6 +120,29 @@ class EntityRegistry {
 
       print('EntityRegistry: Registered model config for ${entity.id} '
           '(type: $modelType, texture: $texturePath, scale: $scale)');
+    }
+
+    // Register goal config for monsters and animals BEFORE registering with Minecraft.
+    // This ensures the goals are available when the entity type is created.
+    String? goalsJson;
+    String? targetGoalsJson;
+    if (entity is CustomMonster) {
+      goalsJson = _serializeGoals(entity.settings.goals);
+      targetGoalsJson = _serializeGoals(entity.settings.targetGoals);
+    } else if (entity is CustomAnimal) {
+      goalsJson = _serializeGoals(entity.settings.goals);
+      targetGoalsJson = _serializeGoals(entity.settings.targetGoals);
+    }
+
+    if (goalsJson != null || targetGoalsJson != null) {
+      GenericJniBridge.callStaticVoidMethod(
+        'com/redstone/proxy/EntityProxyRegistry',
+        'registerGoalConfig',
+        '(JLjava/lang/String;Ljava/lang/String;)V',
+        [handlerId, goalsJson ?? '', targetGoalsJson ?? ''],
+      );
+
+      print('EntityRegistry: Registered goal config for ${entity.id}');
     }
 
     // Register with Minecraft's registry (triggers renderer registration callback)

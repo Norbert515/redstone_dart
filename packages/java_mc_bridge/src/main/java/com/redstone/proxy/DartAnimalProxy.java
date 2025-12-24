@@ -1,8 +1,6 @@
 package com.redstone.proxy;
 
 import com.redstone.DartBridge;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.EntityType;
@@ -43,17 +41,34 @@ public class DartAnimalProxy extends Animal {
 
     @Override
     protected void registerGoals() {
-        // Basic animal AI goals (similar to Cow)
-        this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(1, new PanicGoal(this, 2.0));
-        this.goalSelector.addGoal(2, new BreedGoal(this, 1.0));
-        if (breedingItem != null) {
-            this.goalSelector.addGoal(3, new TemptGoal(this, 1.25, Ingredient.of(breedingItem), false));
+        // Get handlerId from ThreadLocal since this is called during super() before field assignment
+        Long handlerId = EntityProxyRegistry.getCurrentHandlerId();
+        if (handlerId == null) {
+            // Fallback to instance field (for cases where entity is created outside factory)
+            handlerId = this.dartHandlerId;
         }
-        this.goalSelector.addGoal(4, new FollowParentGoal(this, 1.25));
-        this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 1.0));
-        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 6.0F));
-        this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
+
+        // Get goal configs from registry
+        String goalsJson = EntityProxyRegistry.getGoalConfig(handlerId);
+        String targetGoalsJson = EntityProxyRegistry.getTargetGoalConfig(handlerId);
+
+        // If custom goals are configured, use them instead of defaults
+        if (goalsJson != null || targetGoalsJson != null) {
+            GoalFactory.registerGoals(this, goalsJson);
+            GoalFactory.registerTargetGoals(this, targetGoalsJson);
+        } else {
+            // Use default animal behaviors (keep existing hardcoded goals)
+            this.goalSelector.addGoal(0, new FloatGoal(this));
+            this.goalSelector.addGoal(1, new PanicGoal(this, 2.0));
+            this.goalSelector.addGoal(2, new BreedGoal(this, 1.0));
+            if (breedingItem != null) {
+                this.goalSelector.addGoal(3, new TemptGoal(this, 1.25, Ingredient.of(breedingItem), false));
+            }
+            this.goalSelector.addGoal(4, new FollowParentGoal(this, 1.25));
+            this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 1.0));
+            this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 6.0F));
+            this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
+        }
     }
 
     @Override

@@ -1,6 +1,7 @@
 /// API for defining custom entities in Dart.
 library;
 
+import 'entity_goal.dart';
 import 'entity_model.dart';
 
 /// Spawn groups for entity category.
@@ -79,6 +80,14 @@ class MonsterSettings extends EntitySettings {
   /// Whether the monster burns when exposed to sunlight.
   final bool burnsInDaylight;
 
+  /// Custom AI goals for the goal selector (movement, combat actions, etc.).
+  /// If null, default monster goals are used.
+  final List<EntityGoal>? goals;
+
+  /// Custom AI goals for the target selector (finding enemies to attack).
+  /// If null, default monster target goals are used.
+  final List<EntityGoal>? targetGoals;
+
   const MonsterSettings({
     super.width = 0.6,
     super.height = 1.95,
@@ -86,6 +95,8 @@ class MonsterSettings extends EntitySettings {
     super.movementSpeed = 0.23,
     super.attackDamage = 3,
     this.burnsInDaylight = false,
+    this.goals,
+    this.targetGoals,
     super.needsTickCallback = false,
     super.model,
   }) : super(spawnGroup: SpawnGroup.monster);
@@ -103,6 +114,14 @@ class AnimalSettings extends EntitySettings {
   /// If null, the animal cannot be bred.
   final String? breedingItem;
 
+  /// Custom AI goals for the goal selector (movement, breeding, following, etc.).
+  /// If null, default animal goals are used.
+  final List<EntityGoal>? goals;
+
+  /// Custom AI goals for the target selector.
+  /// If null, default animal target goals are used (usually none).
+  final List<EntityGoal>? targetGoals;
+
   const AnimalSettings({
     super.width = 0.9,
     super.height = 1.4,
@@ -110,6 +129,8 @@ class AnimalSettings extends EntitySettings {
     super.movementSpeed = 0.2,
     super.attackDamage = 0,
     this.breedingItem,
+    this.goals,
+    this.targetGoals,
     super.needsTickCallback = false,
     super.model,
   }) : super(spawnGroup: SpawnGroup.creature);

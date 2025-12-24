@@ -1344,4 +1344,79 @@ int32_t dispatch_command_execute(int64_t command_id, int32_t player_id, const ch
     return result;
 }
 
+// ==========================================================================
+// Custom Goal Callback Registration (called from Dart via FFI)
+// ==========================================================================
+
+void register_custom_goal_can_use_handler(CustomGoalCanUseCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setCustomGoalCanUseHandler(cb);
+}
+
+void register_custom_goal_can_continue_to_use_handler(CustomGoalCanContinueToUseCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setCustomGoalCanContinueToUseHandler(cb);
+}
+
+void register_custom_goal_start_handler(CustomGoalStartCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setCustomGoalStartHandler(cb);
+}
+
+void register_custom_goal_tick_handler(CustomGoalTickCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setCustomGoalTickHandler(cb);
+}
+
+void register_custom_goal_stop_handler(CustomGoalStopCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setCustomGoalStopHandler(cb);
+}
+
+// ==========================================================================
+// Custom Goal Dispatch (called from Java via JNI)
+// ==========================================================================
+
+bool dispatch_custom_goal_can_use(const char* goal_id, int32_t entity_id) {
+    if (!g_initialized || g_isolate == nullptr) return false;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalCanUse(goal_id, entity_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+bool dispatch_custom_goal_can_continue_to_use(const char* goal_id, int32_t entity_id) {
+    if (!g_initialized || g_isolate == nullptr) return false;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalCanContinueToUse(goal_id, entity_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+void dispatch_custom_goal_start(const char* goal_id, int32_t entity_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalStart(goal_id, entity_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_custom_goal_tick(const char* goal_id, int32_t entity_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalTick(goal_id, entity_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void dispatch_custom_goal_stop(const char* goal_id, int32_t entity_id) {
+    if (!g_initialized || g_isolate == nullptr) return;
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalStop(goal_id, entity_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
 } // extern "C"

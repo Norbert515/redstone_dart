@@ -35,6 +35,7 @@ void main() {
   // Register proxy handlers (required for custom blocks and items)
   Events.registerProxyBlockHandlers();
   Events.registerProxyItemHandlers();
+  Events.registerCustomGoalHandlers(); // Required for custom Dart-defined AI goals
 
   // =========================================================================
   // Register your custom items here
@@ -80,9 +81,9 @@ void main() {
 
   print(
       'Basic Dart Mod ready with ${BlockRegistry.blockCount} custom blocks and ${EntityRegistry.entityCount} custom entities!');
-  print('  Commands: /heal, /feed, /fly, /spawn, /time, /spawnzombie, /spawncow, /fireball');
+  print('  Commands: /heal, /feed, /fly, /spawn, /time, /spawnzombie, /spawncow, /fireball, /spawncustomzombie');
   print('  Items: DartItem, EffectWand');
   print('  Blocks: HelloBlock, TerraformerBlock, MidasBlock, LightningRodBlock,');
   print('          MobSpawnerBlock, PartyBlock, WeatherControlBlock, EntityRadarBlock');
-  print('  Entities: DartZombie (monster), DartCow (animal), DartFireball (projectile)');
+  print('  Entities: DartZombie, DartCow, DartFireball, CustomGoalZombie (with Dart AI!)');
 }

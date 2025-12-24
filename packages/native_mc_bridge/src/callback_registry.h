@@ -281,6 +281,32 @@ public:
         command_execute_handler_ = cb;
     }
 
+    // Custom goal callback setters
+    void setCustomGoalCanUseHandler(CustomGoalCanUseCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        custom_goal_can_use_handler_ = cb;
+    }
+
+    void setCustomGoalCanContinueToUseHandler(CustomGoalCanContinueToUseCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        custom_goal_can_continue_to_use_handler_ = cb;
+    }
+
+    void setCustomGoalStartHandler(CustomGoalStartCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        custom_goal_start_handler_ = cb;
+    }
+
+    void setCustomGoalTickHandler(CustomGoalTickCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        custom_goal_tick_handler_ = cb;
+    }
+
+    void setCustomGoalStopHandler(CustomGoalStopCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        custom_goal_stop_handler_ = cb;
+    }
+
     // Dispatch (called from Java via JNI)
     int32_t dispatchBlockBreak(int32_t x, int32_t y, int32_t z, int64_t player_id) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -786,6 +812,49 @@ public:
         return 0; // Default: failure
     }
 
+    // Custom goal dispatch methods
+    // Returns true if the goal can start
+    bool dispatchCustomGoalCanUse(const char* goal_id, int32_t entity_id) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (custom_goal_can_use_handler_) {
+            return custom_goal_can_use_handler_(goal_id, entity_id);
+        }
+        return false; // Default: cannot use
+    }
+
+    // Returns true if the goal should continue
+    bool dispatchCustomGoalCanContinueToUse(const char* goal_id, int32_t entity_id) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (custom_goal_can_continue_to_use_handler_) {
+            return custom_goal_can_continue_to_use_handler_(goal_id, entity_id);
+        }
+        return false; // Default: cannot continue
+    }
+
+    // Called when the goal starts
+    void dispatchCustomGoalStart(const char* goal_id, int32_t entity_id) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (custom_goal_start_handler_) {
+            custom_goal_start_handler_(goal_id, entity_id);
+        }
+    }
+
+    // Called every tick while the goal is active
+    void dispatchCustomGoalTick(const char* goal_id, int32_t entity_id) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (custom_goal_tick_handler_) {
+            custom_goal_tick_handler_(goal_id, entity_id);
+        }
+    }
+
+    // Called when the goal stops
+    void dispatchCustomGoalStop(const char* goal_id, int32_t entity_id) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (custom_goal_stop_handler_) {
+            custom_goal_stop_handler_(goal_id, entity_id);
+        }
+    }
+
     // Clear all handlers
     void clear() {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -855,6 +924,12 @@ public:
         proxy_item_attack_entity_handler_ = nullptr;
         // Command handlers
         command_execute_handler_ = nullptr;
+        // Custom goal handlers
+        custom_goal_can_use_handler_ = nullptr;
+        custom_goal_can_continue_to_use_handler_ = nullptr;
+        custom_goal_start_handler_ = nullptr;
+        custom_goal_tick_handler_ = nullptr;
+        custom_goal_stop_handler_ = nullptr;
     }
 
 private:
@@ -939,6 +1014,13 @@ private:
 
     // Command handlers
     CommandExecuteCallback command_execute_handler_ = nullptr;
+
+    // Custom goal handlers
+    CustomGoalCanUseCallback custom_goal_can_use_handler_ = nullptr;
+    CustomGoalCanContinueToUseCallback custom_goal_can_continue_to_use_handler_ = nullptr;
+    CustomGoalStartCallback custom_goal_start_handler_ = nullptr;
+    CustomGoalTickCallback custom_goal_tick_handler_ = nullptr;
+    CustomGoalStopCallback custom_goal_stop_handler_ = nullptr;
 };
 
 } // namespace dart_mc_bridge

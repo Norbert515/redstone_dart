@@ -16,6 +16,19 @@ class DartZombie extends CustomMonster {
             model: EntityModel.humanoid(
               texture: 'textures/entity/dart_zombie.png',
             ),
+            // AI Goals - makes the zombie actually attack!
+            goals: [
+              FloatGoal(priority: 0), // Stay afloat in water
+              MeleeAttackGoal(priority: 2, speedModifier: 1.0), // Attack target
+              WaterAvoidingRandomStrollGoal(priority: 5), // Wander around
+              LookAtPlayerGoal(priority: 6, lookDistance: 8.0), // Look at players
+              RandomLookAroundGoal(priority: 7), // Random looking
+            ],
+            targetGoals: [
+              HurtByTargetGoal(priority: 1), // Retaliate when hurt
+              NearestAttackableTargetGoal(
+                  priority: 2, targetType: 'player'), // Target players
+            ],
           ),
         );
 

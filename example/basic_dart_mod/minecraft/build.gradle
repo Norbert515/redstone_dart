@@ -17,6 +17,10 @@ repositories {
 loom {
     splitEnvironmentSourceSets()
 
+    // Access widener to expose protected Mob fields (goalSelector, targetSelector)
+    // Must be in src/main/resources for Fabric to find at runtime
+    accessWidenerPath = file("src/main/resources/redstone.accesswidener")
+
     mods {
         "basic_dart_mod" {
             sourceSet sourceSets.main

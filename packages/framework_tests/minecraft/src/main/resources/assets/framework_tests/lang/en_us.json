@@ -1,3 +1,5 @@
 {
-  "block.framework_tests.hello_block": "Hello Block"
+  "block.framework_tests.hello_block": "Hello Block",
+  "item.framework_tests.test_simple_sword": "Test Simple Sword",
+  "item.framework_tests.test_lightning_sword": "Test Lightning Sword"
 }

@@ -29,6 +29,7 @@ dependencies {
 // Minimal loom config - we don't need split source sets for a library
 loom {
     // No mods block needed - this is a library, not a mod
+    accessWidenerPath = file("src/main/resources/redstone.accesswidener")
 }
 
 tasks.withType(JavaCompile).configureEach {

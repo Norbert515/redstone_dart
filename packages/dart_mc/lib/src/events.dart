@@ -11,6 +11,7 @@ import 'package:ffi/ffi.dart';
 import 'bridge.dart';
 import 'types.dart';
 import '../api/block_registry.dart';
+import '../api/custom_goal.dart';
 import '../api/entity_registry.dart';
 import '../api/item_registry.dart';
 import '../api/player.dart';
@@ -35,6 +36,7 @@ final List<TickHandler> _tickListeners = [];
 bool _proxyHandlersRegistered = false;
 bool _proxyEntityHandlersRegistered = false;
 bool _proxyItemHandlersRegistered = false;
+bool _customGoalHandlersRegistered = false;
 
 // New event handlers
 void Function(Player player)? _playerJoinHandler;
@@ -299,6 +301,40 @@ bool _onProxyItemAttackEntity(int handlerId, int worldId, int attackerId, int ta
   return ItemRegistry.dispatchItemAttackEntity(handlerId, worldId, attackerId, targetId);
 }
 
+// =============================================================================
+// Custom Goal Callback Trampolines - route to CustomGoalRegistry
+// =============================================================================
+
+@pragma('vm:entry-point')
+bool _onCustomGoalCanUse(Pointer<Utf8> goalIdPtr, int entityId) {
+  final goalId = goalIdPtr.toDartString();
+  return CustomGoalRegistry.dispatchCanUse(goalId, entityId);
+}
+
+@pragma('vm:entry-point')
+bool _onCustomGoalCanContinueToUse(Pointer<Utf8> goalIdPtr, int entityId) {
+  final goalId = goalIdPtr.toDartString();
+  return CustomGoalRegistry.dispatchCanContinueToUse(goalId, entityId);
+}
+
+@pragma('vm:entry-point')
+void _onCustomGoalStart(Pointer<Utf8> goalIdPtr, int entityId) {
+  final goalId = goalIdPtr.toDartString();
+  CustomGoalRegistry.dispatchStart(goalId, entityId);
+}
+
+@pragma('vm:entry-point')
+void _onCustomGoalTick(Pointer<Utf8> goalIdPtr, int entityId) {
+  final goalId = goalIdPtr.toDartString();
+  CustomGoalRegistry.dispatchTick(goalId, entityId);
+}
+
+@pragma('vm:entry-point')
+void _onCustomGoalStop(Pointer<Utf8> goalIdPtr, int entityId) {
+  final goalId = goalIdPtr.toDartString();
+  CustomGoalRegistry.dispatchStop(goalId, entityId);
+}
+
 /// Event registration API.
 class Events {
   Events._();
@@ -479,6 +515,48 @@ class Events {
     Bridge.registerProxyItemAttackEntityHandler(attackEntityCallback);
 
     print('Events: Proxy item handlers registered');
+  }
+
+  /// Register custom goal handlers for Dart-defined AI goals.
+  ///
+  /// This is called automatically during mod initialization.
+  /// It routes custom goal callbacks to CustomGoalRegistry which dispatches
+  /// to the appropriate CustomGoal instances.
+  static void registerCustomGoalHandlers() {
+    if (_customGoalHandlersRegistered) return;
+    _customGoalHandlersRegistered = true;
+
+    if (Bridge.isDatagenMode) {
+      print('Events: Skipping custom goal handlers (datagen mode)');
+      return;
+    }
+
+    // canUse callback - default: false (goal cannot be used)
+    final canUseCallback = Pointer.fromFunction<CustomGoalCanUseCallbackNative>(
+        _onCustomGoalCanUse, false);
+    Bridge.registerCustomGoalCanUseHandler(canUseCallback);
+
+    // canContinueToUse callback - default: false (goal should stop)
+    final canContinueToUseCallback = Pointer.fromFunction<CustomGoalCanContinueToUseCallbackNative>(
+        _onCustomGoalCanContinueToUse, false);
+    Bridge.registerCustomGoalCanContinueToUseHandler(canContinueToUseCallback);
+
+    // start callback (void return)
+    final startCallback = Pointer.fromFunction<CustomGoalStartCallbackNative>(
+        _onCustomGoalStart);
+    Bridge.registerCustomGoalStartHandler(startCallback);
+
+    // tick callback (void return)
+    final tickCallback = Pointer.fromFunction<CustomGoalTickCallbackNative>(
+        _onCustomGoalTick);
+    Bridge.registerCustomGoalTickHandler(tickCallback);
+
+    // stop callback (void return)
+    final stopCallback = Pointer.fromFunction<CustomGoalStopCallbackNative>(
+        _onCustomGoalStop);
+    Bridge.registerCustomGoalStopHandler(stopCallback);
+
+    print('Events: Custom goal handlers registered');
   }
 
   // ==========================================================================

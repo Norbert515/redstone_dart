@@ -2821,4 +2821,260 @@ public class DartBridge {
         int maxDamage = stack.getMaxDamage();
         return itemId + ":" + stack.getCount() + ":" + damage + ":" + maxDamage;
     }
+
+    // ==========================================================================
+    // Custom Goal Callbacks
+    // ==========================================================================
+    // These methods are called by DartCustomGoal to dispatch goal lifecycle events to Dart.
+
+    /**
+     * Called when a custom goal checks if it can be used.
+     * @return true if the goal should start
+     */
+    public static boolean onCustomGoalCanUse(String goalId, int entityId) {
+        if (!initialized) return false;
+        try {
+            return nativeOnCustomGoalCanUse(goalId, entityId);
+        } catch (Exception e) {
+            LOGGER.error("Exception during custom goal canUse dispatch: {}", e.getMessage());
+            return false;
+        }
+    }
+    private static native boolean nativeOnCustomGoalCanUse(String goalId, int entityId);
+
+    /**
+     * Called when a custom goal checks if it can continue.
+     * @return true if the goal should continue
+     */
+    public static boolean onCustomGoalCanContinueToUse(String goalId, int entityId) {
+        if (!initialized) return false;
+        try {
+            return nativeOnCustomGoalCanContinueToUse(goalId, entityId);
+        } catch (Exception e) {
+            LOGGER.error("Exception during custom goal canContinueToUse dispatch: {}", e.getMessage());
+            return false;
+        }
+    }
+    private static native boolean nativeOnCustomGoalCanContinueToUse(String goalId, int entityId);
+
+    /**
+     * Called when a custom goal starts.
+     */
+    public static void onCustomGoalStart(String goalId, int entityId) {
+        if (!initialized) return;
+        try {
+            nativeOnCustomGoalStart(goalId, entityId);
+        } catch (Exception e) {
+            LOGGER.error("Exception during custom goal start dispatch: {}", e.getMessage());
+        }
+    }
+    private static native void nativeOnCustomGoalStart(String goalId, int entityId);
+
+    /**
+     * Called every tick while a custom goal is active.
+     */
+    public static void onCustomGoalTick(String goalId, int entityId) {
+        if (!initialized) return;
+        try {
+            nativeOnCustomGoalTick(goalId, entityId);
+        } catch (Exception e) {
+            LOGGER.error("Exception during custom goal tick dispatch: {}", e.getMessage());
+        }
+    }
+    private static native void nativeOnCustomGoalTick(String goalId, int entityId);
+
+    /**
+     * Called when a custom goal stops.
+     */
+    public static void onCustomGoalStop(String goalId, int entityId) {
+        if (!initialized) return;
+        try {
+            nativeOnCustomGoalStop(goalId, entityId);
+        } catch (Exception e) {
+            LOGGER.error("Exception during custom goal stop dispatch: {}", e.getMessage());
+        }
+    }
+    private static native void nativeOnCustomGoalStop(String goalId, int entityId);
+
+    // ==========================================================================
+    // Entity Actions (for custom goals)
+    // ==========================================================================
+    // These methods are called from Dart's EntityActions class to control entity behavior.
+
+    /**
+     * Move an entity towards a position using pathfinding.
+     */
+    public static void entityMoveTo(int entityId, double x, double y, double z, double speed) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof Mob mob) {
+            mob.getNavigation().moveTo(x, y, z, speed);
+        }
+    }
+
+    /**
+     * Make an entity look at a position.
+     */
+    public static void entityLookAt(int entityId, double x, double y, double z) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof Mob mob) {
+            mob.getLookControl().setLookAt(x, y, z);
+        }
+    }
+
+    /**
+     * Make an entity look at another entity.
+     */
+    public static void entityLookAtEntity(int entityId, int targetId) {
+        Entity entity = getEntityById(entityId);
+        Entity target = getEntityById(targetId);
+        if (entity instanceof Mob mob && target != null) {
+            mob.getLookControl().setLookAt(target);
+        }
+    }
+
+    /**
+     * Stop an entity's current movement.
+     */
+    public static void entityStopMoving(int entityId) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof Mob mob) {
+            mob.getNavigation().stop();
+        }
+    }
+
+    /**
+     * Get the distance between two entities.
+     */
+    public static double entityDistanceTo(int entityId, int targetId) {
+        Entity entity = getEntityById(entityId);
+        Entity target = getEntityById(targetId);
+        if (entity != null && target != null) {
+            return entity.distanceTo(target);
+        }
+        return -1.0;
+    }
+
+    /**
+     * Get the squared distance from an entity to a position.
+     * Note: Returns squared distance for efficiency.
+     */
+    public static double entityDistanceToSqr(int entityId, double x, double y, double z) {
+        Entity entity = getEntityById(entityId);
+        if (entity != null) {
+            return entity.distanceToSqr(x, y, z);
+        }
+        return -1.0;
+    }
+
+    /**
+     * Check if there's a player within radius.
+     */
+    public static boolean entityHasNearbyPlayer(int entityId, double radius) {
+        Entity entity = getEntityById(entityId);
+        if (entity != null && entity.level() != null) {
+            return entity.level().getNearestPlayer(entity, radius) != null;
+        }
+        return false;
+    }
+
+    /**
+     * Get the nearest player's entity ID.
+     */
+    public static int entityGetNearestPlayer(int entityId, double radius) {
+        Entity entity = getEntityById(entityId);
+        if (entity != null && entity.level() != null) {
+            Player player = entity.level().getNearestPlayer(entity, radius);
+            if (player != null) {
+                return player.getId();
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Get an entity's current target.
+     */
+    public static int entityGetTarget(int entityId) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof Mob mob) {
+            LivingEntity target = mob.getTarget();
+            if (target != null) {
+                return target.getId();
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Set an entity's target.
+     */
+    public static void entitySetTarget(int entityId, int targetId) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof Mob mob) {
+            if (targetId < 0) {
+                mob.setTarget(null);
+            } else {
+                Entity target = getEntityById(targetId);
+                if (target instanceof LivingEntity living) {
+                    mob.setTarget(living);
+                }
+            }
+        }
+    }
+
+    /**
+     * Get an entity's X position.
+     */
+    public static double entityGetX(int entityId) {
+        Entity entity = getEntityById(entityId);
+        return entity != null ? entity.getX() : 0.0;
+    }
+
+    /**
+     * Get an entity's Y position.
+     */
+    public static double entityGetY(int entityId) {
+        Entity entity = getEntityById(entityId);
+        return entity != null ? entity.getY() : 0.0;
+    }
+
+    /**
+     * Get an entity's Z position.
+     */
+    public static double entityGetZ(int entityId) {
+        Entity entity = getEntityById(entityId);
+        return entity != null ? entity.getZ() : 0.0;
+    }
+
+    /**
+     * Check if an entity can see another entity.
+     */
+    public static boolean entityCanSee(int entityId, int targetId) {
+        Entity entity = getEntityById(entityId);
+        Entity target = getEntityById(targetId);
+        if (entity instanceof Mob mob && target != null) {
+            return mob.getSensing().hasLineOfSight(target);
+        }
+        return false;
+    }
+
+    /**
+     * Make an entity jump.
+     */
+    public static void entityJump(int entityId) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof Mob mob) {
+            mob.getJumpControl().jump();
+        }
+    }
+
+    /**
+     * Set an entity's movement speed.
+     */
+    public static void entitySetSpeed(int entityId, double speed) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof Mob mob) {
+            mob.setSpeed((float) speed);
+        }
+    }
 }

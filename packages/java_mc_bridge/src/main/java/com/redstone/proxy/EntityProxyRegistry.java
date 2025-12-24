@@ -40,7 +40,42 @@ public class EntityProxyRegistry {
     private static final Map<Long, Item> animalBreedingItems = new HashMap<>();
     private static final Map<Long, Integer> entityBaseTypes = new HashMap<>();
     private static final Map<Long, EntityModelConfig> entityModelConfigs = new HashMap<>();
+    private static final Map<Long, String> goalConfigs = new HashMap<>();
+    private static final Map<Long, String> targetGoalConfigs = new HashMap<>();
     private static long nextHandlerId = 1;
+
+    /**
+     * ThreadLocal for passing handlerId to entity constructors.
+     *
+     * This is needed because registerGoals() is called during the super() constructor
+     * before the dartHandlerId field is assigned. This is a common pattern in Minecraft
+     * modding for passing data through constructor hierarchies.
+     */
+    private static final ThreadLocal<Long> currentHandlerId = new ThreadLocal<>();
+
+    /**
+     * Set the current handler ID for entity construction.
+     * Call this before creating an entity instance.
+     */
+    public static void setCurrentHandlerId(long handlerId) {
+        currentHandlerId.set(handlerId);
+    }
+
+    /**
+     * Get the current handler ID during entity construction.
+     * Used by registerGoals() to access handlerId before field assignment.
+     */
+    public static Long getCurrentHandlerId() {
+        return currentHandlerId.get();
+    }
+
+    /**
+     * Clear the current handler ID after entity construction.
+     * Always call this in a finally block after entity creation.
+     */
+    public static void clearCurrentHandlerId() {
+        currentHandlerId.remove();
+    }
 
     /**
      * Model configuration for entity rendering on the client side.
@@ -196,7 +231,15 @@ public class EntityProxyRegistry {
                 // Monster entity - hostile mob with Monster base class
                 EntityType<DartMonsterProxy> monsterEntityType = FabricEntityTypeBuilder.<DartMonsterProxy>createMob()
                     .spawnGroup(category)
-                    .entityFactory((type, level) -> new DartMonsterProxy(type, level, capturedHandlerId))
+                    .entityFactory((type, level) -> {
+                        // Set ThreadLocal before construction so registerGoals() can access it
+                        setCurrentHandlerId(capturedHandlerId);
+                        try {
+                            return new DartMonsterProxy(type, level, capturedHandlerId);
+                        } finally {
+                            clearCurrentHandlerId();
+                        }
+                    })
                     .dimensions(EntityDimensions.fixed((float) settings.width(), (float) settings.height()))
                     .build(key);
 
@@ -235,7 +278,15 @@ public class EntityProxyRegistry {
 
                 EntityType<DartAnimalProxy> animalEntityType = FabricEntityTypeBuilder.<DartAnimalProxy>createMob()
                     .spawnGroup(category)
-                    .entityFactory((type, level) -> new DartAnimalProxy(type, level, capturedHandlerId, capturedBreedingItem))
+                    .entityFactory((type, level) -> {
+                        // Set ThreadLocal before construction so registerGoals() can access it
+                        setCurrentHandlerId(capturedHandlerId);
+                        try {
+                            return new DartAnimalProxy(type, level, capturedHandlerId, capturedBreedingItem);
+                        } finally {
+                            clearCurrentHandlerId();
+                        }
+                    })
                     .dimensions(EntityDimensions.fixed((float) settings.width(), (float) settings.height()))
                     .build(key);
 
@@ -351,6 +402,44 @@ public class EntityProxyRegistry {
      */
     public static boolean hasModelConfig(long handlerId) {
         return entityModelConfigs.containsKey(handlerId);
+    }
+
+    /**
+     * Register goal configurations for entity AI.
+     * Called from Dart via JNI to configure entity goals.
+     *
+     * @param handlerId The handler ID of the entity.
+     * @param goalsJson JSON array of goal configurations, or null/empty if none.
+     * @param targetGoalsJson JSON array of target goal configurations, or null/empty if none.
+     */
+    public static void registerGoalConfig(long handlerId, String goalsJson, String targetGoalsJson) {
+        if (goalsJson != null && !goalsJson.isEmpty()) {
+            goalConfigs.put(handlerId, goalsJson);
+        }
+        if (targetGoalsJson != null && !targetGoalsJson.isEmpty()) {
+            targetGoalConfigs.put(handlerId, targetGoalsJson);
+        }
+        LOGGER.info("Registered goal config for handler {}", handlerId);
+    }
+
+    /**
+     * Get the goal configuration JSON for an entity.
+     *
+     * @param handlerId The handler ID of the entity.
+     * @return The goals JSON string, or null if not registered.
+     */
+    public static String getGoalConfig(long handlerId) {
+        return goalConfigs.get(handlerId);
+    }
+
+    /**
+     * Get the target goal configuration JSON for an entity.
+     *
+     * @param handlerId The handler ID of the entity.
+     * @return The target goals JSON string, or null if not registered.
+     */
+    public static String getTargetGoalConfig(long handlerId) {
+        return targetGoalConfigs.get(handlerId);
     }
 
     /**

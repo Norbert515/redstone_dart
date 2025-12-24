@@ -193,5 +193,26 @@ void registerCommands() {
     description: 'Spawns a custom DartFireball projectile',
   );
 
-  print('Commands: Registered 8 custom commands');
+  // /spawncustomzombie - Spawns a CustomGoalZombie with Dart-defined AI
+  Commands.register(
+    'spawncustomzombie',
+    execute: (context) {
+      final player = context.source;
+      final world = World.overworld;
+
+      final entity = Entities.spawn(world, 'basic_dart_mod:custom_goal_zombie', player.precisePosition);
+      if (entity != null) {
+        context.sendFeedback('§d[CustomGoalZombie] §fSpawned a zombie with CUSTOM DART AI!');
+        context.sendFeedback('§7Watch it spin when no player is nearby, and chase aggressively when you get close!');
+        world.spawnParticles(Particles.smoke, player.precisePosition, count: 30, delta: Vec3(0.5, 1.0, 0.5));
+        world.playSound(player.precisePosition, Sounds.levelUp, volume: 1.0);
+        return 1;
+      }
+      context.sendError('§d[CustomGoalZombie] §fFailed to spawn entity');
+      return 0;
+    },
+    description: 'Spawns a CustomGoalZombie with Dart-defined AI behaviors',
+  );
+
+  print('Commands: Registered 9 custom commands');
 }

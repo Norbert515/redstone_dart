@@ -252,6 +252,30 @@ typedef ContainerMayPickupCallbackNative = Bool Function(
     Int64 menuId, Int32 slotIndex);
 
 // =============================================================================
+// Custom Goal Callback Types (for Dart-defined AI goals)
+// =============================================================================
+
+/// Custom goal canUse callback - returns true if goal can start
+typedef CustomGoalCanUseCallbackNative = Bool Function(
+    Pointer<Utf8> goalId, Int32 entityId);
+
+/// Custom goal canContinueToUse callback - returns true if goal should continue
+typedef CustomGoalCanContinueToUseCallbackNative = Bool Function(
+    Pointer<Utf8> goalId, Int32 entityId);
+
+/// Custom goal start callback - called when goal starts
+typedef CustomGoalStartCallbackNative = Void Function(
+    Pointer<Utf8> goalId, Int32 entityId);
+
+/// Custom goal tick callback - called every tick while goal is active
+typedef CustomGoalTickCallbackNative = Void Function(
+    Pointer<Utf8> goalId, Int32 entityId);
+
+/// Custom goal stop callback - called when goal stops
+typedef CustomGoalStopCallbackNative = Void Function(
+    Pointer<Utf8> goalId, Int32 entityId);
+
+// =============================================================================
 // Container Item Access API Types (Dart -> Java)
 // =============================================================================
 
@@ -602,6 +626,35 @@ typedef RegisterContainerMayPickupHandlerNative = Void Function(
     Pointer<NativeFunction<ContainerMayPickupCallbackNative>> callback);
 typedef RegisterContainerMayPickupHandler = void Function(
     Pointer<NativeFunction<ContainerMayPickupCallbackNative>> callback);
+
+// =============================================================================
+// Custom Goal Handler Registration Signatures
+// =============================================================================
+
+typedef RegisterCustomGoalCanUseHandlerNative = Void Function(
+    Pointer<NativeFunction<CustomGoalCanUseCallbackNative>> callback);
+typedef RegisterCustomGoalCanUseHandler = void Function(
+    Pointer<NativeFunction<CustomGoalCanUseCallbackNative>> callback);
+
+typedef RegisterCustomGoalCanContinueToUseHandlerNative = Void Function(
+    Pointer<NativeFunction<CustomGoalCanContinueToUseCallbackNative>> callback);
+typedef RegisterCustomGoalCanContinueToUseHandler = void Function(
+    Pointer<NativeFunction<CustomGoalCanContinueToUseCallbackNative>> callback);
+
+typedef RegisterCustomGoalStartHandlerNative = Void Function(
+    Pointer<NativeFunction<CustomGoalStartCallbackNative>> callback);
+typedef RegisterCustomGoalStartHandler = void Function(
+    Pointer<NativeFunction<CustomGoalStartCallbackNative>> callback);
+
+typedef RegisterCustomGoalTickHandlerNative = Void Function(
+    Pointer<NativeFunction<CustomGoalTickCallbackNative>> callback);
+typedef RegisterCustomGoalTickHandler = void Function(
+    Pointer<NativeFunction<CustomGoalTickCallbackNative>> callback);
+
+typedef RegisterCustomGoalStopHandlerNative = Void Function(
+    Pointer<NativeFunction<CustomGoalStopCallbackNative>> callback);
+typedef RegisterCustomGoalStopHandler = void Function(
+    Pointer<NativeFunction<CustomGoalStopCallbackNative>> callback);
 
 /// Bridge to the native library.
 class Bridge {
@@ -1305,5 +1358,54 @@ class Bridge {
     } finally {
       calloc.free(containerIdPtr);
     }
+  }
+
+  // ===========================================================================
+  // Custom Goal Handler Registration Methods
+  // ===========================================================================
+
+  /// Register a custom goal canUse handler.
+  /// This is called to check if a goal can start.
+  static void registerCustomGoalCanUseHandler(
+      Pointer<NativeFunction<CustomGoalCanUseCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterCustomGoalCanUseHandlerNative,
+        RegisterCustomGoalCanUseHandler>('register_custom_goal_can_use_handler');
+    register(callback);
+  }
+
+  /// Register a custom goal canContinueToUse handler.
+  /// This is called to check if a goal should continue running.
+  static void registerCustomGoalCanContinueToUseHandler(
+      Pointer<NativeFunction<CustomGoalCanContinueToUseCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterCustomGoalCanContinueToUseHandlerNative,
+        RegisterCustomGoalCanContinueToUseHandler>('register_custom_goal_can_continue_to_use_handler');
+    register(callback);
+  }
+
+  /// Register a custom goal start handler.
+  /// This is called when a goal starts.
+  static void registerCustomGoalStartHandler(
+      Pointer<NativeFunction<CustomGoalStartCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterCustomGoalStartHandlerNative,
+        RegisterCustomGoalStartHandler>('register_custom_goal_start_handler');
+    register(callback);
+  }
+
+  /// Register a custom goal tick handler.
+  /// This is called every tick while a goal is active.
+  static void registerCustomGoalTickHandler(
+      Pointer<NativeFunction<CustomGoalTickCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterCustomGoalTickHandlerNative,
+        RegisterCustomGoalTickHandler>('register_custom_goal_tick_handler');
+    register(callback);
+  }
+
+  /// Register a custom goal stop handler.
+  /// This is called when a goal stops.
+  static void registerCustomGoalStopHandler(
+      Pointer<NativeFunction<CustomGoalStopCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterCustomGoalStopHandlerNative,
+        RegisterCustomGoalStopHandler>('register_custom_goal_stop_handler');
+    register(callback);
   }
 }
