@@ -38,10 +38,19 @@ public class DartItemProxy extends Item {
             return InteractionResult.SUCCESS;
         }
 
-        // TODO: Dispatch to Dart via DartBridge when callback system is ready
-        // For now, just pass through
-        LOGGER.debug("DartItemProxy.use called for handler ID: {}", handlerId);
-        return InteractionResult.PASS;
+        if (!DartBridge.isInitialized()) {
+            return InteractionResult.PASS;
+        }
+
+        // Dispatch to Dart via DartBridge
+        // Return values: 0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS
+        int result = DartBridge.onProxyItemUse(
+            handlerId,
+            level.hashCode(),
+            player.getId(),
+            hand.ordinal()
+        );
+        return mapResult(result);
     }
 
     @Override
@@ -50,9 +59,22 @@ public class DartItemProxy extends Item {
             return InteractionResult.SUCCESS;
         }
 
-        // TODO: Dispatch to Dart via DartBridge when callback system is ready
-        LOGGER.debug("DartItemProxy.useOn called for handler ID: {}", handlerId);
-        return InteractionResult.PASS;
+        if (!DartBridge.isInitialized()) {
+            return InteractionResult.PASS;
+        }
+
+        // Dispatch to Dart via DartBridge
+        // Return values: 0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS
+        int result = DartBridge.onProxyItemUseOnBlock(
+            handlerId,
+            context.getLevel().hashCode(),
+            context.getClickedPos().getX(),
+            context.getClickedPos().getY(),
+            context.getClickedPos().getZ(),
+            context.getPlayer() != null ? context.getPlayer().getId() : -1,
+            context.getHand().ordinal()
+        );
+        return mapResult(result);
     }
 
     @Override
@@ -61,9 +83,20 @@ public class DartItemProxy extends Item {
             return InteractionResult.SUCCESS;
         }
 
-        // TODO: Dispatch to Dart via DartBridge when callback system is ready
-        LOGGER.debug("DartItemProxy.interactLivingEntity called for handler ID: {}", handlerId);
-        return InteractionResult.PASS;
+        if (!DartBridge.isInitialized()) {
+            return InteractionResult.PASS;
+        }
+
+        // Dispatch to Dart via DartBridge
+        // Return values: 0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS
+        int result = DartBridge.onProxyItemUseOnEntity(
+            handlerId,
+            player.level().hashCode(),
+            target.getId(),
+            player.getId(),
+            hand.ordinal()
+        );
+        return mapResult(result);
     }
 
     @Override
@@ -77,5 +110,19 @@ public class DartItemProxy extends Item {
             );
         }
         super.postHurtEnemy(stack, target, attacker);
+    }
+
+    /**
+     * Map Dart ItemActionResult ordinal to Minecraft InteractionResult.
+     * Dart returns: 0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS
+     */
+    private static InteractionResult mapResult(int ordinal) {
+        return switch (ordinal) {
+            case 0 -> InteractionResult.SUCCESS;
+            case 1 -> InteractionResult.CONSUME_PARTIAL;
+            case 2 -> InteractionResult.CONSUME;
+            case 3 -> InteractionResult.FAIL;
+            default -> InteractionResult.PASS;
+        };
     }
 }

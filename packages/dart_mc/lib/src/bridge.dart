@@ -91,6 +91,18 @@ typedef ProxyEntityTargetCallbackNative = Void Function(
 typedef ProxyItemAttackEntityCallbackNative = Bool Function(
     Int64 handlerId, Int32 worldId, Int32 attackerId, Int32 targetId);
 
+/// Item use callback - returns ItemActionResult ordinal (0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS)
+typedef ProxyItemUseCallbackNative = Int32 Function(
+    Int64 handlerId, Int64 worldId, Int32 playerId, Int32 hand);
+
+/// Item use on block callback - returns ItemActionResult ordinal
+typedef ProxyItemUseOnBlockCallbackNative = Int32 Function(
+    Int64 handlerId, Int64 worldId, Int32 x, Int32 y, Int32 z, Int32 playerId, Int32 hand);
+
+/// Item use on entity callback - returns ItemActionResult ordinal
+typedef ProxyItemUseOnEntityCallbackNative = Int32 Function(
+    Int64 handlerId, Int64 worldId, Int32 entityId, Int32 playerId, Int32 hand);
+
 // =============================================================================
 // Command System Callback Types
 // =============================================================================
@@ -413,6 +425,21 @@ typedef RegisterProxyItemAttackEntityHandlerNative = Void Function(
     Pointer<NativeFunction<ProxyItemAttackEntityCallbackNative>> callback);
 typedef RegisterProxyItemAttackEntityHandler = void Function(
     Pointer<NativeFunction<ProxyItemAttackEntityCallbackNative>> callback);
+
+typedef RegisterProxyItemUseHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyItemUseCallbackNative>> callback);
+typedef RegisterProxyItemUseHandler = void Function(
+    Pointer<NativeFunction<ProxyItemUseCallbackNative>> callback);
+
+typedef RegisterProxyItemUseOnBlockHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyItemUseOnBlockCallbackNative>> callback);
+typedef RegisterProxyItemUseOnBlockHandler = void Function(
+    Pointer<NativeFunction<ProxyItemUseOnBlockCallbackNative>> callback);
+
+typedef RegisterProxyItemUseOnEntityHandlerNative = Void Function(
+    Pointer<NativeFunction<ProxyItemUseOnEntityCallbackNative>> callback);
+typedef RegisterProxyItemUseOnEntityHandler = void Function(
+    Pointer<NativeFunction<ProxyItemUseOnEntityCallbackNative>> callback);
 
 // =============================================================================
 // Command System Handler Registration Signatures
@@ -921,6 +948,33 @@ class Bridge {
       Pointer<NativeFunction<ProxyItemAttackEntityCallbackNative>> callback) {
     final register = library.lookupFunction<RegisterProxyItemAttackEntityHandlerNative,
         RegisterProxyItemAttackEntityHandler>('register_proxy_item_attack_entity_handler');
+    register(callback);
+  }
+
+  /// Register a proxy item use handler.
+  /// This is called when a player right-clicks in air with a Dart-defined custom item.
+  static void registerProxyItemUseHandler(
+      Pointer<NativeFunction<ProxyItemUseCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyItemUseHandlerNative,
+        RegisterProxyItemUseHandler>('register_proxy_item_use_handler');
+    register(callback);
+  }
+
+  /// Register a proxy item use on block handler.
+  /// This is called when a player right-clicks a block with a Dart-defined custom item.
+  static void registerProxyItemUseOnBlockHandler(
+      Pointer<NativeFunction<ProxyItemUseOnBlockCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyItemUseOnBlockHandlerNative,
+        RegisterProxyItemUseOnBlockHandler>('register_proxy_item_use_on_block_handler');
+    register(callback);
+  }
+
+  /// Register a proxy item use on entity handler.
+  /// This is called when a player right-clicks an entity with a Dart-defined custom item.
+  static void registerProxyItemUseOnEntityHandler(
+      Pointer<NativeFunction<ProxyItemUseOnEntityCallbackNative>> callback) {
+    final register = library.lookupFunction<RegisterProxyItemUseOnEntityHandlerNative,
+        RegisterProxyItemUseOnEntityHandler>('register_proxy_item_use_on_entity_handler');
     register(callback);
   }
 

@@ -275,6 +275,21 @@ public:
         proxy_item_attack_entity_handler_ = cb;
     }
 
+    void setProxyItemUseHandler(ProxyItemUseCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        proxy_item_use_handler_ = cb;
+    }
+
+    void setProxyItemUseOnBlockHandler(ProxyItemUseOnBlockCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        proxy_item_use_on_block_handler_ = cb;
+    }
+
+    void setProxyItemUseOnEntityHandler(ProxyItemUseOnEntityCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        proxy_item_use_on_entity_handler_ = cb;
+    }
+
     // Command callback setters
     void setCommandExecuteHandler(CommandExecuteCallback cb) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -803,6 +818,31 @@ public:
         return true; // Default: allow attack
     }
 
+    // Returns ItemActionResult ordinal (0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS)
+    int32_t dispatchProxyItemUse(int64_t handler_id, int64_t world_id, int32_t player_id, int32_t hand) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (proxy_item_use_handler_) {
+            return proxy_item_use_handler_(handler_id, world_id, player_id, hand);
+        }
+        return 4; // Default: PASS
+    }
+
+    int32_t dispatchProxyItemUseOnBlock(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t player_id, int32_t hand) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (proxy_item_use_on_block_handler_) {
+            return proxy_item_use_on_block_handler_(handler_id, world_id, x, y, z, player_id, hand);
+        }
+        return 4; // Default: PASS
+    }
+
+    int32_t dispatchProxyItemUseOnEntity(int64_t handler_id, int64_t world_id, int32_t entity_id, int32_t player_id, int32_t hand) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (proxy_item_use_on_entity_handler_) {
+            return proxy_item_use_on_entity_handler_(handler_id, world_id, entity_id, player_id, hand);
+        }
+        return 4; // Default: PASS
+    }
+
     // Command dispatch
     int32_t dispatchCommandExecute(int64_t command_id, int32_t player_id, const char* args_json) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -922,6 +962,9 @@ public:
         proxy_entity_target_handler_ = nullptr;
         // Item proxy handlers
         proxy_item_attack_entity_handler_ = nullptr;
+        proxy_item_use_handler_ = nullptr;
+        proxy_item_use_on_block_handler_ = nullptr;
+        proxy_item_use_on_entity_handler_ = nullptr;
         // Command handlers
         command_execute_handler_ = nullptr;
         // Custom goal handlers
@@ -1011,6 +1054,9 @@ private:
 
     // Item proxy handlers
     ProxyItemAttackEntityCallback proxy_item_attack_entity_handler_ = nullptr;
+    ProxyItemUseCallback proxy_item_use_handler_ = nullptr;
+    ProxyItemUseOnBlockCallback proxy_item_use_on_block_handler_ = nullptr;
+    ProxyItemUseOnEntityCallback proxy_item_use_on_entity_handler_ = nullptr;
 
     // Command handlers
     CommandExecuteCallback command_execute_handler_ = nullptr;
