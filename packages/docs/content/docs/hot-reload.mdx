@@ -1,4 +1,8 @@
-# Hot Reload
+---
+title: Hot Reload
+description: Change code and see results instantly without restarting
+icon: RefreshCw
+---
 
 Hot reload is what makes Redstone.Dart feel magical. Change your code, press `r`, and see the changes in under a second—without restarting Minecraft.
 
@@ -24,23 +28,17 @@ The key insight: the **proxy objects** in Java stay the same. They're still regi
 
 ## What Can Change
 
-✅ **Method bodies** — Change what `onUse()` does
-
-✅ **Logic and calculations** — Update formulas, conditions
-
-✅ **Messages and feedback** — Change text, particles, sounds
-
-✅ **Event handlers** — Update `onTick`, `onPlayerJoin` behavior
+- **Method bodies** — Change what `onUse()` does
+- **Logic and calculations** — Update formulas, conditions
+- **Messages and feedback** — Change text, particles, sounds
+- **Event handlers** — Update `onTick`, `onPlayerJoin` behavior
 
 ## What Can't Change
 
-❌ **Block/item registrations** — Minecraft's registry is frozen at startup
-
-❌ **Block settings** — Hardness, light level, etc. are stored in Java
-
-❌ **Block models and textures** — Loaded at startup from asset files
-
-❌ **New blocks or items** — Can't add to a frozen registry
+- **Block/item registrations** — Minecraft's registry is frozen at startup
+- **Block settings** — Hardness, light level, etc. are stored in Java
+- **Block models and textures** — Loaded at startup from asset files
+- **New blocks or items** — Can't add to a frozen registry
 
 ### Why This Limitation?
 

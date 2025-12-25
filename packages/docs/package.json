@@ -1,15 +1,28 @@
 {
   "name": "redstone-docs",
   "version": "1.0.0",
-  "description": "Documentation for Redstone.Dart",
+  "private": true,
   "scripts": {
-    "dev": "vuepress dev",
-    "build": "vuepress build"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "fumadocs-core": "^15.0.0",
+    "fumadocs-mdx": "^12.0.0",
+    "fumadocs-ui": "^15.0.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@types/mdx": "^2.0.13"
   },
   "devDependencies": {
-    "vuepress": "^2.0.0-rc.18",
-    "@vuepress/bundler-vite": "^2.0.0-rc.18",
-    "@vuepress/theme-default": "^2.0.0-rc.61",
-    "sass-embedded": "^1.83.0"
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/postcss": "^4.0.0"
   }
 }

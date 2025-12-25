@@ -633,6 +633,12 @@ void initScreenCallbacks() {
   if (_screenCallbacksRegistered) return;
   _screenCallbacksRegistered = true;
 
+  // In datagen mode, skip native handler registration
+  if (Bridge.isDatagenMode) {
+    print('Screen: Skipping screen callbacks (datagen mode)');
+    return;
+  }
+
   // Register void callbacks (no default return value needed)
   Bridge.registerScreenInitHandler(
     Pointer.fromFunction<ScreenInitCallbackNative>(_onScreenInit));

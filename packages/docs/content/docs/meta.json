@@ -1,0 +1,24 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "getting-started",
+    "---Getting Started---",
+    "cli",
+    "---Core Concepts---",
+    "blocks",
+    "items",
+    "entities",
+    "---Gameplay---",
+    "commands",
+    "recipes",
+    "loot-tables",
+    "---Advanced---",
+    "events",
+    "world",
+    "players",
+    "gui",
+    "---Development---",
+    "hot-reload"
+  ]
+}

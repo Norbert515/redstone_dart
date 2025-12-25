@@ -1,0 +1,194 @@
+---
+title: Commands
+description: Register custom commands with argument parsing
+icon: Terminal
+---
+
+# Custom Commands
+
+Create commands that players can use in chat.
+
+## Basic Command
+
+```dart
+Commands.register(
+  'heal',
+  execute: (context) {
+    context.source.health = 20.0;
+    context.sendFeedback('§aYou have been healed!');
+    return 1; // Success
+  },
+  description: 'Heals the player to full health',
+);
+```
+
+Use in-game: `/heal`
+
+## Command Arguments
+
+Add arguments to accept input:
+
+```dart
+Commands.register(
+  'give_xp',
+  arguments: [
+    CommandArgument('amount', ArgumentType.integer),
+  ],
+  execute: (context) {
+    final amount = context.requireArgument<int>('amount');
+    context.source.giveExperience(amount);
+    context.sendFeedback('§aGave $amount XP');
+    return 1;
+  },
+);
+```
+
+Use: `/give_xp 100`
+
+## Argument Types
+
+| Type | Description | Example Value |
+|------|-------------|---------------|
+| `string` | Text string | `"hello"` |
+| `integer` | Whole number | `42` |
+| `double_` | Decimal number | `3.14` |
+| `bool_` | True/false | `true` |
+| `player` | Player selector | `@p`, `PlayerName` |
+| `position` | Block coordinates | `100 64 200` |
+| `block` | Block type | `minecraft:stone` |
+| `item` | Item type | `minecraft:diamond` |
+| `greedyString` | Rest of input | `"hello world"` |
+
+## Multiple Arguments
+
+```dart
+Commands.register(
+  'teleport_offset',
+  arguments: [
+    CommandArgument('x', ArgumentType.double_),
+    CommandArgument('y', ArgumentType.double_),
+    CommandArgument('z', ArgumentType.double_),
+  ],
+  execute: (context) {
+    final x = context.requireArgument<double>('x');
+    final y = context.requireArgument<double>('y');
+    final z = context.requireArgument<double>('z');
+
+    final player = context.source;
+    player.teleport(
+      player.x + x,
+      player.y + y,
+      player.z + z,
+    );
+
+    context.sendFeedback('§aTeleported!');
+    return 1;
+  },
+);
+```
+
+## Optional Arguments
+
+```dart
+Commands.register(
+  'heal',
+  arguments: [
+    CommandArgument('amount', ArgumentType.double_,
+      required: false,
+      defaultValue: 20.0,
+    ),
+  ],
+  execute: (context) {
+    final amount = context.getArgument<double>('amount') ?? 20.0;
+    context.source.setHealth(amount);
+    return 1;
+  },
+);
+```
+
+## Permission Levels
+
+Control who can use commands:
+
+```dart
+Commands.register(
+  'god_mode',
+  permission: 2, // Operator level
+  execute: (context) {
+    context.source.addEffect(Effect.resistance,
+      duration: 72000,
+      amplifier: 255,
+    );
+    return 1;
+  },
+);
+```
+
+| Level | Who Can Use |
+|-------|-------------|
+| 0 | All players (default) |
+| 1 | Moderators |
+| 2 | Game masters / Operators |
+| 3 | Admins |
+| 4 | Server owners |
+
+## Command Context
+
+The `CommandContext` provides:
+
+```dart
+execute: (context) {
+  // The player who ran the command
+  final player = context.source;
+
+  // Get arguments
+  final value = context.getArgument<String>('name');
+  final required = context.requireArgument<int>('count');
+
+  // Send feedback (green message)
+  context.sendFeedback('Success!');
+
+  // Send error (red message)
+  context.sendError('Something went wrong');
+
+  // Return value: 1 = success, 0 = failure
+  return 1;
+}
+```
+
+## Complete Example
+
+A command to summon entities at a player's location:
+
+```dart
+Commands.register(
+  'summon_custom',
+  description: 'Summon a custom entity',
+  arguments: [
+    CommandArgument('entity', ArgumentType.string),
+    CommandArgument('count', ArgumentType.integer,
+      required: false,
+      defaultValue: 1,
+    ),
+  ],
+  execute: (context) {
+    final entityId = context.requireArgument<String>('entity');
+    final count = context.getArgument<int>('count') ?? 1;
+    final player = context.source;
+
+    for (var i = 0; i < count; i++) {
+      World.overworld.spawnEntity(
+        entityId,
+        player.x,
+        player.y,
+        player.z,
+      );
+    }
+
+    context.sendFeedback('§aSummoned $count $entityId');
+    return count;
+  },
+);
+```
+
+Use: `/summon_custom mymod:dart_zombie 5`

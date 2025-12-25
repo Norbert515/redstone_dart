@@ -1,0 +1,373 @@
+---
+title: GUI Screens
+description: Create custom GUI screens with buttons and text input
+icon: Layout
+---
+
+# Custom GUI Screens
+
+Create custom graphical interfaces that overlay the game.
+
+## Basic Screen
+
+```dart
+class HelloScreen extends Screen {
+  HelloScreen() : super('Hello Screen');
+
+  @override
+  void render(GuiGraphics graphics, int mouseX, int mouseY, double partialTick) {
+    // Semi-transparent background
+    graphics.fill(0, 0, width, height, 0x80000000);
+
+    // Centered title
+    graphics.drawCenteredString(
+      'Hello, Minecraft!',
+      width ~/ 2,
+      height ~/ 2,
+      0xFFFFFF,
+    );
+  }
+
+  @override
+  bool keyPressed(int keyCode, int scanCode, int modifiers) {
+    if (keyCode == Keys.escape) {
+      close();
+      return true;
+    }
+    return false;
+  }
+}
+
+// Show the screen
+void openScreen() {
+  HelloScreen().show();
+}
+```
+
+## Screen Lifecycle
+
+| Method | When Called |
+|--------|-------------|
+| `init()` | Screen created, `width`/`height` available |
+| `tick()` | Every game tick (20/second) |
+| `render()` | Every frame for drawing |
+| `onClose()` | Screen is closing |
+
+## Drawing with GuiGraphics
+
+### Fill Rectangle
+
+```dart
+// Solid fill
+graphics.fill(x1, y1, x2, y2, 0xFF000000);
+
+// Semi-transparent
+graphics.fill(0, 0, width, height, 0x80000000);
+```
+
+Color format: `0xAARRGGBB` (alpha, red, green, blue)
+
+### Draw Text
+
+```dart
+// Left-aligned
+graphics.drawString('Hello', x, y, 0xFFFFFF);
+
+// Centered
+graphics.drawCenteredString('Centered', width ~/ 2, y, 0xFFFFFF);
+
+// With shadow
+graphics.drawString('Shadow', x, y, 0xFFFFFF, shadow: true);
+```
+
+### Draw Textures
+
+```dart
+graphics.blit(
+  'mymod:textures/gui/my_screen.png',
+  x, y,          // Screen position
+  u, v,          // Texture coordinates
+  width, height, // Size
+);
+```
+
+## Widgets
+
+### Buttons
+
+```dart
+class MyScreen extends Screen {
+  MyScreen() : super('My Screen');
+
+  @override
+  void init() {
+    addButton(
+      x: width ~/ 2 - 50,
+      y: height ~/ 2,
+      width: 100,
+      height: 20,
+      text: 'Click Me',
+      onPressed: () {
+        print('Button clicked!');
+        close();
+      },
+    );
+  }
+}
+```
+
+### Text Input (EditBox)
+
+```dart
+class InputScreen extends Screen {
+  late EditBox nameInput;
+
+  InputScreen() : super('Input Screen');
+
+  @override
+  void init() {
+    nameInput = addEditBox(
+      x: width ~/ 2 - 75,
+      y: height ~/ 2,
+      width: 150,
+      height: 20,
+      placeholder: 'Enter your name...',
+      onChanged: (text) {
+        print('Text changed: $text');
+      },
+    );
+
+    addButton(
+      x: width ~/ 2 - 50,
+      y: height ~/ 2 + 30,
+      width: 100,
+      height: 20,
+      text: 'Submit',
+      onPressed: () {
+        print('Name: ${nameInput.value}');
+        close();
+      },
+    );
+  }
+}
+```
+
+## Input Handling
+
+### Keyboard
+
+```dart
+@override
+bool keyPressed(int keyCode, int scanCode, int modifiers) {
+  switch (keyCode) {
+    case Keys.escape:
+      close();
+      return true;
+    case Keys.enter:
+      submit();
+      return true;
+    case Keys.tab:
+      // Handle tab
+      return true;
+  }
+  return false;
+}
+
+@override
+bool charTyped(int codePoint, int modifiers) {
+  // Called for printable characters
+  final char = String.fromCharCode(codePoint);
+  print('Typed: $char');
+  return false;
+}
+```
+
+### Mouse
+
+```dart
+@override
+bool mouseClicked(double mouseX, double mouseY, int button) {
+  if (button == Keys.mouseLeft) {
+    // Left click
+    return handleClick(mouseX, mouseY);
+  }
+  return false;
+}
+
+@override
+bool mouseDragged(double mouseX, double mouseY, int button,
+                  double dragX, double dragY) {
+  // Handle dragging
+  return false;
+}
+
+@override
+bool mouseScrolled(double mouseX, double mouseY,
+                   double deltaX, double deltaY) {
+  // deltaY: positive = scroll up
+  return false;
+}
+```
+
+## Key Constants
+
+```dart
+Keys.escape    // ESC key
+Keys.enter     // Enter/Return
+Keys.tab       // Tab
+Keys.space     // Spacebar
+Keys.backspace // Backspace
+Keys.delete_   // Delete
+
+// Arrow keys
+Keys.left, Keys.right, Keys.up, Keys.down
+
+// Letters (A-Z = 65-90)
+Keys.a, Keys.b, ... Keys.z
+
+// Mouse buttons
+Keys.mouseLeft   // 0
+Keys.mouseRight  // 1
+Keys.mouseMiddle // 2
+```
+
+## Complete Example
+
+A settings screen with input and buttons:
+
+```dart
+class SettingsScreen extends Screen {
+  late EditBox usernameInput;
+  late Button saveButton;
+  String statusMessage = '';
+
+  SettingsScreen() : super('Settings');
+
+  @override
+  void init() {
+    final centerX = width ~/ 2;
+    final startY = height ~/ 3;
+
+    // Username input
+    usernameInput = addEditBox(
+      x: centerX - 100,
+      y: startY,
+      width: 200,
+      height: 20,
+      placeholder: 'Username',
+    );
+
+    // Save button
+    saveButton = addButton(
+      x: centerX - 50,
+      y: startY + 50,
+      width: 100,
+      height: 20,
+      text: 'Save',
+      onPressed: _onSave,
+    );
+
+    // Cancel button
+    addButton(
+      x: centerX - 50,
+      y: startY + 80,
+      width: 100,
+      height: 20,
+      text: 'Cancel',
+      onPressed: close,
+    );
+  }
+
+  void _onSave() {
+    final username = usernameInput.value;
+    if (username.isEmpty) {
+      statusMessage = '§cUsername cannot be empty!';
+      return;
+    }
+    statusMessage = '§aSaved!';
+    // Save logic here
+  }
+
+  @override
+  void render(GuiGraphics graphics, int mouseX, int mouseY, double partialTick) {
+    // Dark background
+    graphics.fill(0, 0, width, height, 0xC0000000);
+
+    // Title
+    graphics.drawCenteredString(
+      '§lSettings',
+      width ~/ 2,
+      height ~/ 3 - 30,
+      0xFFFFFF,
+    );
+
+    // Label
+    graphics.drawString(
+      'Username:',
+      width ~/ 2 - 100,
+      height ~/ 3 - 12,
+      0xAAAAAA,
+    );
+
+    // Status message
+    if (statusMessage.isNotEmpty) {
+      graphics.drawCenteredString(
+        statusMessage,
+        width ~/ 2,
+        height ~/ 3 + 120,
+        0xFFFFFF,
+      );
+    }
+  }
+
+  @override
+  bool keyPressed(int keyCode, int scanCode, int modifiers) {
+    if (keyCode == Keys.escape) {
+      close();
+      return true;
+    }
+    if (keyCode == Keys.enter) {
+      _onSave();
+      return true;
+    }
+    return false;
+  }
+}
+```
+
+## Initialization
+
+Register screen callbacks in your mod's main:
+
+```dart
+void main() {
+  Bridge.initialize();
+  initScreenCallbacks(); // Enable GUI system
+
+  // ... rest of initialization
+}
+```
+
+## Opening Screens
+
+```dart
+// From a command
+Commands.register('settings', execute: (context) {
+  SettingsScreen().show();
+  return 1;
+});
+
+// From a block interaction
+@override
+ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+  MyScreen().show();
+  return ActionResult.success;
+}
+
+// From an item use
+@override
+ActionResult onUse(Player player, World world, int hand) {
+  SettingsScreen().show();
+  return ActionResult.success;
+}
+```
