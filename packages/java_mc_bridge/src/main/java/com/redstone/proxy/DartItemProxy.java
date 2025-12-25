@@ -115,11 +115,14 @@ public class DartItemProxy extends Item {
     /**
      * Map Dart ItemActionResult ordinal to Minecraft InteractionResult.
      * Dart returns: 0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS
+     *
+     * Note: MC 1.21+ uses a sealed interface for InteractionResult.
+     * CONSUME_PARTIAL doesn't exist, so we map it to CONSUME.
      */
     private static InteractionResult mapResult(int ordinal) {
         return switch (ordinal) {
             case 0 -> InteractionResult.SUCCESS;
-            case 1 -> InteractionResult.CONSUME_PARTIAL;
+            case 1 -> InteractionResult.CONSUME;  // CONSUME_PARTIAL -> CONSUME (doesn't exist in MC 1.21+)
             case 2 -> InteractionResult.CONSUME;
             case 3 -> InteractionResult.FAIL;
             default -> InteractionResult.PASS;
