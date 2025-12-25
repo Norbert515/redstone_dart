@@ -1068,6 +1068,67 @@ JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_onProxyItemAttackEntity(
     return result ? JNI_TRUE : JNI_FALSE;
 }
 
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyItemUse
+ * Signature: (JJII)I
+ *
+ * Called when a Dart-defined item is used (right-click in air).
+ * Routes to Dart's ItemRegistry.dispatchItemUse().
+ * Returns ItemActionResult ordinal (0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS).
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onProxyItemUse(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handlerId, jlong worldId, jint playerId, jint hand) {
+    return static_cast<jint>(dispatch_proxy_item_use(
+        static_cast<int64_t>(handlerId),
+        static_cast<int64_t>(worldId),
+        static_cast<int32_t>(playerId),
+        static_cast<int32_t>(hand)));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyItemUseOnBlock
+ * Signature: (JJIIIII)I
+ *
+ * Called when a Dart-defined item is used on a block.
+ * Routes to Dart's ItemRegistry.dispatchItemUseOnBlock().
+ * Returns ItemActionResult ordinal (0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS).
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onProxyItemUseOnBlock(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handlerId, jlong worldId, jint x, jint y, jint z, jint playerId, jint hand) {
+    return static_cast<jint>(dispatch_proxy_item_use_on_block(
+        static_cast<int64_t>(handlerId),
+        static_cast<int64_t>(worldId),
+        static_cast<int32_t>(x),
+        static_cast<int32_t>(y),
+        static_cast<int32_t>(z),
+        static_cast<int32_t>(playerId),
+        static_cast<int32_t>(hand)));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyItemUseOnEntity
+ * Signature: (JJIII)I
+ *
+ * Called when a Dart-defined item is used on an entity.
+ * Routes to Dart's ItemRegistry.dispatchItemUseOnEntity().
+ * Returns ItemActionResult ordinal (0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS).
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onProxyItemUseOnEntity(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handlerId, jlong worldId, jint entityId, jint playerId, jint hand) {
+    return static_cast<jint>(dispatch_proxy_item_use_on_entity(
+        static_cast<int64_t>(handlerId),
+        static_cast<int64_t>(worldId),
+        static_cast<int32_t>(entityId),
+        static_cast<int32_t>(playerId),
+        static_cast<int32_t>(hand)));
+}
+
 // ==========================================================================
 // Command System JNI
 // ==========================================================================

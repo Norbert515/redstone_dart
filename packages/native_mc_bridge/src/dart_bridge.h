@@ -321,6 +321,10 @@ extern "C" {
     // Item proxy callbacks (called from Dart via FFI, invoked from Java proxy classes)
     // ProxyItemAttackEntityCallback returns true to allow attack, false to cancel
     typedef bool (*ProxyItemAttackEntityCallback)(int64_t handler_id, int32_t world_id, int32_t attacker_id, int32_t target_id);
+    // ProxyItemUseCallback returns ItemActionResult ordinal (0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS)
+    typedef int32_t (*ProxyItemUseCallback)(int64_t handler_id, int64_t world_id, int32_t player_id, int32_t hand);
+    typedef int32_t (*ProxyItemUseOnBlockCallback)(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t player_id, int32_t hand);
+    typedef int32_t (*ProxyItemUseOnEntityCallback)(int64_t handler_id, int64_t world_id, int32_t entity_id, int32_t player_id, int32_t hand);
 
     // Entity proxy callback registration (called from Dart via FFI)
     void register_proxy_entity_spawn_handler(ProxyEntitySpawnCallback cb);
@@ -332,6 +336,9 @@ extern "C" {
 
     // Item proxy callback registration (called from Dart via FFI)
     void register_proxy_item_attack_entity_handler(ProxyItemAttackEntityCallback cb);
+    void register_proxy_item_use_handler(ProxyItemUseCallback cb);
+    void register_proxy_item_use_on_block_handler(ProxyItemUseOnBlockCallback cb);
+    void register_proxy_item_use_on_entity_handler(ProxyItemUseOnEntityCallback cb);
 
     // Entity proxy dispatch functions (called from Java via JNI)
     void dispatch_proxy_entity_spawn(int64_t handler_id, int32_t entity_id, int64_t world_id);
@@ -344,6 +351,10 @@ extern "C" {
     // Item proxy dispatch functions (called from Java via JNI)
     // Returns true to allow attack, false to cancel
     bool dispatch_proxy_item_attack_entity(int64_t handler_id, int32_t world_id, int32_t attacker_id, int32_t target_id);
+    // Returns ItemActionResult ordinal (0=SUCCESS, 1=CONSUME_PARTIAL, 2=CONSUME, 3=FAIL, 4=PASS)
+    int32_t dispatch_proxy_item_use(int64_t handler_id, int64_t world_id, int32_t player_id, int32_t hand);
+    int32_t dispatch_proxy_item_use_on_block(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t player_id, int32_t hand);
+    int32_t dispatch_proxy_item_use_on_entity(int64_t handler_id, int64_t world_id, int32_t entity_id, int32_t player_id, int32_t hand);
 
     // ==========================================================================
     // Command System Callbacks

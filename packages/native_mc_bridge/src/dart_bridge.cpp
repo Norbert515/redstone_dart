@@ -1250,6 +1250,18 @@ void register_proxy_item_attack_entity_handler(ProxyItemAttackEntityCallback cb)
     dart_mc_bridge::CallbackRegistry::instance().setProxyItemAttackEntityHandler(cb);
 }
 
+void register_proxy_item_use_handler(ProxyItemUseCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyItemUseHandler(cb);
+}
+
+void register_proxy_item_use_on_block_handler(ProxyItemUseOnBlockCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyItemUseOnBlockHandler(cb);
+}
+
+void register_proxy_item_use_on_entity_handler(ProxyItemUseOnEntityCallback cb) {
+    dart_mc_bridge::CallbackRegistry::instance().setProxyItemUseOnEntityHandler(cb);
+}
+
 // ==========================================================================
 // Entity Proxy Dispatch (called from Java via JNI)
 // ==========================================================================
@@ -1320,6 +1332,39 @@ bool dispatch_proxy_item_attack_entity(int64_t handler_id, int32_t world_id, int
     Dart_EnterScope();
     bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemAttackEntity(
         handler_id, world_id, attacker_id, target_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+int32_t dispatch_proxy_item_use(int64_t handler_id, int64_t world_id, int32_t player_id, int32_t hand) {
+    if (!g_initialized || g_isolate == nullptr) return 4; // PASS if not initialized
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemUse(
+        handler_id, world_id, player_id, hand);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+int32_t dispatch_proxy_item_use_on_block(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t player_id, int32_t hand) {
+    if (!g_initialized || g_isolate == nullptr) return 4; // PASS if not initialized
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemUseOnBlock(
+        handler_id, world_id, x, y, z, player_id, hand);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+int32_t dispatch_proxy_item_use_on_entity(int64_t handler_id, int64_t world_id, int32_t entity_id, int32_t player_id, int32_t hand) {
+    if (!g_initialized || g_isolate == nullptr) return 4; // PASS if not initialized
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemUseOnEntity(
+        handler_id, world_id, entity_id, player_id, hand);
     Dart_ExitScope();
     safe_exit_isolate(did_enter);
     return result;

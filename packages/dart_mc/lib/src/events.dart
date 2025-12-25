@@ -301,6 +301,24 @@ bool _onProxyItemAttackEntity(int handlerId, int worldId, int attackerId, int ta
   return ItemRegistry.dispatchItemAttackEntity(handlerId, worldId, attackerId, targetId);
 }
 
+/// Default return value for item use events (ItemActionResult.pass ordinal = 4)
+const int _itemActionResultPassOrdinal = 4;
+
+@pragma('vm:entry-point')
+int _onProxyItemUse(int handlerId, int worldId, int playerId, int hand) {
+  return ItemRegistry.dispatchItemUse(handlerId, worldId, playerId, hand);
+}
+
+@pragma('vm:entry-point')
+int _onProxyItemUseOnBlock(int handlerId, int worldId, int x, int y, int z, int playerId, int hand) {
+  return ItemRegistry.dispatchItemUseOnBlock(handlerId, worldId, x, y, z, playerId, hand);
+}
+
+@pragma('vm:entry-point')
+int _onProxyItemUseOnEntity(int handlerId, int worldId, int entityId, int playerId, int hand) {
+  return ItemRegistry.dispatchItemUseOnEntity(handlerId, worldId, entityId, playerId, hand);
+}
+
 // =============================================================================
 // Custom Goal Callback Trampolines - route to CustomGoalRegistry
 // =============================================================================
@@ -513,6 +531,21 @@ class Events {
     final attackEntityCallback = Pointer.fromFunction<ProxyItemAttackEntityCallbackNative>(
         _onProxyItemAttackEntity, true);
     Bridge.registerProxyItemAttackEntityHandler(attackEntityCallback);
+
+    // Use callback - default: PASS (ordinal 4)
+    final useCallback = Pointer.fromFunction<ProxyItemUseCallbackNative>(
+        _onProxyItemUse, _itemActionResultPassOrdinal);
+    Bridge.registerProxyItemUseHandler(useCallback);
+
+    // Use on block callback - default: PASS (ordinal 4)
+    final useOnBlockCallback = Pointer.fromFunction<ProxyItemUseOnBlockCallbackNative>(
+        _onProxyItemUseOnBlock, _itemActionResultPassOrdinal);
+    Bridge.registerProxyItemUseOnBlockHandler(useOnBlockCallback);
+
+    // Use on entity callback - default: PASS (ordinal 4)
+    final useOnEntityCallback = Pointer.fromFunction<ProxyItemUseOnEntityCallbackNative>(
+        _onProxyItemUseOnEntity, _itemActionResultPassOrdinal);
+    Bridge.registerProxyItemUseOnEntityHandler(useOnEntityCallback);
 
     print('Events: Proxy item handlers registered');
   }
