@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "{{project_name}}",
+  "version": "${version}",
+  "name": "{{project_name_title}}",
+  "description": "{{description}}",
+  "authors": ["{{author}}"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/{{project_name}}/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.redstone.DartModLoader"
+    ],
+    "client": [
+      "com.redstone.DartModClientLoader"
+    ]
+  },
+  "mixins": [
+    "{{project_name}}.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~{{minecraft_version}}",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

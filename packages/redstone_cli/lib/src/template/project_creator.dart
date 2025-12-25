@@ -7,6 +7,7 @@ import '../api/fabric_meta_api.dart';
 import '../project/bridge_sync.dart';
 import '../util/logger.dart';
 import '../util/platform.dart';
+import 'template_loader.dart';
 import 'template_renderer.dart';
 
 /// Configuration for creating a new project
@@ -140,38 +141,34 @@ class ProjectCreator {
   }
 
   Future<void> _createProjectFiles() async {
-    // pubspec.yaml
-    await _writeFile('pubspec.yaml', _pubspecYaml());
+    // Load templates from external files
+    final templatesDir = await TemplateLoader.findTemplatesDir();
+    final loader = TemplateLoader(templatesDir);
+    await loader.load();
 
-    // lib/main.dart
-    await _writeFile('lib/main.dart', _mainDart());
+    // Choose template based on --empty flag
+    final templateName = config.empty ? 'mod_empty' : 'mod';
 
-    // test/hello_block_test.dart
-    await _writeFile('test/hello_block_test.dart', _helloBlockTest());
+    // Variables for filename rendering
+    final filenameVars = {
+      'project_name': config.name,
+    };
 
-    // README.md
-    await _writeFile('README.md', _readmeMd());
+    // Get all template files
+    final templateFiles = await loader.getTemplateFiles(templateName, filenameVars);
 
-    // .gitignore
-    await _writeFile('.gitignore', _gitignore());
+    // Write each template file
+    for (final templateFile in templateFiles) {
+      final content = templateFile.shouldRender
+          ? _renderer.render(templateFile.content)
+          : templateFile.content;
 
-    // analysis_options.yaml
-    await _writeFile('analysis_options.yaml', _analysisOptions());
+      final file = File(p.join(targetDir, templateFile.relativePath));
+      file.parent.createSync(recursive: true);
+      file.writeAsStringSync(content);
+    }
 
-    // Minecraft/Fabric files
-    await _writeFile('minecraft/build.gradle', _buildGradle());
-    await _writeFile('minecraft/settings.gradle', _settingsGradle());
-    await _writeFile('minecraft/gradle.properties', _gradleProperties());
-    await _writeFile(
-      'minecraft/src/main/resources/fabric.mod.json',
-      _fabricModJson(),
-    );
-    await _writeFile(
-      'minecraft/src/main/resources/${config.name}.mixins.json',
-      _mixinsJson(),
-    );
-
-    // Gradle wrapper
+    // Gradle wrapper (still handled separately as it involves copying binaries)
     await _copyGradleWrapper();
   }
 
@@ -278,10 +275,10 @@ class ProjectCreator {
     }
   }
 
-  Future<void> _writeFile(String relativePath, String content) async {
+  void _writeRawFile(String relativePath, String content) {
     final file = File(p.join(targetDir, relativePath));
     file.parent.createSync(recursive: true);
-    file.writeAsStringSync(_renderer.render(content));
+    file.writeAsStringSync(content);
   }
 
   Future<void> _copyGradleWrapper() async {
@@ -313,8 +310,8 @@ class ProjectCreator {
     } else {
       // Fallback: create minimal wrapper that downloads on first run
       Logger.warning('Gradle wrapper assets not found, creating minimal wrapper');
-      await _writeFile('minecraft/gradlew', _gradlewScript());
-      await _writeFile('minecraft/gradlew.bat', _gradlewBatScript());
+      _writeRawFile('minecraft/gradlew', _gradlewScript());
+      _writeRawFile('minecraft/gradlew.bat', _gradlewBatScript());
     }
 
     // Write gradle-wrapper.properties with correct version
@@ -328,7 +325,7 @@ zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 ''';
 
-    await _writeFile(
+    _writeRawFile(
       'minecraft/gradle/wrapper/gradle-wrapper.properties',
       wrapperProps,
     );
@@ -400,404 +397,6 @@ zipStorePath=wrapper/dists
     return null;
   }
 
-  // Template content methods
-  String _pubspecYaml() => '''
-name: {{project_name}}
-description: {{description}}
-version: 1.0.0
-publish_to: none
-
-environment:
-  sdk: ^3.0.0
-
-dependencies:
-  ffi: ^2.1.0
-  dart_mc:
-    path: /Users/norbertkozsir/IdeaProjects/redstone_dart/packages/dart_mc
-
-dev_dependencies:
-  redstone_test:
-    path: /Users/norbertkozsir/IdeaProjects/redstone_dart/packages/redstone_test
-
-# Redstone configuration
-redstone:
-  minecraft_version: "{{minecraft_version}}"
-  org: {{org}}
-  author: {{author}}
-''';
-
-  String _mainDart() => '''
-// {{project_name}} - A Minecraft mod built with Redstone
-//
-// This is your mod's entry point. Register your blocks, entities,
-// and other game objects here.
-
-// Dart MC API imports
-import 'package:dart_mc/dart_mc.dart';
-
-/// Example custom block that shows a message when right-clicked.
-///
-/// This demonstrates how to create custom blocks in Dart.
-/// The block will appear in the creative menu under "Building Blocks".
-class HelloBlock extends CustomBlock {
-  HelloBlock() : super(
-    id: '{{project_name}}:hello_block',
-    settings: BlockSettings(
-      hardness: 1.0,
-      resistance: 1.0,
-      requiresTool: false,
-    ),
-  );
-
-  @override
-  ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
-    // Get player info and send a message
-    final player = Players.getPlayer(playerId);
-    if (player != null) {
-      player.sendMessage('Hello from {{project_name_title}}! You clicked at (\$x, \$y, \$z)');
-    }
-    return ActionResult.success;
-  }
-
-  @override
-  bool onBreak(int worldId, int x, int y, int z, int playerId) {
-    print('HelloBlock broken at (\$x, \$y, \$z) by player \$playerId');
-    return true; // Allow the block to be broken
-  }
-}
-
-/// Main entry point for your mod.
-///
-/// This is called when the Dart VM is initialized by the native bridge.
-void main() {
-  print('{{project_name_title}} mod initialized!');
-
-  // Initialize the native bridge
-  Bridge.initialize();
-
-  // Register proxy block handlers (required for custom blocks)
-  Events.registerProxyBlockHandlers();
-
-  // =========================================================================
-  // Register your custom blocks here
-  // This MUST happen before the registry freezes (during mod initialization)
-  // =========================================================================
-  BlockRegistry.register(HelloBlock());
-
-  // Add more blocks here:
-  // BlockRegistry.register(MyOtherBlock());
-
-  // Freeze the block registry (no more blocks can be registered after this)
-  BlockRegistry.freeze();
-
-  // =========================================================================
-  // Register event handlers (optional)
-  // =========================================================================
-  Events.onBlockBreak((x, y, z, playerId) {
-    // Called when ANY block is broken
-    // Return EventResult.deny to prevent breaking
-    return EventResult.allow;
-  });
-
-  Events.onTick((tick) {
-    // Called every game tick (20 times per second)
-    // Use for animations, timers, etc.
-  });
-
-  print('{{project_name_title}} ready with \${BlockRegistry.blockCount} custom blocks!');
-}
-''';
-
-  String _readmeMd() => '''
-# {{project_name_title}}
-
-{{description}}
-
-## Getting Started
-
-1. Make sure you have [Redstone CLI](https://github.com/your-repo/redstone) installed
-2. Run your mod:
-   ```bash
-   redstone run
-   ```
-
-## Project Structure
-
-- `lib/` - Your Dart mod code
-- `assets/` - Textures, sounds, and other assets
-- `minecraft/` - Fabric mod configuration (usually don't need to edit)
-- `.redstone/` - Managed by Redstone CLI (don't edit)
-
-## Hot Reload
-
-While running, press `r` to hot reload your Dart code changes!
-
-## Learn More
-
-- [Redstone Documentation](https://github.com/your-repo/redstone)
-- [Fabric Mod Development](https://fabricmc.net/wiki/)
-
-## Running Tests
-
-Run your mod's tests inside a Minecraft server:
-
-```bash
-redstone test
-```
-''';
-
-  String _helloBlockTest() => '''
-// Tests for HelloBlock
-//
-// Run with: redstone test
-
-import 'package:redstone_test/redstone_test.dart';
-
-Future<void> main() async {
-  await group('HelloBlock', () async {
-    await testMinecraft('can be placed in the world', (game) async {
-      final pos = BlockPos(0, 64, 0);
-
-      // Place our custom block
-      game.placeBlock(pos, Block('{{project_name}}:hello_block'));
-
-      // Verify it was placed
-      final block = game.getBlock(pos);
-      expect(block, isBlock('{{project_name}}:hello_block'));
-    });
-
-    await testMinecraft('can be broken', (game) async {
-      final pos = BlockPos(0, 64, 0);
-
-      // Place and then break the block
-      game.placeBlock(pos, Block('{{project_name}}:hello_block'));
-      game.setBlock(pos, Block.air);
-
-      // Verify it's now air
-      expect(game.getBlock(pos), isAirBlock);
-    });
-  });
-
-  await group('World basics', () async {
-    await testMinecraft('can access world time', (game) async {
-      final time = game.world.timeOfDay;
-      expect(time, greaterThanOrEqualTo(0));
-    });
-
-    await testMinecraft('can wait for ticks', (game) async {
-      final startTick = game.currentTick;
-
-      // Wait for 20 ticks (1 second in game time)
-      await game.waitTicks(20);
-
-      expect(game.currentTick, greaterThanOrEqualTo(startTick + 20));
-    });
-  });
-}
-''';
-
-  String _gitignore() => '''
-# Dart
-.dart_tool/
-.packages
-pubspec.lock
-
-# Redstone managed (regenerated on redstone upgrade)
-.redstone/
-
-# Minecraft runtime
-minecraft/run/
-minecraft/build/
-minecraft/.gradle/
-minecraft/mc-sources/
-
-# IDE
-.idea/
-*.iml
-.vscode/
-
-# OS
-.DS_Store
-Thumbs.db
-''';
-
-  String _analysisOptions() => '''
-analyzer:
-  exclude:
-    - minecraft/run/**
-    - minecraft/build/**
-''';
-
-  String _buildGradle() => '''
-plugins {
-    id 'net.fabricmc.fabric-loom-remap' version '{{loom_version}}'
-    id 'java'
-}
-
-version = project.mod_version
-group = project.maven_group
-
-base {
-    archivesName = project.archives_base_name
-}
-
-repositories {
-    mavenCentral()
-}
-
-loom {
-    splitEnvironmentSourceSets()
-
-    mods {
-        "{{project_name}}" {
-            sourceSet sourceSets.main
-            sourceSet sourceSets.client
-        }
-    }
-}
-
-sourceSets {
-    main {
-        java {
-            // Include Redstone bridge code (server-side)
-            srcDir '../.redstone/bridge/java'
-        }
-    }
-    client {
-        java {
-            // Include Redstone client bridge code (uses client-only APIs)
-            srcDir '../.redstone/bridge/client/java'
-        }
-    }
-}
-
-dependencies {
-    minecraft "com.mojang:minecraft:\${project.minecraft_version}"
-    mappings loom.officialMojangMappings()
-    modImplementation "net.fabricmc:fabric-loader:\${project.loader_version}"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:\${project.fabric_version}"
-}
-
-processResources {
-    inputs.property "version", project.version
-    inputs.property "minecraft_version", project.minecraft_version
-    inputs.property "loader_version", project.loader_version
-
-    filesMatching("fabric.mod.json") {
-        expand "version": project.version,
-                "minecraft_version": project.minecraft_version,
-                "loader_version": project.loader_version
-    }
-}
-
-tasks.withType(JavaCompile).configureEach {
-    it.options.release = 21
-}
-
-java {
-    withSourcesJar()
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
-}
-
-jar {
-    from("LICENSE") {
-        rename { "\${it}_\${project.base.archivesName.get()}" }
-    }
-}
-
-// Enable Fabric game tests (used by 'redstone test')
-fabricApi {
-    configureTests {
-        enableGameTests = true
-    }
-}
-
-// Pass DART_SCRIPT_PATH to run tasks via JVM system property
-// This allows the CLI to specify the script location directly
-tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
-    // Read from Gradle project property (passed via -PdartScriptPath=...)
-    if (project.hasProperty('dartScriptPath')) {
-        def dartScriptPath = project.property('dartScriptPath')
-        jvmArgs("-DDART_SCRIPT_PATH=\${dartScriptPath}")
-    }
-}
-''';
-
-  String _settingsGradle() => '''
-pluginManagement {
-    repositories {
-        maven {
-            name = 'Fabric'
-            url = 'https://maven.fabricmc.net/'
-        }
-        gradlePluginPortal()
-    }
-}
-''';
-
-  String _gradleProperties() => '''
-# Project
-mod_version=1.0.0
-maven_group={{org}}
-archives_base_name={{project_name}}
-
-# Fabric - https://fabricmc.net/develop/
-minecraft_version={{minecraft_version}}
-loader_version={{loader_version}}
-fabric_version={{fabric_version}}
-
-# Gradle
-org.gradle.jvmargs=-Xmx2G
-org.gradle.parallel=true
-org.gradle.configuration-cache=false
-''';
-
-  String _fabricModJson() => '''
-{
-  "schemaVersion": 1,
-  "id": "{{project_name}}",
-  "version": "\${version}",
-  "name": "{{project_name_title}}",
-  "description": "{{description}}",
-  "authors": ["{{author}}"],
-  "contact": {},
-  "license": "MIT",
-  "icon": "assets/{{project_name}}/icon.png",
-  "environment": "*",
-  "entrypoints": {
-    "main": [
-      "com.redstone.DartModLoader"
-    ],
-    "client": [
-      "com.redstone.DartModClientLoader"
-    ]
-  },
-  "mixins": [
-    "{{project_name}}.mixins.json"
-  ],
-  "depends": {
-    "fabricloader": ">=\${loader_version}",
-    "minecraft": "~{{minecraft_version}}",
-    "java": ">=21",
-    "fabric-api": "*"
-  }
-}
-''';
-
-  String _mixinsJson() => '''
-{
-  "required": true,
-  "minVersion": "0.8",
-  "package": "{{java_package}}.mixin",
-  "compatibilityLevel": "JAVA_21",
-  "mixins": [],
-  "client": [],
-  "injectors": {
-    "defaultRequire": 1
-  }
-}
-''';
 
   String _gradlewScript() => '''
 #!/bin/sh

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "templates": {
+    "mod": {
+      "description": "Standard Redstone mod with example code",
+      "files": [
+        "lib/main.dart.tmpl",
+        "test/hello_block_test.dart.tmpl",
+        "pubspec.yaml.tmpl",
+        "README.md.tmpl",
+        ".gitignore.copy.tmpl",
+        "analysis_options.yaml.copy.tmpl",
+        "minecraft/build.gradle.tmpl",
+        "minecraft/settings.gradle.tmpl",
+        "minecraft/gradle.properties.tmpl",
+        "minecraft/src/main/resources/fabric.mod.json.tmpl",
+        "minecraft/src/main/resources/__project_name__.mixins.json.tmpl"
+      ]
+    },
+    "mod_empty": {
+      "description": "Minimal Redstone mod without example code",
+      "extends": "mod",
+      "overrides": [
+        "lib/main.dart.tmpl"
+      ]
+    }
+  }
+}

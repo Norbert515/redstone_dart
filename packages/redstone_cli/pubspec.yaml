@@ -12,6 +12,7 @@ executables:
 
 dependencies:
   args: ^2.4.0
+  mustache_template: ^2.0.0
   path: ^1.8.0
   yaml: ^3.1.0
   yaml_edit: ^2.1.0
