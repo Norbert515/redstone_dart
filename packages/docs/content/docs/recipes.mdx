@@ -1,0 +1,239 @@
+---
+title: Recipes
+description: Add crafting, smelting, and other recipes to your mod
+icon: Hammer
+---
+
+# Recipes
+
+Add custom crafting recipes to Minecraft.
+
+## Shaped Crafting
+
+Recipes with a specific pattern:
+
+```dart
+Recipes.shaped(
+  'mymod:diamond_hammer',
+  pattern: [
+    'DDD',
+    ' S ',
+    ' S ',
+  ],
+  keys: {
+    'D': 'minecraft:diamond',
+    'S': 'minecraft:stick',
+  },
+  result: 'mymod:diamond_hammer',
+  count: 1,
+);
+```
+
+Pattern rules:
+- 1-3 rows, each row 1-3 characters
+- Space = empty slot
+- Each letter maps to an ingredient in `keys`
+
+### Examples
+
+**Sword pattern:**
+```dart
+pattern: [
+  'D',
+  'D',
+  'S',
+]
+```
+
+**Chestplate pattern:**
+```dart
+pattern: [
+  'D D',
+  'DDD',
+  'DDD',
+]
+```
+
+## Shapeless Crafting
+
+Ingredients in any arrangement:
+
+```dart
+Recipes.shapeless(
+  'mymod:mixed_gem',
+  ingredients: [
+    'minecraft:diamond',
+    'minecraft:emerald',
+    'minecraft:redstone',
+  ],
+  result: 'mymod:mixed_gem',
+  count: 1,
+);
+```
+
+<Callout type="info">
+Shapeless recipes allow 1-9 ingredients. Order doesn't matter.
+</Callout>
+
+## Smelting Recipes
+
+Furnace recipes:
+
+```dart
+Recipes.smelting(
+  'mymod:purified_iron',
+  input: 'minecraft:raw_iron',
+  result: 'mymod:purified_iron',
+  experience: 1.0,
+  cookingTime: 200, // ticks (200 = 10 seconds)
+);
+```
+
+## Blast Furnace
+
+Faster smelting for ores:
+
+```dart
+Recipes.blasting(
+  'mymod:quick_iron',
+  input: 'minecraft:raw_iron',
+  result: 'minecraft:iron_ingot',
+  experience: 0.7,
+  cookingTime: 100, // Half the normal time
+);
+```
+
+## Smoker
+
+Food cooking:
+
+```dart
+Recipes.smoking(
+  'mymod:cooked_custom_meat',
+  input: 'mymod:raw_custom_meat',
+  result: 'mymod:cooked_custom_meat',
+  experience: 0.35,
+);
+```
+
+## Campfire
+
+Slow cooking without fuel:
+
+```dart
+Recipes.campfire(
+  'mymod:campfire_stew',
+  input: 'mymod:raw_stew',
+  result: 'mymod:campfire_stew',
+  cookingTime: 600, // 30 seconds (default)
+);
+```
+
+## Stonecutting
+
+Quick stone variants:
+
+```dart
+Recipes.stonecutting(
+  'mymod:custom_stone_bricks',
+  input: 'mymod:custom_stone',
+  result: 'mymod:custom_stone_bricks',
+  count: 1,
+);
+```
+
+## Smithing (1.20+)
+
+Upgrade items at the smithing table:
+
+```dart
+Recipes.smithingTransform(
+  'mymod:netherite_hammer',
+  template: 'minecraft:netherite_upgrade_smithing_template',
+  base: 'mymod:diamond_hammer',
+  addition: 'minecraft:netherite_ingot',
+  result: 'mymod:netherite_hammer',
+);
+```
+
+## Recipe Groups
+
+Organize recipes in the recipe book:
+
+```dart
+Recipes.shaped(
+  'mymod:oak_planks_from_custom',
+  pattern: ['W'],
+  keys: {'W': 'mymod:custom_wood'},
+  result: 'minecraft:oak_planks',
+  count: 4,
+  group: 'planks', // Groups with vanilla planks
+);
+```
+
+## Removing Recipes
+
+Remove vanilla or mod recipes:
+
+```dart
+// Remove specific recipe by ID
+Recipes.remove('minecraft:diamond_sword');
+
+// Remove all recipes producing an item
+Recipes.removeByOutput('minecraft:diamond_sword');
+```
+
+<Callout type="warn" title="Recipe IDs">
+Recipe IDs follow the format `namespace:name`. Check the Minecraft wiki or use F3+H in-game to see item IDs.
+</Callout>
+
+## Cooking Time Reference
+
+| Type | Default | Notes |
+|------|---------|-------|
+| Furnace | 200 ticks (10s) | Standard smelting |
+| Blast Furnace | 100 ticks (5s) | Ores only |
+| Smoker | 100 ticks (5s) | Food only |
+| Campfire | 600 ticks (30s) | No fuel needed |
+
+## Complete Example
+
+```dart
+void setupRecipes() {
+  // Custom tool
+  Recipes.shaped(
+    'mymod:super_pickaxe',
+    pattern: [
+      'DED',
+      ' S ',
+      ' S ',
+    ],
+    keys: {
+      'D': 'minecraft:diamond',
+      'E': 'minecraft:emerald',
+      'S': 'minecraft:stick',
+    },
+    result: 'mymod:super_pickaxe',
+  );
+
+  // Quick conversion
+  Recipes.shapeless(
+    'mymod:diamond_from_emeralds',
+    ingredients: [
+      'minecraft:emerald',
+      'minecraft:emerald',
+      'minecraft:emerald',
+      'minecraft:emerald',
+    ],
+    result: 'minecraft:diamond',
+  );
+
+  // Custom ore processing
+  Recipes.blasting(
+    'mymod:processed_ore',
+    input: 'mymod:custom_ore',
+    result: 'mymod:custom_ingot',
+    experience: 1.5,
+  );
+}
+```

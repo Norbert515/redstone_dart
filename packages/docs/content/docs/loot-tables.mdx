@@ -1,0 +1,260 @@
+---
+title: Loot Tables
+description: Modify mob drops and chest loot
+icon: Gift
+---
+
+# Loot Tables
+
+Modify what mobs drop and what appears in chests.
+
+## Basic Usage
+
+Add items to existing loot tables:
+
+```dart
+LootTables.modify('minecraft:entities/zombie', (builder) {
+  builder.addItem(
+    'minecraft:diamond',
+    chance: 0.1,  // 10% chance
+    minCount: 1,
+    maxCount: 2,
+  );
+});
+```
+
+## Loot Table IDs
+
+Common loot table paths:
+
+| Category | Example ID |
+|----------|------------|
+| Mobs | `minecraft:entities/zombie` |
+| Blocks | `minecraft:blocks/stone` |
+| Chests | `minecraft:chests/simple_dungeon` |
+| Fishing | `minecraft:gameplay/fishing` |
+
+## Conditions
+
+Control when items drop:
+
+### Random Chance
+
+```dart
+builder.addItemWithCondition(
+  'mymod:rare_gem',
+  LootCondition.randomChance(0.05), // 5% chance
+);
+```
+
+### Killed By Player
+
+```dart
+builder.addItemWithCondition(
+  'mymod:trophy',
+  LootCondition.killedByPlayer(),
+);
+```
+
+### Looting Bonus
+
+```dart
+builder.addItemWithCondition(
+  'minecraft:diamond',
+  LootCondition.randomChanceWithLooting(
+    0.1,
+    lootingMultiplier: 0.02, // +2% per looting level
+  ),
+);
+```
+
+### Tool Enchantment
+
+```dart
+builder.addItemWithCondition(
+  'mymod:silk_drop',
+  LootCondition.toolEnchantment('minecraft:silk_touch'),
+);
+```
+
+### Weather
+
+```dart
+builder.addItemWithCondition(
+  'mymod:thunder_gem',
+  LootCondition.weather(thundering: true),
+);
+```
+
+### Multiple Conditions (AND)
+
+```dart
+builder.addItemWithConditions(
+  'mymod:super_rare',
+  [
+    LootCondition.killedByPlayer(),
+    LootCondition.randomChance(0.01),
+  ],
+);
+```
+
+### Combining Conditions
+
+```dart
+// All conditions must pass (AND)
+LootCondition.allOf([
+  LootCondition.killedByPlayer(),
+  LootCondition.randomChance(0.1),
+])
+
+// Any condition can pass (OR)
+LootCondition.anyOf([
+  LootCondition.weather(raining: true),
+  LootCondition.weather(thundering: true),
+])
+
+// Invert a condition (NOT)
+LootCondition.inverted(
+  LootCondition.killedByPlayer(),
+)
+```
+
+## Loot Functions
+
+Modify dropped items:
+
+### Set Count
+
+```dart
+builder.addItemWithFunctions(
+  'minecraft:arrow',
+  [
+    LootFunction.setCount(5, 15), // 5-15 arrows
+  ],
+);
+```
+
+### Looting Enchant Bonus
+
+```dart
+builder.addItemWithFunctions(
+  'minecraft:rotten_flesh',
+  [
+    LootFunction.setCount(0, 2),
+    LootFunction.lootingEnchant(min: 0, max: 1),
+  ],
+);
+```
+
+### Auto-Smelt (Furnace Smelt)
+
+```dart
+builder.addItemWithFunctions(
+  'minecraft:porkchop',
+  [
+    LootFunction.furnaceSmelt(), // Drops cooked if on fire
+  ],
+);
+```
+
+### Random Enchantment
+
+```dart
+builder.addItemWithFunctions(
+  'minecraft:diamond_sword',
+  [
+    LootFunction.enchantRandomly(),
+  ],
+  chance: 0.01,
+);
+```
+
+### Enchant with Levels
+
+```dart
+builder.addItemWithFunctions(
+  'minecraft:book',
+  [
+    LootFunction.enchantWithLevels(20, 30, treasure: true),
+  ],
+);
+```
+
+## Weighted Pools
+
+Multiple items with different weights:
+
+```dart
+builder.addWeightedPool(
+  {
+    'minecraft:diamond': 1,    // Rare
+    'minecraft:emerald': 5,    // Uncommon
+    'minecraft:gold_ingot': 20, // Common
+    'minecraft:iron_ingot': 50, // Very common
+  },
+  rolls: 2,  // Pick 2 items
+  chance: 0.5, // 50% chance for the pool
+);
+```
+
+## Complete Example
+
+Make zombies drop custom loot:
+
+```dart
+void setupLootTables() {
+  LootTables.modify('minecraft:entities/zombie', (builder) {
+    // Rare diamond drop
+    builder.addItemWithConditions(
+      'minecraft:diamond',
+      [
+        LootCondition.killedByPlayer(),
+        LootCondition.randomChanceWithLooting(0.02, lootingMultiplier: 0.01),
+      ],
+      minCount: 1,
+      maxCount: 1,
+    );
+
+    // Custom mod item
+    builder.addItemWithCondition(
+      'mymod:zombie_essence',
+      LootCondition.randomChance(0.25),
+    );
+
+    // Enchanted gear (very rare)
+    builder.addItemWithFunctions(
+      'minecraft:iron_sword',
+      [
+        LootFunction.setDamage(0.5, 0.9),
+        LootFunction.enchantRandomly(),
+      ],
+      chance: 0.01,
+    );
+  });
+
+  // Modify chest loot
+  LootTables.modify('minecraft:chests/simple_dungeon', (builder) {
+    builder.addWeightedPool(
+      {
+        'mymod:rare_artifact': 1,
+        'mymod:uncommon_gem': 5,
+        'mymod:common_shard': 20,
+      },
+      rolls: 1,
+    );
+  });
+}
+```
+
+## Available Functions
+
+| Function | Description |
+|----------|-------------|
+| `setCount(min, max)` | Set random count range |
+| `setCountFixed(n)` | Set fixed count |
+| `lootingEnchant(min, max)` | Add bonus per looting level |
+| `setDamage(min, max)` | Set item damage (0-1) |
+| `furnaceSmelt()` | Cook item if entity on fire |
+| `enchantRandomly()` | Add random enchantment |
+| `enchantWithLevels(min, max)` | Enchant at level range |
+| `setNbt(tag)` | Set NBT data |

@@ -1,0 +1,256 @@
+---
+title: Custom Entities
+description: Create custom monsters, animals, and projectiles with AI
+icon: Bug
+---
+
+# Custom Entities
+
+Create custom mobs with AI behaviors, models, and callbacks.
+
+## Entity Types
+
+Redstone.Dart supports three entity base types:
+
+### Monsters
+
+Hostile mobs that attack players:
+
+```dart
+class DartZombie extends CustomMonster {
+  DartZombie() : super(
+    id: 'mymod:dart_zombie',
+    settings: MonsterSettings(
+      maxHealth: 40,
+      attackDamage: 5,
+      movementSpeed: 0.25,
+      burnsInDaylight: true,
+      model: EntityModel.humanoid(
+        texture: 'assets/textures/entity/dart_zombie.png',
+      ),
+    ),
+  );
+
+  @override
+  void onSpawn(int entityId, int worldId) {
+    print('Zombie spawned: $entityId');
+  }
+
+  @override
+  void onAttack(int entityId, int targetId) {
+    print('Zombie attacked!');
+  }
+}
+```
+
+### Animals
+
+Passive breedable mobs:
+
+```dart
+class DartCow extends CustomAnimal {
+  DartCow() : super(
+    id: 'mymod:dart_cow',
+    settings: AnimalSettings(
+      maxHealth: 10,
+      movementSpeed: 0.2,
+      breedingItem: 'minecraft:wheat',
+      model: EntityModel.quadruped(
+        texture: 'assets/textures/entity/dart_cow.png',
+      ),
+    ),
+  );
+
+  @override
+  void onBreed(int entityId, int partnerId, int babyId) {
+    print('New baby cow: $babyId');
+  }
+}
+```
+
+### Projectiles
+
+Throwable/shootable entities:
+
+```dart
+class DartFireball extends CustomProjectile {
+  DartFireball() : super(
+    id: 'mymod:dart_fireball',
+    settings: ProjectileSettings(
+      width: 0.5,
+      height: 0.5,
+      gravity: 0.01,
+    ),
+  );
+
+  @override
+  void onHitEntity(int projectileId, int targetId) {
+    // Deal damage or apply effects
+  }
+
+  @override
+  void onHitBlock(int projectileId, int x, int y, int z, String side) {
+    // Create explosion
+  }
+}
+```
+
+## Entity Settings
+
+### MonsterSettings
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `width` | double | 0.6 | Collision box width |
+| `height` | double | 1.95 | Collision box height |
+| `maxHealth` | double | 20 | Maximum health |
+| `movementSpeed` | double | 0.23 | Walking speed |
+| `attackDamage` | double | 3 | Melee attack damage |
+| `burnsInDaylight` | bool | false | Burns in sunlight like zombies |
+| `goals` | List? | null | Custom AI goals |
+| `targetGoals` | List? | null | Custom target selection goals |
+| `model` | EntityModel? | null | Visual model and texture |
+
+### AnimalSettings
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `breedingItem` | String? | null | Item used to breed (e.g., "minecraft:wheat") |
+
+### ProjectileSettings
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `gravity` | double | 0.03 | Gravity per tick |
+| `noClip` | bool | false | Ignore block collisions |
+
+## Entity Models
+
+Define how your entity looks:
+
+```dart
+// Humanoid (zombie/player-like, bipedal)
+EntityModel.humanoid(texture: 'assets/textures/entity/my_zombie.png')
+
+// Quadruped (cow/pig-like, four legs)
+EntityModel.quadruped(texture: 'assets/textures/entity/my_cow.png')
+
+// Simple (scaled basic model)
+EntityModel.simple(texture: 'assets/textures/entity/my_blob.png', scale: 2.0)
+
+// Custom (reference existing model)
+EntityModel.custom(texture: 'assets/textures/entity/custom.png')
+```
+
+<Callout type="info" title="Textures">
+Place entity textures in `assets/textures/entity/`. The CLI copies them to the right location.
+</Callout>
+
+## Lifecycle Callbacks
+
+```dart
+class MyEntity extends CustomMonster {
+  // Called when spawned
+  @override
+  void onSpawn(int entityId, int worldId) {}
+
+  // Called every tick (20/sec) - enable with needsTickCallback: true
+  @override
+  void onTick(int entityId) {}
+
+  // Called when entity dies
+  @override
+  void onDeath(int entityId, String damageSource) {}
+
+  // Called when taking damage - return false to cancel
+  @override
+  bool onDamage(int entityId, String damageSource, double amount) {
+    return true; // Allow damage
+  }
+
+  // Called when attacking another entity
+  @override
+  void onAttack(int entityId, int targetId) {}
+}
+```
+
+## AI Goals
+
+Customize entity behavior with goals:
+
+### Combat Goals
+
+```dart
+MonsterSettings(
+  goals: [
+    FloatGoal(priority: 0),  // Stay afloat in water
+    MeleeAttackGoal(priority: 2, speedModifier: 1.2),
+    LeapAtTargetGoal(priority: 3, yd: 0.4),
+  ],
+  targetGoals: [
+    NearestAttackableTargetGoal(priority: 1, targetType: 'minecraft:player'),
+    HurtByTargetGoal(priority: 2, alertOthers: true),
+  ],
+)
+```
+
+### Passive Goals
+
+```dart
+AnimalSettings(
+  goals: [
+    FloatGoal(priority: 0),
+    PanicGoal(priority: 1, speedModifier: 1.5),
+    BreedGoal(priority: 2),
+    TemptGoal(priority: 3, temptItem: 'minecraft:wheat'),
+    FollowParentGoal(priority: 4),
+    WaterAvoidingRandomStrollGoal(priority: 5),
+    LookAtPlayerGoal(priority: 6, lookDistance: 8.0),
+    RandomLookAroundGoal(priority: 7),
+  ],
+)
+```
+
+### Available Goals
+
+| Goal | Selector | Description |
+|------|----------|-------------|
+| `FloatGoal` | Goal | Stay afloat in water |
+| `MeleeAttackGoal` | Goal | Attack target in melee range |
+| `LeapAtTargetGoal` | Goal | Jump toward target |
+| `WaterAvoidingRandomStrollGoal` | Goal | Wander on land |
+| `LookAtPlayerGoal` | Goal | Look at nearby players |
+| `RandomLookAroundGoal` | Goal | Look around randomly |
+| `PanicGoal` | Goal | Run when hurt |
+| `BreedGoal` | Goal | Breed with partners |
+| `TemptGoal` | Goal | Follow players with item |
+| `FollowParentGoal` | Goal | Babies follow parent |
+| `NearestAttackableTargetGoal` | Target | Target nearest entity |
+| `HurtByTargetGoal` | Target | Target attackers |
+
+## Registration
+
+```dart
+void main() {
+  Bridge.initialize();
+  Events.registerProxyEntityHandlers();
+
+  EntityRegistry.register(DartZombie());
+  EntityRegistry.register(DartCow());
+  EntityRegistry.freeze();
+}
+```
+
+## Spawning Entities
+
+```dart
+// Spawn your custom entity
+World.overworld.spawnEntity('mymod:dart_zombie', x, y, z);
+
+// Or use a command
+Commands.register('spawnzombie', execute: (context) {
+  final pos = context.source;
+  World.overworld.spawnEntity('mymod:dart_zombie', pos.x, pos.y, pos.z);
+  return 1;
+});
+```
