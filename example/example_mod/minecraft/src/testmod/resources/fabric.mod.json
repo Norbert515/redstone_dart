@@ -1,0 +1,18 @@
+{
+    "schemaVersion": 1,
+    "id": "example-mod-test",
+    "version": "1.0.0",
+    "name": "Example Mod Tests",
+    "environment": "*",
+    "entrypoints": {
+        "fabric-gametest": [
+            "com.vide.gametest.BridgeTests",
+            "com.vide.gametest.BlockTests",
+            "com.vide.gametest.EventTests"
+        ]
+    },
+    "depends": {
+        "example_mod": "*",
+        "fabric-gametest-api-v1": "*"
+    }
+}

@@ -17,7 +17,7 @@ packages/
 └── framework_tests/    # Comprehensive tests for the framework
 
 example/
-└── basic_dart_mod/     # Example mod demonstrating all features
+└── example_mod/        # Example mod demonstrating all features
 ```
 
 ## Architecture
@@ -94,7 +94,7 @@ class MyScreen extends Screen {
 ## Development Commands
 
 ```bash
-# In example/basic_dart_mod/
+# In example/example_mod/
 redstone run          # Build and run the mod with hot reload
 redstone build        # Build without running
 redstone generate     # Regenerate assets (blocks, items, textures)
@@ -213,7 +213,7 @@ This project uses a custom testing infrastructure that runs tests inside a real 
 
 ```bash
 # Run all tests in a project
-cd example/basic_dart_mod  # or packages/framework_tests
+cd example/example_mod  # or packages/framework_tests
 redstone test
 
 # Run specific test file
@@ -234,7 +234,7 @@ redstone test --verbose
 ### Test Locations
 
 - **Framework tests:** `packages/framework_tests/test/` - Comprehensive tests for all framework features
-- **Example mod tests:** `example/basic_dart_mod/test/` - Example tests demonstrating patterns
+- **Example mod tests:** `example/example_mod/test/` - Example tests demonstrating patterns
 
 ### Writing Tests
 

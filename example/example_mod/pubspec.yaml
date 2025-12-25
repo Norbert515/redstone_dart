@@ -1,0 +1,22 @@
+name: example_mod
+description: A Minecraft mod built with Redstone
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  ffi: ^2.1.0
+  dart_mc:
+    path: ../../packages/dart_mc
+
+dev_dependencies:
+  redstone_test:
+    path: ../../packages/redstone_test
+
+# Redstone configuration
+redstone:
+  minecraft_version: "1.21.11"
+  org: com.example
+  author: Norbert515

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "example_mod",
+  "version": "${version}",
+  "name": "Example Mod",
+  "description": "A Minecraft mod built with Redstone",
+  "authors": ["Norbert515"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/example_mod/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.redstone.DartModLoader"
+    ],
+    "client": [
+      "com.redstone.DartModClientLoader"
+    ]
+  },
+  "mixins": [
+    "example_mod.mixins.json"
+  ],
+  "accessWidener": "redstone.accesswidener",
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
