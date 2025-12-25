@@ -1,0 +1,99 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version '1.14-SNAPSHOT'
+    id 'java'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenCentral()
+}
+
+loom {
+    splitEnvironmentSourceSets()
+
+    // Access widener to expose protected Mob fields (goalSelector, targetSelector)
+    // Must be in src/main/resources for Fabric to find at runtime
+    accessWidenerPath = file("src/main/resources/redstone.accesswidener")
+
+    mods {
+        "example_mod" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            // Include Redstone bridge code (server-side)
+            srcDir '../.redstone/bridge/java'
+        }
+    }
+    client {
+        java {
+            // Include Redstone client bridge code (uses client-only APIs)
+            srcDir '../.redstone/bridge/client/java'
+        }
+    }
+}
+
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "example-mod-test"
+        enableGameTests = true
+        eula = true
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "loader_version", project.loader_version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+                "minecraft_version": project.minecraft_version,
+                "loader_version": project.loader_version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+}
+
+// Pass DART_SCRIPT_PATH to run tasks via JVM system property
+// This allows the CLI to specify the script location directly
+tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
+    // Read from Gradle project property (passed via -PdartScriptPath=...)
+    if (project.hasProperty('dartScriptPath')) {
+        def dartScriptPath = project.property('dartScriptPath')
+        jvmArgs("-DDART_SCRIPT_PATH=${dartScriptPath}")
+    }
+}

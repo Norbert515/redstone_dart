@@ -55,11 +55,11 @@ jobs:
           make -j$(nproc)
 
       - name: Build mod
-        working-directory: example/basic_dart_mod/minecraft
+        working-directory: example/example_mod/minecraft
         run: ./gradlew build --no-daemon
 
       - name: Run GameTests
-        working-directory: example/basic_dart_mod/minecraft
+        working-directory: example/example_mod/minecraft
         run: ./gradlew runGametest --no-daemon
         continue-on-error: true
 
@@ -68,7 +68,7 @@ jobs:
         if: always()
         with:
           name: test-results
-          path: example/basic_dart_mod/minecraft/build/junit.xml
+          path: example/example_mod/minecraft/build/junit.xml
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -76,5 +76,5 @@ jobs:
         with:
           name: build-logs
           path: |
-            example/basic_dart_mod/minecraft/build/reports/
-            example/basic_dart_mod/minecraft/build/logs/
+            example/example_mod/minecraft/build/reports/
+            example/example_mod/minecraft/build/logs/

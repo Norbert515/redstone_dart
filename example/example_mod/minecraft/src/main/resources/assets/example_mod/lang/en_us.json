@@ -1,0 +1,14 @@
+{
+  "block.example_mod.hello_block": "Hello Block",
+  "block.example_mod.terraformer": "Terraformer",
+  "block.example_mod.midas": "Midas",
+  "block.example_mod.lightning_rod": "Lightning Rod",
+  "block.example_mod.mob_spawner": "Mob Spawner",
+  "block.example_mod.party_block": "Party Block",
+  "block.example_mod.weather_control": "Weather Control",
+  "block.example_mod.entity_radar": "Entity Radar",
+  "item.example_mod.dart_item": "Dart Item",
+  "item.example_mod.effect_wand": "Effect Wand",
+  "item.example_mod.obsidian_stick": "Obsidian Stick",
+  "item.example_mod.peer_schwert": "Peer Schwert"
+}

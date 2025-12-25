@@ -63,4 +63,4 @@ class TeleporterBlock extends CustomBlock {
 
 ## More
 
-See `example/basic_dart_mod/` in the repo for a complete mod.
+See `example/example_mod/` in the repo for a complete mod.
