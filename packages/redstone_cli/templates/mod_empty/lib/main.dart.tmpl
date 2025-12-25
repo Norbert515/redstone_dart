@@ -1,7 +1,8 @@
 import 'package:dart_mc/dart_mc.dart';
 
-Future<void> main() async {
-  // Register your blocks, items, and entities here
+void main() {
+  // Initialize the native bridge
+  Bridge.initialize();
 
-  await initializeMod();
+  // Register your blocks, items, and entities here
 }
