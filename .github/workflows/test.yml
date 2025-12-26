@@ -94,6 +94,17 @@ jobs:
           # Copy dart_dll library (needed at runtime)
           cp packages/native_mc_bridge/deps/dart_dll/lib/libdart_dll.so example/example_mod/minecraft/run/natives/
 
+      - name: Copy Java bridge code
+        run: |
+          # The Gradle build expects bridge code in .redstone/bridge/
+          # Normally the CLI copies this, but in CI we do it manually
+          mkdir -p example/example_mod/.redstone/bridge
+          cp -r packages/java_mc_bridge/src/main/* example/example_mod/.redstone/bridge/
+          mkdir -p example/example_mod/.redstone/bridge/client
+          cp -r packages/java_mc_bridge/src/client/* example/example_mod/.redstone/bridge/client/
+          echo "Bridge code copied"
+          ls -la example/example_mod/.redstone/bridge/
+
       - name: Build mod
         working-directory: example/example_mod/minecraft
         run: ./gradlew build --no-daemon
