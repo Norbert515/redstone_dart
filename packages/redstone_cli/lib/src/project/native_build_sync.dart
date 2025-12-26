@@ -206,13 +206,19 @@ class NativeBuildSync {
   }
 
   /// Get the platform-specific library name
+  ///
+  /// Must match CMakeLists.txt output naming and DartBridge.java expectations.
+  /// Java's System.loadLibrary("dart_mc_bridge") expects:
+  ///   macOS: dart_mc_bridge.dylib (no lib prefix)
+  ///   Windows: dart_mc_bridge.dll (no lib prefix)
+  ///   Linux: libdart_mc_bridge.so (with lib prefix)
   static String _getLibraryName() {
     if (Platform.isMacOS) {
       return 'dart_mc_bridge.dylib';
     } else if (Platform.isWindows) {
       return 'dart_mc_bridge.dll';
     } else if (Platform.isLinux) {
-      return 'dart_mc_bridge.so';
+      return 'libdart_mc_bridge.so';
     } else {
       throw UnsupportedError('Unsupported platform: ${Platform.operatingSystem}');
     }

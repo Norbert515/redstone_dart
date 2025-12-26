@@ -56,14 +56,15 @@ elseif(APPLE)
     )
 endif()
 
-# Output naming
-set_target_properties(dart_mc_bridge PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "dart_mc_bridge"
-)
-
+# Output naming - platform-specific
+# Java's System.loadLibrary("dart_mc_bridge") expects:
+#   macOS: dart_mc_bridge.dylib (no lib prefix)
+#   Windows: dart_mc_bridge.dll (no lib prefix)
+#   Linux: libdart_mc_bridge.so (with lib prefix)
 if(APPLE)
     set_target_properties(dart_mc_bridge PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "dart_mc_bridge"
         SUFFIX ".dylib"
         # Use absolute path to deps/dart_dll/lib for local development (redstone test/run)
         # This avoids needing to copy libdart_dll.dylib to the natives folder
@@ -72,9 +73,17 @@ if(APPLE)
         BUILD_RPATH "${DART_DLL_PATH}/lib"
     )
 elseif(WIN32)
-    set_target_properties(dart_mc_bridge PROPERTIES SUFFIX ".dll")
+    set_target_properties(dart_mc_bridge PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "dart_mc_bridge"
+        SUFFIX ".dll"
+    )
 else()
-    set_target_properties(dart_mc_bridge PROPERTIES SUFFIX ".so")
+    # Linux: Keep default "lib" prefix for System.loadLibrary compatibility
+    set_target_properties(dart_mc_bridge PROPERTIES
+        OUTPUT_NAME "dart_mc_bridge"
+        SUFFIX ".so"
+    )
 endif()
 
 # Install targets
