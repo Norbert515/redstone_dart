@@ -46,6 +46,21 @@ jobs:
       - name: Install CMake
         run: sudo apt-get update && sudo apt-get install -y cmake
 
+      - name: Cache dart_dll
+        uses: actions/cache@v4
+        id: cache-dart-dll
+        with:
+          path: packages/native_mc_bridge/deps/dart_dll/lib
+          key: dart-dll-linux-0.2.0
+
+      - name: Download dart_dll
+        if: steps.cache-dart-dll.outputs.cache-hit != 'true'
+        working-directory: packages/native_mc_bridge/deps/dart_dll
+        run: |
+          curl -L -o lib-linux.zip https://github.com/fuzzybinary/dart_shared_library/releases/download/0.2.0/lib-linux.zip
+          unzip -o lib-linux.zip -d .
+          rm lib-linux.zip
+
       - name: Build native bridge
         working-directory: packages/native_mc_bridge
         run: |
@@ -54,6 +69,15 @@ jobs:
           cmake ..
           make -j$(nproc)
 
+      - name: Copy native libraries to run directory
+        run: |
+          # Create natives directory for the Gradle run task
+          mkdir -p example/example_mod/minecraft/run/natives
+          # Copy dart_mc_bridge native library
+          cp packages/native_mc_bridge/build/libdart_mc_bridge.so example/example_mod/minecraft/run/natives/
+          # Copy dart_dll library (needed at runtime)
+          cp packages/native_mc_bridge/deps/dart_dll/lib/libdart_dll.so example/example_mod/minecraft/run/natives/
+
       - name: Build mod
         working-directory: example/example_mod/minecraft
         run: ./gradlew build --no-daemon
@@ -61,6 +85,9 @@ jobs:
       - name: Run GameTests
         working-directory: example/example_mod/minecraft
         run: ./gradlew runGametest --no-daemon
+        env:
+          # Ensure libdart_dll.so can be found at runtime
+          LD_LIBRARY_PATH: ${{ github.workspace }}/example/example_mod/minecraft/run/natives
         continue-on-error: true
 
       - name: Upload test results
