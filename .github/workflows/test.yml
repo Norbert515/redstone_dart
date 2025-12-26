@@ -46,20 +46,33 @@ jobs:
       - name: Install CMake
         run: sudo apt-get update && sudo apt-get install -y cmake
 
-      - name: Cache dart_dll
-        uses: actions/cache@v4
-        id: cache-dart-dll
-        with:
-          path: packages/native_mc_bridge/deps/dart_dll/lib
-          key: dart-dll-linux-0.2.0
-
       - name: Download dart_dll
-        if: steps.cache-dart-dll.outputs.cache-hit != 'true'
         working-directory: packages/native_mc_bridge/deps/dart_dll
         run: |
+          # Check if dart_dll already exists
+          if [ -f "lib/libdart_dll.so" ]; then
+            echo "dart_dll already exists, skipping download"
+            exit 0
+          fi
+
+          echo "Downloading dart_dll v0.2.0..."
           curl -L -o lib-linux.zip https://github.com/fuzzybinary/dart_shared_library/releases/download/0.2.0/lib-linux.zip
+
+          echo "Extracting..."
           unzip -o lib-linux.zip -d .
           rm lib-linux.zip
+
+          echo "Contents of deps/dart_dll:"
+          ls -la
+          echo "Contents of deps/dart_dll/lib:"
+          ls -la lib/
+
+          # Verify the library exists
+          if [ ! -f "lib/libdart_dll.so" ]; then
+            echo "ERROR: libdart_dll.so not found after extraction!"
+            exit 1
+          fi
+          echo "dart_dll downloaded successfully"
 
       - name: Build native bridge
         working-directory: packages/native_mc_bridge
