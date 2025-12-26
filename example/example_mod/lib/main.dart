@@ -37,6 +37,9 @@ void main() {
   Events.registerProxyItemHandlers();
   Events.registerCustomGoalHandlers(); // Required for custom Dart-defined AI goals
 
+  // Initialize screen callbacks for GUI
+  initScreenCallbacks();
+
   // =========================================================================
   // Register your custom items here
   // Items must be registered BEFORE blocks that reference them as drops

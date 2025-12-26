@@ -95,6 +95,3 @@ dart_mc_bridge/native/deps/
 *.local
 secrets/
 credentials/
-
-
-example/screenshot_showcase/

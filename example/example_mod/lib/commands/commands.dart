@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:dart_mc/dart_mc.dart';
 import 'package:dart_mc/api/commands.dart';
 
+import '../gui/gui.dart';
+
 /// Registers all custom commands.
 void registerCommands() {
   // /heal [amount] - Heals the player
@@ -214,5 +216,30 @@ void registerCommands() {
     description: 'Spawns a CustomGoalZombie with Dart-defined AI behaviors',
   );
 
-  print('Commands: Registered 9 custom commands');
+  // /give_xp <amount> - Give experience points
+  Commands.register(
+    'give_xp',
+    description: 'Give experience points',
+    arguments: [
+      const CommandArgument('amount', ArgumentType.integer),
+    ],
+    execute: (context) {
+      final amount = context.requireArgument<int>('amount');
+      context.source.giveExperience(amount);
+      context.sendFeedback('\u00A7a\u2726 Gave $amount XP!');
+      return 1;
+    },
+  );
+
+  // /showcase_gui - Open the showcase GUI
+  Commands.register(
+    'showcase_gui',
+    description: 'Open the showcase GUI',
+    execute: (context) {
+      ShowcaseScreen().show();
+      return 1;
+    },
+  );
+
+  print('Commands: Registered 11 custom commands');
 }
