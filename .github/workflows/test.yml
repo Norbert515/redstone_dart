@@ -102,12 +102,20 @@ jobs:
           cp -r packages/java_mc_bridge/src/main/* example/example_mod/.redstone/bridge/
           mkdir -p example/example_mod/.redstone/bridge/client
           cp -r packages/java_mc_bridge/src/client/* example/example_mod/.redstone/bridge/client/
-          echo "Bridge code copied"
-          ls -la example/example_mod/.redstone/bridge/
+
+          echo "Bridge code copied. Verifying structure:"
+          echo "=== .redstone/bridge/java ==="
+          find example/example_mod/.redstone/bridge/java -name "*.java" | head -10
+          echo "=== Looking for DartModLoader.java ==="
+          find example/example_mod/.redstone/bridge -name "DartModLoader.java"
 
       - name: Build mod
         working-directory: example/example_mod/minecraft
-        run: ./gradlew build --no-daemon
+        run: |
+          # Clean to avoid stale cached outputs
+          ./gradlew clean build --no-daemon
+          echo "=== Checking compiled classes ==="
+          find build/classes -name "*.class" | head -10 || echo "No class files found"
 
       - name: Run GameTests
         working-directory: example/example_mod/minecraft
