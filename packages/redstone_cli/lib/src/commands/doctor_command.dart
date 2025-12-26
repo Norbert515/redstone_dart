@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:args/command_runner.dart';
 
+import '../project/dart_dll_manager.dart';
 import '../util/logger.dart';
 import '../util/platform.dart';
 
@@ -45,6 +46,13 @@ class DoctorCommand extends Command<int> {
       nonBlocking++;
     }
     _printCheck(cmakeCheck);
+
+    // Check dart_dll (non-blocking, will be auto-downloaded when needed)
+    final dartDllCheck = _checkDartDll();
+    if (!dartDllCheck.ok) {
+      nonBlocking++;
+    }
+    _printCheck(dartDllCheck);
 
     // Check platform
     final platform = PlatformInfo.detect();
@@ -148,6 +156,17 @@ class DoctorCommand extends Command<int> {
       'CMake',
       'Not found',
       hint: 'Only needed if building native libraries from source',
+    );
+  }
+
+  _Check _checkDartDll() {
+    if (!DartDllManager.needsDownload()) {
+      return _Check.ok('dart_dll', 'v${DartDllManager.dartDllVersion}');
+    }
+    return _Check.warn(
+      'dart_dll',
+      'Not found',
+      hint: 'Will be auto-downloaded on first run/create',
     );
   }
 }
