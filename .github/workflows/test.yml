@@ -62,8 +62,11 @@ jobs:
           unzip -o lib-linux.zip -d .
           rm lib-linux.zip
 
-          echo "Contents of deps/dart_dll:"
-          ls -la
+          # The zip extracts to bin/, but CMake expects lib/
+          # Move the library to the expected location
+          mkdir -p lib
+          mv bin/libdart_dll.so lib/
+
           echo "Contents of deps/dart_dll/lib:"
           ls -la lib/
 

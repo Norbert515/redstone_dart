@@ -146,6 +146,11 @@ class DartDllManager {
         Logger.progressFailed();
         return false;
       }
+
+      // The zip extracts to bin/, but CMake expects lib/
+      // Move the library to the expected location
+      await _moveLibraryToLib(dllPath);
+
       Logger.progressDone();
 
       // Verify the library exists
@@ -198,6 +203,33 @@ class DartDllManager {
     } catch (e) {
       Logger.debug('Extraction error: $e');
       return false;
+    }
+  }
+
+  /// Move the library from bin/ to lib/ after extraction.
+  ///
+  /// The dart_shared_library zip extracts to bin/, but CMake expects lib/.
+  static Future<void> _moveLibraryToLib(String dllPath) async {
+    final platform = PlatformInfo.detect();
+    final libName = _getLibraryName(platform);
+
+    final binDir = Directory(p.join(dllPath, 'bin'));
+    final libDir = Directory(p.join(dllPath, 'lib'));
+
+    // Check if bin/ exists and lib/ doesn't have the file
+    final binFile = File(p.join(binDir.path, libName));
+    final libFile = File(p.join(libDir.path, libName));
+
+    if (binFile.existsSync() && !libFile.existsSync()) {
+      // Create lib/ if it doesn't exist
+      if (!libDir.existsSync()) {
+        libDir.createSync(recursive: true);
+      }
+
+      // Move the library
+      binFile.copySync(libFile.path);
+      binFile.deleteSync();
+      Logger.debug('Moved $libName from bin/ to lib/');
     }
   }
 }
