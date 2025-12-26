@@ -4,6 +4,7 @@ import 'package:args/command_runner.dart';
 import 'package:path/path.dart' as p;
 
 import '../api/fabric_meta_api.dart';
+import '../project/dart_dll_manager.dart';
 import '../template/project_creator.dart';
 import '../util/logger.dart';
 
@@ -95,6 +96,16 @@ class CreateCommand extends Command<int> {
     Logger.newLine();
     Logger.header('Creating Redstone project "$projectName"...');
     Logger.newLine();
+
+    // Ensure dart_dll is available (downloads if needed)
+    if (DartDllManager.needsDownload()) {
+      final downloaded = await DartDllManager.ensureAvailable();
+      if (!downloaded) {
+        Logger.warning(
+          'dart_dll not available. Native library may need manual setup.',
+        );
+      }
+    }
 
     try {
       final creator = await ProjectCreator.create(config, targetDir.path);

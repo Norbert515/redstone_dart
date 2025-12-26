@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../util/logger.dart';
 import 'bridge_sync.dart';
+import 'dart_dll_manager.dart';
 
 /// Utilities for automatically rebuilding native libraries when sources change
 class NativeBuildSync {
@@ -36,6 +37,13 @@ class NativeBuildSync {
 
     // Need to rebuild
     Logger.info('Native sources changed, rebuilding...');
+
+    // Ensure dart_dll is available before building
+    final dartDllAvailable = await DartDllManager.ensureAvailable();
+    if (!dartDllAvailable) {
+      Logger.error('Cannot build native library: dart_dll is not available');
+      return false;
+    }
 
     // Run CMake build
     final buildSuccess = await _runCMakeBuild(nativeBridgeDir);
