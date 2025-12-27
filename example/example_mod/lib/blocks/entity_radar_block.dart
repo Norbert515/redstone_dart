@@ -7,6 +7,7 @@ class EntityRadarBlock extends CustomBlock {
       : super(
           id: 'example_mod:entity_radar',
           settings: BlockSettings(hardness: 2.0, resistance: 6.0),
+          model: BlockModel.cubeAll(texture: 'assets/textures/block/entity_radar_block.png'),
         );
 
   @override

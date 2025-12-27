@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.nio.file.Path;
+import net.minecraft.world.level.storage.LevelResource;
 
 /**
  * Fabric mod initializer that loads and manages the Dart VM.
@@ -350,6 +351,12 @@ public class DartModLoader implements ModInitializer {
             if (DartBridge.isInitialized()) {
                 DartBridge.dispatchServerStarted();
             }
+
+            // Log the world folder name for CLI detection (used for Quick Play on restart)
+            // getWorldPath(ROOT) returns path like "saves/World Name/." so we normalize and get parent's name
+            Path worldPath = server.getWorldPath(LevelResource.ROOT).normalize();
+            String worldName = worldPath.getFileName().toString();
+            LOGGER.info("[redstone] Loaded world: {}", worldName);
 
             // Inject Dart recipes after server has fully started
             // This ensures recipes are available for crafting

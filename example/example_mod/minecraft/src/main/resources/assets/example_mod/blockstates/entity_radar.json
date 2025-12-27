@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "example_mod:block/entity_radar"
+    }
+  }
+}

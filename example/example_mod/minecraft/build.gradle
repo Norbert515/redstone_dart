@@ -27,6 +27,17 @@ loom {
             sourceSet sourceSets.client
         }
     }
+
+    // Configure run configurations for Quick Play support
+    runs {
+        client {
+            // Support Quick Play for auto-rejoining worlds after restart
+            if (project.hasProperty('quickPlayWorld')) {
+                def worldName = project.property('quickPlayWorld')
+                programArg "--quickPlaySingleplayer=${worldName}"
+            }
+        }
+    }
 }
 
 sourceSets {

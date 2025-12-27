@@ -25,6 +25,7 @@ class HotReloadClient {
   /// Connect to the Dart VM service
   /// Returns true if connected successfully
   Future<bool> connect() async {
+    _cancelled = false; // Reset cancelled flag for fresh connection attempts
     for (var attempt = 0; attempt < maxRetries; attempt++) {
       if (_cancelled) {
         Logger.debug('Connection cancelled');

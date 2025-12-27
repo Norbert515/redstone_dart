@@ -641,6 +641,24 @@ public class DartBridge {
     }
 
     /**
+     * Save the world (all chunks and player data).
+     * Returns true if save succeeded.
+     */
+    public static boolean saveWorld() {
+        if (serverInstance == null) {
+            LOGGER.warn("Cannot save world - no server instance");
+            return false;
+        }
+        try {
+            // Parameters: suppressLogs, flush, force
+            return serverInstance.saveEverything(true, true, false);
+        } catch (Exception e) {
+            LOGGER.error("Failed to save world: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Stop the Minecraft server gracefully.
      * Called from Dart to request server shutdown.
      */

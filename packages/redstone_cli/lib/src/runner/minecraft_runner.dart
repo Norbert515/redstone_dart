@@ -16,14 +16,23 @@ class MinecraftRunner {
   final bool testMode;
   final bool clientTestMode;
   Process? _process;
-  final _exitCompleter = Completer<int>();
-  StreamSubscription<List<int>>? _stdoutSubscription;
-  StreamSubscription<List<int>>? _stderrSubscription;
+  Completer<int> _exitCompleter = Completer<int>();
+  StreamSubscription<String>? _stdoutSubscription;
+  StreamSubscription<String>? _stderrSubscription;
 
   /// Stream controller for stdout lines (only in test mode)
   StreamController<String>? _stdoutController;
 
+  /// Stream controller for monitoring output (used for waitForOutput)
+  StreamController<String>? _outputMonitor;
+
+  /// Detected world name from Minecraft output (for quick play on restart)
+  String? _currentWorldName;
+
   MinecraftRunner(this.project, {this.testMode = false, this.clientTestMode = false});
+
+  /// Get the currently detected world name
+  String? get worldName => _currentWorldName;
 
   /// Exit code future - completes when Minecraft exits
   Future<int> get exitCode => _exitCompleter.future;
@@ -33,7 +42,8 @@ class MinecraftRunner {
   Stream<String>? get stdoutLines => _stdoutController?.stream;
 
   /// Start Minecraft with the mod
-  Future<void> start() async {
+  /// If [quickPlayWorld] is provided, Minecraft will auto-join that world on startup.
+  Future<void> start({String? quickPlayWorld}) async {
     // First, prepare files (assets, native libs, etc.)
     await _prepareFiles();
 
@@ -59,6 +69,13 @@ class MinecraftRunner {
       gradleTask,
       '-PdartScriptPath=$scriptPath',
     ];
+
+    // Add quick play world if provided (for auto-rejoin after restart)
+    if (quickPlayWorld != null) {
+      gradleArgs.add('-PquickPlayWorld=$quickPlayWorld');
+      Logger.debug('Quick play world: $quickPlayWorld');
+    }
+
     Logger.debug('Gradle args: $gradleArgs');
 
     if (testMode || clientTestMode) {
@@ -88,8 +105,7 @@ class MinecraftRunner {
         stderr.writeln(line);
       });
     } else {
-      // In normal mode, use normal mode and manually pipe stdout/stderr
-      // This allows the parent process to keep stdin for hot reload input
+      // In normal mode, manually pipe stdout/stderr
       _process = await Process.start(
         gradlew,
         gradleArgs,
@@ -97,10 +113,27 @@ class MinecraftRunner {
         mode: ProcessStartMode.normal,
       );
 
+      // Create output monitor for waitForOutput functionality
+      _outputMonitor = StreamController<String>.broadcast();
+
       // Forward stdout and stderr to the terminal
       // Note: We intentionally do NOT pipe stdin to allow hot reload input
-      _stdoutSubscription = _process!.stdout.listen(stdout.add);
-      _stderrSubscription = _process!.stderr.listen(stderr.add);
+      _stdoutSubscription = _process!.stdout
+          .transform(const SystemEncoding().decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        stdout.writeln(line);
+        _outputMonitor?.add(line);
+        // Detect world name from Minecraft output for quick play on restart
+        _detectWorldName(line);
+      });
+      _stderrSubscription = _process!.stderr
+          .transform(const SystemEncoding().decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        stderr.writeln(line);
+        _outputMonitor?.add(line);
+      });
     }
 
     // Handle process exit
@@ -130,6 +163,9 @@ class MinecraftRunner {
       await _stdoutSubscription?.cancel();
       await _stderrSubscription?.cancel();
       await _stdoutController?.close();
+      await _outputMonitor?.close();
+
+      _process = null;
 
       if (!_exitCompleter.isCompleted) {
         _exitCompleter.complete(0);
@@ -237,4 +273,78 @@ class MinecraftRunner {
     }
   }
 
+  /// Send a command to the Minecraft server via stdin
+  void sendCommand(String command) {
+    if (_process == null) {
+      Logger.warning('Cannot send command - no process running');
+      return;
+    }
+    // Write the command followed by newline
+    _process!.stdin.writeln(command);
+  }
+
+  /// Wait for a specific pattern to appear in the output
+  /// Returns true if pattern was found, false if timeout
+  Future<bool> waitForOutput(
+    String pattern, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (_outputMonitor == null) {
+      Logger.warning('Output monitoring not available');
+      return false;
+    }
+
+    final regex = RegExp(pattern);
+    final completer = Completer<bool>();
+
+    StreamSubscription<String>? subscription;
+    Timer? timeoutTimer;
+
+    subscription = _outputMonitor!.stream.listen((line) {
+      if (regex.hasMatch(line)) {
+        timeoutTimer?.cancel();
+        subscription?.cancel();
+        if (!completer.isCompleted) {
+          completer.complete(true);
+        }
+      }
+    });
+
+    timeoutTimer = Timer(timeout, () {
+      subscription?.cancel();
+      if (!completer.isCompleted) {
+        completer.complete(false);
+      }
+    });
+
+    return completer.future;
+  }
+
+  /// Restart the Minecraft process
+  /// Stops the current process and starts a fresh one
+  /// If [worldName] is provided, auto-join that world using Quick Play.
+  Future<void> restart({String? worldName}) async {
+    // Stop the current process
+    await stop();
+
+    // Reset the exit completer for the new process
+    _exitCompleter = Completer<int>();
+
+    // Start fresh with optional quick play world
+    await start(quickPlayWorld: worldName);
+  }
+
+  /// Regular expression to detect world loading from Minecraft log output.
+  /// The Java bridge logs: "[redstone] Loaded world: <world_folder_name>"
+  /// This is logged in DartModLoader.java when SERVER_STARTED fires.
+  static final _worldJoinRegex = RegExp(r'\[redstone\] Loaded world:\s*(.+)');
+
+  /// Detect world name from Minecraft log output
+  void _detectWorldName(String line) {
+    final match = _worldJoinRegex.firstMatch(line);
+    if (match != null) {
+      _currentWorldName = match.group(1)?.trim();
+      Logger.info('Detected world name: $_currentWorldName');
+    }
+  }
 }
