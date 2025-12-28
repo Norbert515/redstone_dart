@@ -95,6 +95,5 @@ No Minecraft installation needed — Redstone downloads everything automatically
 
 <p align="center">
   <a href="https://github.com/user/redstone-dart/issues">Report Bug</a> •
-  <a href="https://github.com/user/redstone-dart/issues">Request Feature</a> •
-  <a href="https://discord.gg/placeholder">Discord</a>
+  <a href="https://github.com/user/redstone-dart/issues">Request Feature</a>
 </p>

@@ -733,9 +733,6 @@ Jump straight into the API reference. You'll feel right at home with familiar co
 **GitHub** — Star the repo, report issues, contribute code
 [github.com/redstone-dart/redstone](https://github.com/redstone-dart/redstone)
 
-**Discord** — Get help, share your mods, discuss features
-[Join our Discord →]
-
 **Documentation** — Tutorials, guides, and API reference
 [docs.redstone.dev →]
 
@@ -793,7 +790,6 @@ A: Redstone is in active development. We recommend it for new projects and exper
 
 - Documentation
 - GitHub
-- Discord
 - Changelog
 - License (MIT)
 
