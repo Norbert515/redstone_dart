@@ -1,0 +1,75 @@
+# NOTE: This workflow is for reference only!
+# GitHub Pages only allows ONE site per repository.
+#
+# Since we're using GitHub Pages for the docs (docs.redstone-dart.dev),
+# the landing page should be deployed elsewhere:
+#
+# Options for hosting the landing page (redstone-dart.dev):
+# 1. Cloudflare Pages (recommended - free, fast, easy)
+# 2. Vercel (free for personal projects)
+# 3. Netlify (free tier available)
+# 4. Separate GitHub repo: redstone-dart.github.io
+#
+# To use Cloudflare Pages:
+# 1. Connect your GitHub repo to Cloudflare Pages
+# 2. Set build command: cd packages/landing && npm install && npm run build
+# 3. Set output directory: packages/landing/dist
+# 4. Add custom domain: redstone-dart.dev
+#
+# Below is a sample workflow if you create a separate repo for landing:
+
+name: Deploy Landing (Reference Only)
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'packages/landing/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages-landing"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/landing
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/landing/dist
+
+  # This deploy step won't work because docs already uses GitHub Pages
+  # Keeping for reference if you move to a separate repo
+  # deploy:
+  #   environment:
+  #     name: github-pages
+  #     url: ${{ steps.deployment.outputs.page_url }}
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   steps:
+  #     - name: Deploy to GitHub Pages
+  #       id: deployment
+  #       uses: actions/deploy-pages@v4
