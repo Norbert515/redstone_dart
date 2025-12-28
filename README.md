@@ -41,10 +41,15 @@ class MagicBlock extends CustomBlock {
 ## Quick Start
 
 ```bash
-# Install the CLI
-dart pub global activate redstone_cli
+# Clone the repository
+git clone https://github.com/Norbert515/redstone_dart.git
+cd redstone_dart/packages/redstone_cli
 
-# Create a new mod
+# Install the CLI globally
+dart pub global activate --source path .
+
+# Create a new mod (from any directory)
+cd ~/my_projects
 redstone create my_mod
 cd my_mod
 

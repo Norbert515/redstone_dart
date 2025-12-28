@@ -15,8 +15,15 @@ import { Callout } from 'fumadocs-ui/components/callout';
 ## Install
 
 ```bash
-dart pub global activate redstone_cli
-redstone doctor  # Verify setup
+# Clone the repository
+git clone https://github.com/Norbert515/redstone_dart.git
+cd redstone_dart/packages/redstone_cli
+
+# Install the CLI globally
+dart pub global activate --source path .
+
+# Verify setup
+redstone doctor
 ```
 
 ## Create a Mod

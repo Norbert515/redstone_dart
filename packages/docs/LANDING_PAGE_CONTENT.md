@@ -693,10 +693,13 @@ await testMinecraft('ruby ore smelts to ruby', (game) async {
 ### Get Started in 60 Seconds
 
 ```bash
-# Install the CLI
-dart pub global activate redstone_cli
+# Clone and install the CLI
+git clone https://github.com/Norbert515/redstone_dart.git
+cd redstone_dart/packages/redstone_cli
+dart pub global activate --source path .
 
-# Create your mod
+# Create your mod (from any directory)
+cd ~/my_projects
 redstone create my_first_mod
 cd my_first_mod
 
@@ -704,7 +707,7 @@ cd my_first_mod
 redstone run
 ```
 
-You'll have a working mod running in under a minute.
+You'll have a working mod running in just a few minutes.
 
 **[Get Started →]** **[Read the Docs]** **[View on GitHub]**
 
