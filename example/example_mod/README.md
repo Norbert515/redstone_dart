@@ -4,7 +4,7 @@ A Minecraft mod built with Redstone
 
 ## Getting Started
 
-1. Make sure you have [Redstone CLI](https://github.com/your-repo/redstone) installed
+1. Make sure you have [Redstone CLI](https://docs.redstone-dart.dev/docs/cli) installed
 2. Run your mod:
    ```bash
    redstone run
@@ -23,5 +23,5 @@ While running, press `r` to hot reload your Dart code changes!
 
 ## Learn More
 
-- [Redstone Documentation](https://github.com/your-repo/redstone)
+- [Redstone Documentation](https://docs.redstone-dart.dev/docs)
 - [Fabric Mod Development](https://fabricmc.net/wiki/)

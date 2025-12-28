@@ -14,7 +14,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         ),
       }}
       links={[
-        { text: 'GitHub', url: 'https://github.com/user/redstone-dart' },
+        { text: 'GitHub', url: 'https://github.com/Norbert515/redstone_dart' },
       ]}
     >
       {children}

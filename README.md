@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/Dart-3.0+-0175C2?style=flat-square&logo=dart" alt="Dart 3.0+"/>
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License MIT"/>
   <br/><br/>
-  <a href="https://redstone-dart.dev/guide/">Docs</a> · <a href="https://redstone-dart.dev/guide/getting-started.html">Get Started</a> · <a href="https://redstone-dart.dev/examples/">Examples</a>
+  <a href="https://docs.redstone-dart.dev/docs">Docs</a> · <a href="https://docs.redstone-dart.dev/docs/getting-started">Get Started</a> · <a href="https://github.com/Norbert515/redstone_dart/tree/main/example">Examples</a>
 </p>
 
 ---
@@ -74,13 +74,12 @@ No Minecraft installation needed — Redstone downloads everything automatically
 
 ## Documentation
 
-📖 **[Read the full documentation →](https://redstone-dart.dev)**
+📖 **[Read the full documentation →](https://docs.redstone-dart.dev/docs)**
 
-- [Getting Started](https://redstone-dart.dev/guide/getting-started.html)
-- [CLI Reference](https://redstone-dart.dev/guide/cli.html)
-- [Creating Blocks](https://redstone-dart.dev/guide/blocks.html)
-- [Creating Items](https://redstone-dart.dev/guide/items.html)
-- [API Reference](https://redstone-dart.dev/api/)
+- [Getting Started](https://docs.redstone-dart.dev/docs/getting-started)
+- [CLI Reference](https://docs.redstone-dart.dev/docs/cli)
+- [Creating Blocks](https://docs.redstone-dart.dev/docs/blocks)
+- [Creating Items](https://docs.redstone-dart.dev/docs/items)
 
 ## Platform Support
 
@@ -97,6 +96,6 @@ No Minecraft installation needed — Redstone downloads everything automatically
 ---
 
 <p align="center">
-  <a href="https://github.com/user/redstone-dart/issues">Report Bug</a> •
-  <a href="https://github.com/user/redstone-dart/issues">Request Feature</a>
+  <a href="https://github.com/Norbert515/redstone_dart/issues">Report Bug</a> •
+  <a href="https://github.com/Norbert515/redstone_dart/issues">Request Feature</a>
 </p>
