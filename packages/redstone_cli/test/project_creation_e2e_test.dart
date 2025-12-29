@@ -184,33 +184,47 @@ void main() {
 
 /// Find the redstone CLI entry point
 String? _findRedstoneCli() {
-  // Start from current directory and look for bin/redstone.dart
-  var current = Directory.current;
+  final candidates = <String>[];
 
-  // Check if we're directly in packages/redstone_cli
-  final directBinPath = p.join(current.path, 'bin', 'redstone.dart');
-  if (File(directBinPath).existsSync()) {
-    return directBinPath;
-  }
+  // Start from current directory
+  final current = Directory.current.path;
+  print('DEBUG: Current directory: $current');
 
-  // Walk up looking for packages/redstone_cli/bin/redstone.dart
+  // Candidate 1: bin/redstone.dart relative to current directory
+  candidates.add(p.join(current, 'bin', 'redstone.dart'));
+
+  // Candidate 2: Walk up looking for packages/redstone_cli/bin/redstone.dart
+  var walkDir = Directory.current;
   for (var i = 0; i < 5; i++) {
-    final binPath = p.join(current.path, 'packages', 'redstone_cli', 'bin', 'redstone.dart');
-    if (File(binPath).existsSync()) {
-      return binPath;
-    }
-    current = current.parent;
+    candidates.add(p.join(walkDir.path, 'packages', 'redstone_cli', 'bin', 'redstone.dart'));
+    walkDir = walkDir.parent;
   }
 
-  // Fallback: try relative to test file location (for IDE test runners)
+  // Candidate 3: Try relative to test file location
   final testDir = Platform.script.toFilePath();
+  print('DEBUG: Platform.script: $testDir');
   if (testDir.contains('packages/redstone_cli')) {
     final idx = testDir.indexOf('packages/redstone_cli');
     final cliRoot = testDir.substring(0, idx + 'packages/redstone_cli'.length);
-    final binPath = p.join(cliRoot, 'bin', 'redstone.dart');
-    if (File(binPath).existsSync()) {
-      return binPath;
+    candidates.add(p.join(cliRoot, 'bin', 'redstone.dart'));
+  }
+
+  // Check each candidate
+  for (final candidate in candidates) {
+    print('DEBUG: Checking candidate: $candidate');
+    if (File(candidate).existsSync()) {
+      print('DEBUG: Found CLI at: $candidate');
+      return candidate;
     }
+  }
+
+  print('DEBUG: No CLI found. Listing current directory:');
+  try {
+    for (final entity in Directory.current.listSync()) {
+      print('DEBUG:   ${entity.path}');
+    }
+  } catch (e) {
+    print('DEBUG: Error listing directory: $e');
   }
 
   return null;
