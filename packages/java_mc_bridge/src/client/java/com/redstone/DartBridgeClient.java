@@ -316,4 +316,94 @@ public class DartBridgeClient {
     public static void markJoinTestWorldAttempted() {
         hasAttemptedJoinTestWorld = true;
     }
+
+    // ============================================================
+    // Flutter Bridge Native Methods
+    // ============================================================
+
+    /**
+     * Set the path to the Flutter renderer executable (subprocess).
+     * This must be called before initFlutter.
+     *
+     * @param rendererPath Path to the flutter_renderer executable
+     */
+    public static native void setFlutterRendererPath(String rendererPath);
+
+    /**
+     * Initialize the Flutter engine with the given asset and ICU data paths.
+     *
+     * @param assetsPath Path to the Flutter assets directory
+     * @param icuPath Path to the ICU data file
+     * @return true if initialization succeeded, false otherwise
+     */
+    public static native boolean initFlutter(String assetsPath, String icuPath);
+
+    /**
+     * Shutdown the Flutter engine and release resources.
+     */
+    public static native void shutdownFlutter();
+
+    /**
+     * Notify Flutter of a window resize with pixel ratio for HiDPI support.
+     *
+     * @param width New width in pixels
+     * @param height New height in pixels
+     * @param pixelRatio The pixel ratio (e.g., 2.0 for Retina displays)
+     */
+    public static native void resizeFlutter(int width, int height, double pixelRatio);
+
+    /**
+     * Check if Flutter has rendered a new frame since the last call.
+     *
+     * @return true if a new frame is available
+     */
+    public static native boolean flutterHasNewFrame();
+
+    /**
+     * Get the Flutter pixel buffer (RGBA format).
+     *
+     * @return Direct ByteBuffer containing RGBA pixel data, or null if not available
+     */
+    public static native java.nio.ByteBuffer getFlutterPixels();
+
+    /**
+     * Get the width of the Flutter render surface.
+     *
+     * @return Width in pixels
+     */
+    public static native int getFlutterWidth();
+
+    /**
+     * Get the height of the Flutter render surface.
+     *
+     * @return Height in pixels
+     */
+    public static native int getFlutterHeight();
+
+    /**
+     * Send a pointer (mouse) event to Flutter.
+     *
+     * @param phase Pointer phase (0=down, 1=move, 2=add, 3=remove, 4=hover, 5=up)
+     * @param x X coordinate in pixels
+     * @param y Y coordinate in pixels
+     * @param buttons Button mask (1=primary, 2=secondary, 4=middle)
+     */
+    public static native void sendFlutterPointerEvent(int phase, double x, double y, long buttons);
+
+    /**
+     * Send a scroll event to Flutter.
+     *
+     * @param x X coordinate of the scroll
+     * @param y Y coordinate of the scroll
+     * @param scrollX Horizontal scroll amount
+     * @param scrollY Vertical scroll amount
+     */
+    public static native void sendFlutterScrollEvent(double x, double y, double scrollX, double scrollY);
+
+    /**
+     * Check if Flutter has been initialized.
+     *
+     * @return true if Flutter is initialized and ready
+     */
+    public static native boolean isFlutterInitialized();
 }

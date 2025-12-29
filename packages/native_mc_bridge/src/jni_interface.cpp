@@ -1,5 +1,9 @@
 #include "dart_bridge.h"
 
+#ifdef FLUTTER_ENABLED
+#include "flutter_bridge.h"
+#endif
+
 #include <jni.h>
 #include <iostream>
 
@@ -1224,5 +1228,187 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridge_nativeOnCustomGoalStop(
     dispatch_custom_goal_stop(goal_id, static_cast<int32_t>(entityId));
     env->ReleaseStringUTFChars(goalId, goal_id);
 }
+
+// ==========================================================================
+// Flutter Bridge JNI Entry Points (Client-side)
+// Only compiled when FLUTTER_ENABLED is defined
+// ==========================================================================
+
+#ifdef FLUTTER_ENABLED
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    setFlutterRendererPath
+ * Signature: (Ljava/lang/String;)V
+ *
+ * Set the path to the Flutter renderer subprocess executable.
+ * This must be called before initFlutter.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_setFlutterRendererPath(
+    JNIEnv* env, jclass /* cls */, jstring renderer_path) {
+
+    const char* path = env->GetStringUTFChars(renderer_path, nullptr);
+    flutter_bridge_set_renderer_path(path);
+    env->ReleaseStringUTFChars(renderer_path, path);
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    initFlutter
+ * Signature: (Ljava/lang/String;Ljava/lang/String;)Z
+ *
+ * Initialize the Flutter engine with the given assets and ICU data paths.
+ * Returns true if initialization succeeded, false otherwise.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_initFlutter(
+    JNIEnv* env, jclass /* cls */, jstring assets_path, jstring icu_path) {
+
+    const char* assets = env->GetStringUTFChars(assets_path, nullptr);
+    const char* icu = icu_path ? env->GetStringUTFChars(icu_path, nullptr) : nullptr;
+
+    bool result = flutter_bridge_init(assets, icu ? icu : "");
+
+    env->ReleaseStringUTFChars(assets_path, assets);
+    if (icu) {
+        env->ReleaseStringUTFChars(icu_path, icu);
+    }
+
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    shutdownFlutter
+ * Signature: ()V
+ *
+ * Shutdown the Flutter engine and release all resources.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_shutdownFlutter(
+    JNIEnv* /* env */, jclass /* cls */) {
+    flutter_bridge_shutdown();
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    resizeFlutter
+ * Signature: (IID)V
+ *
+ * Notify Flutter of a window resize with pixel ratio for HiDPI support.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_resizeFlutter(
+    JNIEnv* /* env */, jclass /* cls */, jint width, jint height, jdouble pixel_ratio) {
+    flutter_bridge_resize(static_cast<int>(width), static_cast<int>(height), static_cast<double>(pixel_ratio));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    flutterHasNewFrame
+ * Signature: ()Z
+ *
+ * Check if Flutter has rendered a new frame since the last call.
+ * Returns true if there's a new frame available.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_flutterHasNewFrame(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return flutter_bridge_has_new_frame() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getFlutterPixels
+ * Signature: ()Ljava/nio/ByteBuffer;
+ *
+ * Get a direct ByteBuffer containing the Flutter frame pixel data.
+ * Returns null if no frame is available.
+ */
+JNIEXPORT jobject JNICALL Java_com_redstone_DartBridgeClient_getFlutterPixels(
+    JNIEnv* env, jclass /* cls */) {
+
+    size_t width, height, row_bytes;
+    const void* pixels = flutter_bridge_get_pixels(&width, &height, &row_bytes);
+
+    if (!pixels || width == 0 || height == 0) {
+        return nullptr;
+    }
+
+    // Create a direct ByteBuffer with the pixel data
+    size_t size = row_bytes * height;
+    jobject buffer = env->NewDirectByteBuffer(const_cast<void*>(pixels), static_cast<jlong>(size));
+
+    return buffer;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getFlutterWidth
+ * Signature: ()I
+ *
+ * Get the width of the current Flutter frame.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFlutterWidth(
+    JNIEnv* /* env */, jclass /* cls */) {
+    size_t width, height, row_bytes;
+    flutter_bridge_get_pixels(&width, &height, &row_bytes);
+    return static_cast<jint>(width);
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getFlutterHeight
+ * Signature: ()I
+ *
+ * Get the height of the current Flutter frame.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFlutterHeight(
+    JNIEnv* /* env */, jclass /* cls */) {
+    size_t width, height, row_bytes;
+    flutter_bridge_get_pixels(&width, &height, &row_bytes);
+    return static_cast<jint>(height);
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    sendFlutterPointerEvent
+ * Signature: (IDDJ)V
+ *
+ * Send a pointer (mouse) event to Flutter.
+ * Phase values: 0=kCancel, 1=kUp, 2=kDown, 3=kMove, 4=kAdd, 5=kRemove, 6=kHover, 7=kPanZoomStart, etc.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_sendFlutterPointerEvent(
+    JNIEnv* /* env */, jclass /* cls */, jint phase, jdouble x, jdouble y, jlong buttons) {
+    flutter_bridge_send_pointer_event(static_cast<int>(phase),
+                                       static_cast<double>(x),
+                                       static_cast<double>(y),
+                                       static_cast<int64_t>(buttons));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    sendFlutterScrollEvent
+ * Signature: (DDDD)V
+ *
+ * Send a scroll event to Flutter.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_sendFlutterScrollEvent(
+    JNIEnv* /* env */, jclass /* cls */, jdouble x, jdouble y, jdouble scroll_x, jdouble scroll_y) {
+    flutter_bridge_send_scroll_event(static_cast<double>(x),
+                                      static_cast<double>(y),
+                                      static_cast<double>(scroll_x),
+                                      static_cast<double>(scroll_y));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    isFlutterInitialized
+ * Signature: ()Z
+ *
+ * Check if the Flutter engine is initialized.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_isFlutterInitialized(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return flutter_bridge_is_initialized() ? JNI_TRUE : JNI_FALSE;
+}
+
+#endif // FLUTTER_ENABLED
 
 } // extern "C"

@@ -1,11 +1,14 @@
 package com.redstone;
 
+import com.redstone.flutter.TestFlutterScreen;
 import com.redstone.proxy.EntityProxyRegistry;
 import com.redstone.render.DartEntityRenderer;
 import com.redstone.render.EntityModelRegistry;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
@@ -126,6 +129,62 @@ public class DartModClientLoader implements ClientModInitializer {
         });
 
         LOGGER.info("[DartModClientLoader] Visual test mode screen events registered!");
+
+        // Register /fluttertest command to open Flutter test screen
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+            dispatcher.register(ClientCommandManager.literal("fluttertest")
+                .executes(context -> {
+                    Minecraft client = Minecraft.getInstance();
+                    client.execute(() -> {
+                        // Paths to Flutter assets - hardcoded for testing
+                        // user.dir is minecraft/run, need to go up to redstone_dart root
+                        String projectRoot = System.getProperty("user.dir");
+                        // From minecraft/run -> example_mod -> example -> redstone_dart -> packages
+                        // That's: ../../../../packages/
+                        String assetsPath = projectRoot + "/../../../../packages/flutter_embedder_poc/flutter_app/build/flutter_assets";
+                        String icuPath = projectRoot + "/../../../../packages/flutter_embedder_poc/deps/FlutterEmbedder.framework/Resources/icudtl.dat";
+
+                        // Resolve to canonical path to clean up the ../.. sequences
+                        try {
+                            assetsPath = new java.io.File(assetsPath).getCanonicalPath();
+                            icuPath = new java.io.File(icuPath).getCanonicalPath();
+                        } catch (java.io.IOException e) {
+                            LOGGER.error("[DartModClientLoader] Failed to resolve paths", e);
+                        }
+
+                        LOGGER.info("[DartModClientLoader] Opening Flutter test screen");
+                        LOGGER.info("[DartModClientLoader] Project root (user.dir): {}", projectRoot);
+                        LOGGER.info("[DartModClientLoader] Assets path: {}", assetsPath);
+                        LOGGER.info("[DartModClientLoader] ICU path: {}", icuPath);
+
+                        // Build renderer path
+                        String rendererPath = projectRoot + "/../../../../packages/flutter_renderer/build/flutter_renderer";
+                        try {
+                            rendererPath = new java.io.File(rendererPath).getCanonicalPath();
+                        } catch (java.io.IOException e) {
+                            LOGGER.error("[DartModClientLoader] Failed to resolve renderer path", e);
+                        }
+                        LOGGER.info("[DartModClientLoader] Renderer path: {}", rendererPath);
+
+                        // Verify paths exist
+                        java.io.File assetsFile = new java.io.File(assetsPath);
+                        java.io.File icuFile = new java.io.File(icuPath);
+                        java.io.File rendererFile = new java.io.File(rendererPath);
+                        LOGGER.info("[DartModClientLoader] Assets exist: {}", assetsFile.exists());
+                        LOGGER.info("[DartModClientLoader] ICU exists: {}", icuFile.exists());
+                        LOGGER.info("[DartModClientLoader] Renderer exists: {}", rendererFile.exists());
+
+                        // Set the Flutter renderer path before opening the screen
+                        DartBridgeClient.setFlutterRendererPath(rendererPath);
+
+                        client.setScreen(new TestFlutterScreen(assetsPath, icuPath));
+                    });
+                    return 1;
+                })
+            );
+        });
+
+        LOGGER.info("[DartModClientLoader] /fluttertest command registered!");
     }
 
     private static final String TEST_WORLD_NAME = "dart_visual_test";
