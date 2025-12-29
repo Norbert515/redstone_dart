@@ -17,6 +17,9 @@ repositories {
 loom {
     splitEnvironmentSourceSets()
 
+    // Access widener for Minecraft internals (goalSelector, targetSelector, etc.)
+    accessWidenerPath = file("../.redstone/bridge/resources/redstone.accesswidener")
+
     mods {
         "{{project_name}}" {
             sourceSet sourceSets.main

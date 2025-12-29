@@ -127,6 +127,13 @@ class BridgeSync {
     return p.join(packagesDir, 'java_mc_bridge', 'src', 'client');
   }
 
+  /// Get the resources directory path (contains access widener, etc.)
+  static String? getResourcesDir() {
+    final packagesDir = findPackagesDir();
+    if (packagesDir == null) return null;
+    return p.join(packagesDir, 'java_mc_bridge', 'src', 'main', 'resources');
+  }
+
   /// Copy bridge code from source to target directory
   static Future<void> copyBridgeCode(
     Directory source,
@@ -205,6 +212,16 @@ class BridgeSync {
       }
     }
 
+    // Sync resources (access widener, etc.)
+    final resourcesDirPath = getResourcesDir();
+    if (resourcesDirPath != null) {
+      final resourcesDir = Directory(resourcesDirPath);
+      if (resourcesDir.existsSync()) {
+        final resourcesTargetDir = Directory(p.join(projectDir, '.redstone', 'bridge', 'resources'));
+        await copyBridgeCode(resourcesDir, resourcesTargetDir);
+      }
+    }
+
     updateBridgeHash(projectDir, currentHash);
 
     return true;
@@ -224,18 +241,34 @@ class BridgeSync {
     // Compute hash for main source
     final mainHash = computeDirectoryHash(mainSourceDir);
 
+    // Build combined hash from all source directories
+    final hashParts = <String>['main:$mainHash'];
+
     // Include client source in hash if it exists
     final clientSourceDirPath = getClientSourceBridgeDir();
     if (clientSourceDirPath != null) {
       final clientSourceDir = Directory(clientSourceDirPath);
       if (clientSourceDir.existsSync()) {
         final clientHash = computeDirectoryHash(clientSourceDir);
-        // Combine both hashes
-        final combinedInput = 'main:$mainHash\nclient:$clientHash';
-        return sha256.convert(utf8.encode(combinedInput)).toString();
+        hashParts.add('client:$clientHash');
       }
     }
 
-    return mainHash;
+    // Include resources in hash (access widener, etc.)
+    final resourcesDirPath = getResourcesDir();
+    if (resourcesDirPath != null) {
+      final resourcesDir = Directory(resourcesDirPath);
+      if (resourcesDir.existsSync()) {
+        final resourcesHash = computeDirectoryHash(resourcesDir);
+        hashParts.add('resources:$resourcesHash');
+      }
+    }
+
+    if (hashParts.length == 1) {
+      return mainHash;
+    }
+
+    final combinedInput = hashParts.join('\n');
+    return sha256.convert(utf8.encode(combinedInput)).toString();
   }
 }

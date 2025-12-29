@@ -7,6 +7,93 @@ on:
     branches: [main]
 
 jobs:
+  # Test that project creation works and generated projects compile
+  project-creation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 'stable'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: packages/native_mc_bridge/build
+          key: ${{ runner.os }}-cmake-${{ hashFiles('packages/native_mc_bridge/**/*.cpp', 'packages/native_mc_bridge/**/*.h', 'packages/native_mc_bridge/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-cmake-
+
+      - name: Install CMake
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Download dart_dll
+        working-directory: packages/native_mc_bridge/deps/dart_dll
+        run: |
+          if [ -f "lib/libdart_dll.so" ]; then
+            echo "dart_dll already exists, skipping download"
+            exit 0
+          fi
+
+          echo "Downloading dart_dll v0.2.0..."
+          curl -L -o lib-linux.zip https://github.com/fuzzybinary/dart_shared_library/releases/download/0.2.0/lib-linux.zip
+          unzip -o lib-linux.zip -d .
+          rm lib-linux.zip
+          mkdir -p lib
+          mv bin/libdart_dll.so lib/
+
+          if [ ! -f "lib/libdart_dll.so" ]; then
+            echo "ERROR: libdart_dll.so not found after extraction!"
+            exit 1
+          fi
+          echo "dart_dll downloaded successfully"
+
+      - name: Build native bridge
+        working-directory: packages/native_mc_bridge
+        run: |
+          mkdir -p build
+          cd build
+          cmake ..
+          make -j$(nproc)
+
+      - name: Install CLI dependencies
+        working-directory: packages/redstone_cli
+        run: dart pub get
+
+      - name: Run project creation E2E test
+        working-directory: packages/redstone_cli
+        run: dart test test/project_creation_e2e_test.dart --timeout=600s
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
+
+      - name: Upload test artifacts on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: project-creation-test-logs
+          path: /tmp/redstone_e2e_test_*
+
+  # Existing tests for the example mod
   test:
     runs-on: ubuntu-latest
 
@@ -103,11 +190,18 @@ jobs:
           mkdir -p example/example_mod/.redstone/bridge/client
           cp -r packages/java_mc_bridge/src/client/* example/example_mod/.redstone/bridge/client/
 
+          # Copy access widener to the expected location for example_mod
+          # (example_mod uses src/main/resources/, new projects use .redstone/bridge/resources/)
+          cp packages/java_mc_bridge/src/main/resources/redstone.accesswidener \
+             example/example_mod/minecraft/src/main/resources/redstone.accesswidener
+
           echo "Bridge code copied. Verifying structure:"
           echo "=== .redstone/bridge/java ==="
           find example/example_mod/.redstone/bridge/java -name "*.java" | head -10
           echo "=== Looking for DartModLoader.java ==="
           find example/example_mod/.redstone/bridge -name "DartModLoader.java"
+          echo "=== Access widener ==="
+          cat example/example_mod/minecraft/src/main/resources/redstone.accesswidener
 
       - name: Build mod
         working-directory: example/example_mod/minecraft
