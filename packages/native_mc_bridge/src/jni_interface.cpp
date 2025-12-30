@@ -1,11 +1,12 @@
 #include "dart_bridge.h"
-
-#ifdef FLUTTER_ENABLED
-#include "flutter_bridge.h"
-#endif
+#include "dart_bridge_server.h"
+#include "dart_bridge_client.h"
 
 #include <jni.h>
 #include <iostream>
+#include <vector>
+#include <mutex>
+#include <cstring>
 
 // JNI function naming convention:
 // Java_<package>_<class>_<method>
@@ -72,10 +73,17 @@ extern "C" {
 /*
  * Class:     com_redstone_DartBridge
  * Method:    init
- * Signature: (Ljava/lang/String;)Z
+ * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)Z
+ *
+ * Initialize the Flutter engine.
+ * @param assets_path Path to Flutter app assets (flutter_assets directory)
+ * @param icu_data_path Path to icudtl.dat file
+ * @param aot_library_path Path to AOT compiled library (can be null for JIT mode)
+ * @param enable_rendering If true, enables software rendering (client); false for headless (server)
  */
 JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_init(
-    JNIEnv* env, jclass /* cls */, jstring kernel_path) {
+    JNIEnv* env, jclass /* cls */,
+    jstring assets_path, jstring icu_data_path, jstring aot_library_path, jboolean enable_rendering) {
 
     // Capture JVM reference early for object registry cleanup
     if (g_jvm == nullptr) {
@@ -83,14 +91,20 @@ JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_init(
         dart_bridge_set_jvm(g_jvm);
     }
 
-    const char* path = env->GetStringUTFChars(kernel_path, nullptr);
-    if (!path) {
-        std::cerr << "JNI: Failed to get kernel path string" << std::endl;
+    const char* assets = assets_path ? env->GetStringUTFChars(assets_path, nullptr) : nullptr;
+    const char* icu = icu_data_path ? env->GetStringUTFChars(icu_data_path, nullptr) : nullptr;
+    const char* aot = aot_library_path ? env->GetStringUTFChars(aot_library_path, nullptr) : nullptr;
+
+    if (!assets) {
+        std::cerr << "JNI: Failed to get assets path string" << std::endl;
         return JNI_FALSE;
     }
 
-    bool result = dart_bridge_init(path);
-    env->ReleaseStringUTFChars(kernel_path, path);
+    bool result = dart_bridge_init(assets, icu, aot, enable_rendering == JNI_TRUE);
+
+    env->ReleaseStringUTFChars(assets_path, assets);
+    if (icu) env->ReleaseStringUTFChars(icu_data_path, icu);
+    if (aot) env->ReleaseStringUTFChars(aot_library_path, aot);
 
     return result ? JNI_TRUE : JNI_FALSE;
 }
@@ -1152,6 +1166,23 @@ JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onCommandExecute(
 }
 
 // ==========================================================================
+// Registry Ready JNI Entry Point
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    signalRegistryReady
+ * Signature: ()V
+ *
+ * Called from Java when Minecraft registries are ready.
+ * This signals to Dart that it's safe to register items/blocks.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_signalRegistryReady(
+    JNIEnv* /* env */, jclass /* cls */) {
+    signal_registry_ready();
+}
+
+// ==========================================================================
 // Custom Goal JNI Entry Points
 // ==========================================================================
 
@@ -1230,185 +1261,797 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridge_nativeOnCustomGoalStop(
 }
 
 // ==========================================================================
-// Flutter Bridge JNI Entry Points (Client-side)
-// Only compiled when FLUTTER_ENABLED is defined
+// Flutter Rendering JNI Entry Points (Client-side)
 // ==========================================================================
 
-#ifdef FLUTTER_ENABLED
+// Frame buffer storage - stores the latest frame from Flutter
+static std::mutex g_frame_mutex;
+static std::vector<uint8_t> g_frame_buffer;
+static size_t g_frame_width = 0;
+static size_t g_frame_height = 0;
+static bool g_has_new_frame = false;
 
-/*
- * Class:     com_redstone_DartBridgeClient
- * Method:    setFlutterRendererPath
- * Signature: (Ljava/lang/String;)V
- *
- * Set the path to the Flutter renderer subprocess executable.
- * This must be called before initFlutter.
- */
-JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_setFlutterRendererPath(
-    JNIEnv* env, jclass /* cls */, jstring renderer_path) {
+// Frame callback that stores pixels for Java to retrieve
+static void jni_frame_callback(const void* pixels, size_t width, size_t height, size_t row_bytes) {
+    std::lock_guard<std::mutex> lock(g_frame_mutex);
 
-    const char* path = env->GetStringUTFChars(renderer_path, nullptr);
-    flutter_bridge_set_renderer_path(path);
-    env->ReleaseStringUTFChars(renderer_path, path);
+    size_t size = height * row_bytes;
+    if (g_frame_buffer.size() != size) {
+        g_frame_buffer.resize(size);
+    }
+
+    memcpy(g_frame_buffer.data(), pixels, size);
+    g_frame_width = width;
+    g_frame_height = height;
+    g_has_new_frame = true;
 }
 
 /*
  * Class:     com_redstone_DartBridgeClient
- * Method:    initFlutter
- * Signature: (Ljava/lang/String;Ljava/lang/String;)Z
+ * Method:    getFramePixels
+ * Signature: ()Ljava/nio/ByteBuffer;
  *
- * Initialize the Flutter engine with the given assets and ICU data paths.
- * Returns true if initialization succeeded, false otherwise.
+ * Returns a direct ByteBuffer containing the latest frame pixels (RGBA).
  */
-JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_initFlutter(
-    JNIEnv* env, jclass /* cls */, jstring assets_path, jstring icu_path) {
+JNIEXPORT jobject JNICALL Java_com_redstone_DartBridgeClient_getFramePixels(
+    JNIEnv* env, jclass /* cls */) {
 
-    const char* assets = env->GetStringUTFChars(assets_path, nullptr);
-    const char* icu = icu_path ? env->GetStringUTFChars(icu_path, nullptr) : nullptr;
+    std::lock_guard<std::mutex> lock(g_frame_mutex);
 
-    bool result = flutter_bridge_init(assets, icu ? icu : "");
+    if (g_frame_buffer.empty() || g_frame_width == 0 || g_frame_height == 0) {
+        return nullptr;
+    }
+
+    // Create a direct ByteBuffer wrapping the frame data
+    // Note: This buffer is only valid until the next frame callback
+    return env->NewDirectByteBuffer(g_frame_buffer.data(), g_frame_buffer.size());
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getFrameWidth
+ * Signature: ()I
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFrameWidth(
+    JNIEnv* /* env */, jclass /* cls */) {
+
+    std::lock_guard<std::mutex> lock(g_frame_mutex);
+    return static_cast<jint>(g_frame_width);
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getFrameHeight
+ * Signature: ()I
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFrameHeight(
+    JNIEnv* /* env */, jclass /* cls */) {
+
+    std::lock_guard<std::mutex> lock(g_frame_mutex);
+    return static_cast<jint>(g_frame_height);
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    hasNewFrame
+ * Signature: ()Z
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_hasNewFrame(
+    JNIEnv* /* env */, jclass /* cls */) {
+
+    std::lock_guard<std::mutex> lock(g_frame_mutex);
+    bool result = g_has_new_frame;
+    g_has_new_frame = false;  // Clear the flag after reading
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    sendWindowMetrics
+ * Signature: (IID)V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_sendWindowMetrics(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint width, jint height, jdouble pixelRatio) {
+
+    // Send to both bridges - whichever one has an active engine will handle it
+    dart_bridge_send_window_metrics(
+        static_cast<int32_t>(width),
+        static_cast<int32_t>(height),
+        static_cast<double>(pixelRatio)
+    );
+    dart_client_send_window_metrics(
+        static_cast<int32_t>(width),
+        static_cast<int32_t>(height),
+        static_cast<double>(pixelRatio)
+    );
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    sendPointerEvent
+ * Signature: (IDDJ)V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_sendPointerEvent(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint phase, jdouble x, jdouble y, jlong buttons) {
+
+    // Send to both bridges - whichever one has an active engine will handle it
+    dart_bridge_send_pointer_event(
+        static_cast<int32_t>(phase),
+        static_cast<double>(x),
+        static_cast<double>(y),
+        static_cast<int64_t>(buttons)
+    );
+    dart_client_send_pointer_event(
+        static_cast<int32_t>(phase),
+        static_cast<double>(x),
+        static_cast<double>(y),
+        static_cast<int64_t>(buttons)
+    );
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    sendKeyEvent
+ * Signature: (IJJLjava/lang/String;I)V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_sendKeyEvent(
+    JNIEnv* env, jclass /* cls */,
+    jint type, jlong physicalKey, jlong logicalKey, jstring characters, jint modifiers) {
+
+    const char* chars = characters ? env->GetStringUTFChars(characters, nullptr) : nullptr;
+
+    dart_bridge_send_key_event(
+        static_cast<int32_t>(type),
+        static_cast<int64_t>(physicalKey),
+        static_cast<int64_t>(logicalKey),
+        chars,
+        static_cast<int32_t>(modifiers)
+    );
+
+    if (chars) {
+        env->ReleaseStringUTFChars(characters, chars);
+    }
+}
+
+// ==========================================================================
+// Registration Queue JNI Methods
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    areRegistrationsQueued
+ * Signature: ()Z
+ *
+ * Check if Dart has finished queueing registrations.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_areRegistrationsQueued(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return are_registrations_queued() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    hasPendingBlockRegistrations
+ * Signature: ()Z
+ *
+ * Check if there are pending block registrations in the queue.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingBlockRegistrations(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return has_pending_block_registrations() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    hasPendingItemRegistrations
+ * Signature: ()Z
+ *
+ * Check if there are pending item registrations in the queue.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingItemRegistrations(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return has_pending_item_registrations() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    getNextBlockRegistration
+ * Signature: ()[Ljava/lang/Object;
+ *
+ * Get the next block registration from the queue.
+ * Returns an Object array: [handlerId(Long), namespace(String), path(String),
+ *                           hardness(Float), resistance(Float), requiresTool(Boolean),
+ *                           luminance(Integer), slipperiness(Double), velocityMult(Double),
+ *                           jumpVelocityMult(Double), ticksRandomly(Boolean),
+ *                           collidable(Boolean), replaceable(Boolean), burnable(Boolean)]
+ * Returns null if the queue is empty.
+ */
+JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockRegistration(
+    JNIEnv* env, jclass /* cls */) {
+
+    int64_t handler_id;
+    char namespace_buf[256];
+    char path_buf[256];
+    float hardness, resistance;
+    bool requires_tool;
+    int32_t luminance;
+    double slipperiness, velocity_mult, jump_velocity_mult;
+    bool ticks_randomly, collidable, replaceable, burnable;
+
+    if (!get_next_block_registration(
+            &handler_id,
+            namespace_buf, sizeof(namespace_buf),
+            path_buf, sizeof(path_buf),
+            &hardness,
+            &resistance,
+            &requires_tool,
+            &luminance,
+            &slipperiness,
+            &velocity_mult,
+            &jump_velocity_mult,
+            &ticks_randomly,
+            &collidable,
+            &replaceable,
+            &burnable)) {
+        return nullptr;
+    }
+
+    // Create Object array with 14 elements
+    jclass objectClass = env->FindClass("java/lang/Object");
+    jobjectArray result = env->NewObjectArray(14, objectClass, nullptr);
+
+    // Helper lambda for boxing
+    auto boxLong = [env](jlong val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Long");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(J)V");
+        return env->NewObject(cls, ctor, val);
+    };
+    auto boxFloat = [env](jfloat val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Float");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(F)V");
+        return env->NewObject(cls, ctor, val);
+    };
+    auto boxDouble = [env](jdouble val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Double");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(D)V");
+        return env->NewObject(cls, ctor, val);
+    };
+    auto boxInt = [env](jint val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Integer");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(I)V");
+        return env->NewObject(cls, ctor, val);
+    };
+    auto boxBool = [env](jboolean val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Boolean");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(Z)V");
+        return env->NewObject(cls, ctor, val);
+    };
+
+    env->SetObjectArrayElement(result, 0, boxLong(static_cast<jlong>(handler_id)));
+    env->SetObjectArrayElement(result, 1, env->NewStringUTF(namespace_buf));
+    env->SetObjectArrayElement(result, 2, env->NewStringUTF(path_buf));
+    env->SetObjectArrayElement(result, 3, boxFloat(hardness));
+    env->SetObjectArrayElement(result, 4, boxFloat(resistance));
+    env->SetObjectArrayElement(result, 5, boxBool(requires_tool ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 6, boxInt(luminance));
+    env->SetObjectArrayElement(result, 7, boxDouble(slipperiness));
+    env->SetObjectArrayElement(result, 8, boxDouble(velocity_mult));
+    env->SetObjectArrayElement(result, 9, boxDouble(jump_velocity_mult));
+    env->SetObjectArrayElement(result, 10, boxBool(ticks_randomly ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 11, boxBool(collidable ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 12, boxBool(replaceable ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 13, boxBool(burnable ? JNI_TRUE : JNI_FALSE));
+
+    return result;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    getNextItemRegistration
+ * Signature: ()[Ljava/lang/Object;
+ *
+ * Get the next item registration from the queue.
+ * Returns an Object array: [handlerId(Long), namespace(String), path(String),
+ *                           maxStackSize(Integer), maxDamage(Integer), fireResistant(Boolean),
+ *                           attackDamage(Double), attackSpeed(Double), attackKnockback(Double)]
+ * Returns null if the queue is empty.
+ */
+JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextItemRegistration(
+    JNIEnv* env, jclass /* cls */) {
+
+    int64_t handler_id;
+    char namespace_buf[256];
+    char path_buf[256];
+    int32_t max_stack_size, max_damage;
+    bool fire_resistant;
+    double attack_damage, attack_speed, attack_knockback;
+
+    if (!get_next_item_registration(
+            &handler_id,
+            namespace_buf, sizeof(namespace_buf),
+            path_buf, sizeof(path_buf),
+            &max_stack_size,
+            &max_damage,
+            &fire_resistant,
+            &attack_damage,
+            &attack_speed,
+            &attack_knockback)) {
+        return nullptr;
+    }
+
+    // Create Object array with 9 elements
+    jclass objectClass = env->FindClass("java/lang/Object");
+    jobjectArray result = env->NewObjectArray(9, objectClass, nullptr);
+
+    // Helper lambda for boxing
+    auto boxLong = [env](jlong val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Long");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(J)V");
+        return env->NewObject(cls, ctor, val);
+    };
+    auto boxDouble = [env](jdouble val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Double");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(D)V");
+        return env->NewObject(cls, ctor, val);
+    };
+    auto boxInt = [env](jint val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Integer");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(I)V");
+        return env->NewObject(cls, ctor, val);
+    };
+    auto boxBool = [env](jboolean val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Boolean");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(Z)V");
+        return env->NewObject(cls, ctor, val);
+    };
+
+    env->SetObjectArrayElement(result, 0, boxLong(static_cast<jlong>(handler_id)));
+    env->SetObjectArrayElement(result, 1, env->NewStringUTF(namespace_buf));
+    env->SetObjectArrayElement(result, 2, env->NewStringUTF(path_buf));
+    env->SetObjectArrayElement(result, 3, boxInt(max_stack_size));
+    env->SetObjectArrayElement(result, 4, boxInt(max_damage));
+    env->SetObjectArrayElement(result, 5, boxBool(fire_resistant ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 6, boxDouble(attack_damage));
+    env->SetObjectArrayElement(result, 7, boxDouble(attack_speed));
+    env->SetObjectArrayElement(result, 8, boxDouble(attack_knockback));
+
+    return result;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    hasPendingEntityRegistrations
+ * Signature: ()Z
+ *
+ * Check if there are pending entity registrations in the queue.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingEntityRegistrations(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return has_pending_entity_registrations() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    getNextEntityRegistration
+ * Signature: ()[Ljava/lang/Object;
+ *
+ * Get the next entity registration from the queue.
+ * Returns an Object array: [handlerId(Long), namespace(String), path(String),
+ *                           width(Double), height(Double), maxHealth(Double),
+ *                           movementSpeed(Double), attackDamage(Double),
+ *                           spawnGroup(Integer), baseType(Integer),
+ *                           breedingItem(String), modelType(String), texturePath(String),
+ *                           modelScale(Double), goalsJson(String), targetGoalsJson(String)]
+ * Returns null if the queue is empty.
+ */
+JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextEntityRegistration(
+    JNIEnv* env, jclass /* cls */) {
+
+    int64_t handler_id;
+    char namespace_buf[256];
+    char path_buf[256];
+    double width, height, max_health, movement_speed, attack_damage;
+    int32_t spawn_group, base_type;
+    char breeding_item_buf[256];
+    char model_type_buf[256];
+    char texture_path_buf[512];
+    double model_scale;
+    char goals_json_buf[4096];
+    char target_goals_json_buf[4096];
+
+    if (!get_next_entity_registration(
+            &handler_id,
+            namespace_buf, sizeof(namespace_buf),
+            path_buf, sizeof(path_buf),
+            &width,
+            &height,
+            &max_health,
+            &movement_speed,
+            &attack_damage,
+            &spawn_group,
+            &base_type,
+            breeding_item_buf, sizeof(breeding_item_buf),
+            model_type_buf, sizeof(model_type_buf),
+            texture_path_buf, sizeof(texture_path_buf),
+            &model_scale,
+            goals_json_buf, sizeof(goals_json_buf),
+            target_goals_json_buf, sizeof(target_goals_json_buf))) {
+        return nullptr;
+    }
+
+    // Create Object array with 16 elements
+    jclass objectClass = env->FindClass("java/lang/Object");
+    jobjectArray result = env->NewObjectArray(16, objectClass, nullptr);
+
+    // Helper lambda for boxing
+    auto boxLong = [env](jlong val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Long");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(J)V");
+        return env->NewObject(cls, ctor, val);
+    };
+    auto boxDouble = [env](jdouble val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Double");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(D)V");
+        return env->NewObject(cls, ctor, val);
+    };
+    auto boxInt = [env](jint val) -> jobject {
+        jclass cls = env->FindClass("java/lang/Integer");
+        jmethodID ctor = env->GetMethodID(cls, "<init>", "(I)V");
+        return env->NewObject(cls, ctor, val);
+    };
+
+    env->SetObjectArrayElement(result, 0, boxLong(static_cast<jlong>(handler_id)));
+    env->SetObjectArrayElement(result, 1, env->NewStringUTF(namespace_buf));
+    env->SetObjectArrayElement(result, 2, env->NewStringUTF(path_buf));
+    env->SetObjectArrayElement(result, 3, boxDouble(width));
+    env->SetObjectArrayElement(result, 4, boxDouble(height));
+    env->SetObjectArrayElement(result, 5, boxDouble(max_health));
+    env->SetObjectArrayElement(result, 6, boxDouble(movement_speed));
+    env->SetObjectArrayElement(result, 7, boxDouble(attack_damage));
+    env->SetObjectArrayElement(result, 8, boxInt(spawn_group));
+    env->SetObjectArrayElement(result, 9, boxInt(base_type));
+    env->SetObjectArrayElement(result, 10, env->NewStringUTF(breeding_item_buf));
+    env->SetObjectArrayElement(result, 11, env->NewStringUTF(model_type_buf));
+    env->SetObjectArrayElement(result, 12, env->NewStringUTF(texture_path_buf));
+    env->SetObjectArrayElement(result, 13, boxDouble(model_scale));
+    env->SetObjectArrayElement(result, 14, env->NewStringUTF(goals_json_buf));
+    env->SetObjectArrayElement(result, 15, env->NewStringUTF(target_goals_json_buf));
+
+    return result;
+}
+
+// ==========================================================================
+// Dual Runtime JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    initServer
+ * Signature: (Ljava/lang/String;Ljava/lang/String;I)Z
+ *
+ * Initialize the server-side Dart runtime using dart_dll.
+ * @param script_path Path to the Dart script to run
+ * @param package_config Path to package_config.json (can be null)
+ * @param service_port Port for Dart VM service (hot reload/debugging)
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_initServer(
+    JNIEnv* env, jclass /* cls */,
+    jstring script_path, jstring package_config, jint service_port) {
+
+    // Capture JVM reference early for object registry cleanup
+    if (g_jvm == nullptr) {
+        env->GetJavaVM(&g_jvm);
+        dart_server_set_jvm(g_jvm);
+    }
+
+    const char* script = script_path ? env->GetStringUTFChars(script_path, nullptr) : nullptr;
+    const char* pkg_config = package_config ? env->GetStringUTFChars(package_config, nullptr) : nullptr;
+
+    if (!script) {
+        std::cerr << "JNI: Failed to get script path string" << std::endl;
+        return JNI_FALSE;
+    }
+
+    bool result = dart_server_init(script, pkg_config, static_cast<int>(service_port));
+
+    env->ReleaseStringUTFChars(script_path, script);
+    if (pkg_config) env->ReleaseStringUTFChars(package_config, pkg_config);
+
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    shutdownServer
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_shutdownServer(
+    JNIEnv* /* env */, jclass /* cls */) {
+    dart_server_shutdown();
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    tickServer
+ * Signature: ()V
+ *
+ * Tick the server runtime (drain microtask queue)
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_tickServer(
+    JNIEnv* /* env */, jclass /* cls */) {
+    dart_server_tick();
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    getServerServiceUrl
+ * Signature: ()Ljava/lang/String;
+ *
+ * Get the Dart VM service URL for server-side hot reload/debugging.
+ */
+JNIEXPORT jstring JNICALL Java_com_redstone_DartBridge_getServerServiceUrl(
+    JNIEnv* env, jclass /* cls */) {
+    const char* url = dart_server_get_service_url();
+    if (url != nullptr) {
+        return env->NewStringUTF(url);
+    }
+    return nullptr;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    initClient
+ * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z
+ *
+ * Initialize the client-side Flutter runtime.
+ * @param assets_path Path to Flutter app assets (flutter_assets directory)
+ * @param icu_data_path Path to icudtl.dat file
+ * @param aot_library_path Path to AOT compiled library (can be null for JIT mode)
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_initClient(
+    JNIEnv* env, jclass /* cls */,
+    jstring assets_path, jstring icu_data_path, jstring aot_library_path) {
+
+    // Capture JVM reference
+    if (g_jvm == nullptr) {
+        env->GetJavaVM(&g_jvm);
+        dart_client_set_jvm(g_jvm);
+    }
+
+    const char* assets = assets_path ? env->GetStringUTFChars(assets_path, nullptr) : nullptr;
+    const char* icu = icu_data_path ? env->GetStringUTFChars(icu_data_path, nullptr) : nullptr;
+    const char* aot = aot_library_path ? env->GetStringUTFChars(aot_library_path, nullptr) : nullptr;
+
+    if (!assets) {
+        std::cerr << "JNI: Failed to get assets path string for client" << std::endl;
+        return JNI_FALSE;
+    }
+
+    bool result = dart_client_init(assets, icu, aot);
 
     env->ReleaseStringUTFChars(assets_path, assets);
-    if (icu) {
-        env->ReleaseStringUTFChars(icu_path, icu);
-    }
+    if (icu) env->ReleaseStringUTFChars(icu_data_path, icu);
+    if (aot) env->ReleaseStringUTFChars(aot_library_path, aot);
 
     return result ? JNI_TRUE : JNI_FALSE;
 }
 
 /*
  * Class:     com_redstone_DartBridgeClient
- * Method:    shutdownFlutter
+ * Method:    shutdownClient
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_shutdownClient(
+    JNIEnv* /* env */, jclass /* cls */) {
+    dart_client_shutdown();
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    processClientTasks
  * Signature: ()V
  *
- * Shutdown the Flutter engine and release all resources.
+ * Process pending Flutter tasks (pump the event loop)
  */
-JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_shutdownFlutter(
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_processClientTasks(
     JNIEnv* /* env */, jclass /* cls */) {
-    flutter_bridge_shutdown();
+    dart_client_process_tasks();
 }
 
 /*
  * Class:     com_redstone_DartBridgeClient
- * Method:    resizeFlutter
- * Signature: (IID)V
+ * Method:    getClientServiceUrl
+ * Signature: ()Ljava/lang/String;
  *
- * Notify Flutter of a window resize with pixel ratio for HiDPI support.
+ * Get the Flutter VM service URL for client-side hot reload/debugging.
  */
-JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_resizeFlutter(
-    JNIEnv* /* env */, jclass /* cls */, jint width, jint height, jdouble pixel_ratio) {
-    flutter_bridge_resize(static_cast<int>(width), static_cast<int>(height), static_cast<double>(pixel_ratio));
-}
-
-/*
- * Class:     com_redstone_DartBridgeClient
- * Method:    flutterHasNewFrame
- * Signature: ()Z
- *
- * Check if Flutter has rendered a new frame since the last call.
- * Returns true if there's a new frame available.
- */
-JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_flutterHasNewFrame(
-    JNIEnv* /* env */, jclass /* cls */) {
-    return flutter_bridge_has_new_frame() ? JNI_TRUE : JNI_FALSE;
-}
-
-/*
- * Class:     com_redstone_DartBridgeClient
- * Method:    getFlutterPixels
- * Signature: ()Ljava/nio/ByteBuffer;
- *
- * Get a direct ByteBuffer containing the Flutter frame pixel data.
- * Returns null if no frame is available.
- */
-JNIEXPORT jobject JNICALL Java_com_redstone_DartBridgeClient_getFlutterPixels(
+JNIEXPORT jstring JNICALL Java_com_redstone_DartBridgeClient_getClientServiceUrl(
     JNIEnv* env, jclass /* cls */) {
+    const char* url = dart_client_get_service_url();
+    if (url != nullptr) {
+        return env->NewStringUTF(url);
+    }
+    return nullptr;
+}
 
-    size_t width, height, row_bytes;
-    const void* pixels = flutter_bridge_get_pixels(&width, &height, &row_bytes);
+// ==========================================================================
+// Server-side event dispatching (routes to server runtime)
+// These are duplicates of the existing functions but route to server_dispatch_*
+// ==========================================================================
 
-    if (!pixels || width == 0 || height == 0) {
-        return nullptr;
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onServerBlockBreak
+ * Signature: (IIIJ)I
+ *
+ * Server-side block break event.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onServerBlockBreak(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint x, jint y, jint z, jlong player_id) {
+    return server_dispatch_block_break(x, y, z, player_id);
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onServerTick
+ * Signature: (J)V
+ *
+ * Server-side tick event.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onServerTick(
+    JNIEnv* /* env */, jclass /* cls */, jlong tick) {
+    server_dispatch_tick(tick);
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onServerPlayerJoin
+ * Signature: (I)V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onServerPlayerJoin(
+    JNIEnv* /* env */, jclass /* cls */, jint playerId) {
+    server_dispatch_player_join(static_cast<int32_t>(playerId));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onServerPlayerLeave
+ * Signature: (I)V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onServerPlayerLeave(
+    JNIEnv* /* env */, jclass /* cls */, jint playerId) {
+    server_dispatch_player_leave(static_cast<int32_t>(playerId));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onServerStarting
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onServerServerStarting(
+    JNIEnv* /* env */, jclass /* cls */) {
+    server_dispatch_server_starting();
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onServerStarted
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onServerServerStarted(
+    JNIEnv* /* env */, jclass /* cls */) {
+    server_dispatch_server_started();
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onServerStopping
+ * Signature: ()V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onServerServerStopping(
+    JNIEnv* /* env */, jclass /* cls */) {
+    server_dispatch_server_stopping();
+}
+
+// ==========================================================================
+// Client-side event dispatching (routes to client runtime)
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    onClientScreenInit
+ * Signature: (JII)V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_onClientScreenInit(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jint width, jint height) {
+    client_dispatch_screen_init(static_cast<int64_t>(screenId),
+                                 static_cast<int32_t>(width),
+                                 static_cast<int32_t>(height));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    onClientScreenTick
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_onClientScreenTick(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId) {
+    client_dispatch_screen_tick(static_cast<int64_t>(screenId));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    onClientScreenRender
+ * Signature: (JIIF)V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_onClientScreenRender(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jint mouseX, jint mouseY, jfloat partialTick) {
+    client_dispatch_screen_render(static_cast<int64_t>(screenId),
+                                   static_cast<int32_t>(mouseX),
+                                   static_cast<int32_t>(mouseY),
+                                   static_cast<float>(partialTick));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    onClientScreenClose
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_onClientScreenClose(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId) {
+    client_dispatch_screen_close(static_cast<int64_t>(screenId));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    onClientScreenMouseClicked
+ * Signature: (JDDI)Z
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_onClientScreenMouseClicked(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jdouble mouseX, jdouble mouseY, jint button) {
+    bool result = client_dispatch_screen_mouse_clicked(static_cast<int64_t>(screenId),
+                                                        static_cast<double>(mouseX),
+                                                        static_cast<double>(mouseY),
+                                                        static_cast<int32_t>(button));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    onClientScreenKeyPressed
+ * Signature: (JIII)Z
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_onClientScreenKeyPressed(
+    JNIEnv* /* env */, jclass /* cls */, jlong screenId, jint keyCode, jint scanCode, jint modifiers) {
+    bool result = client_dispatch_screen_key_pressed(static_cast<int64_t>(screenId),
+                                                      static_cast<int32_t>(keyCode),
+                                                      static_cast<int32_t>(scanCode),
+                                                      static_cast<int32_t>(modifiers));
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// ==========================================================================
+// JNI_OnLoad - Register frame callback when library is loaded
+// ==========================================================================
+
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /* reserved */) {
+    // Store JVM reference
+    if (g_jvm == nullptr) {
+        g_jvm = vm;
+        dart_bridge_set_jvm(vm);
+        dart_server_set_jvm(vm);
+        dart_client_set_jvm(vm);
     }
 
-    // Create a direct ByteBuffer with the pixel data
-    size_t size = row_bytes * height;
-    jobject buffer = env->NewDirectByteBuffer(const_cast<void*>(pixels), static_cast<jlong>(size));
+    // Register the frame callback so Flutter frames are captured
+    // Set both old (dart_bridge) and new (dart_client) callbacks for compatibility
+    dart_bridge_set_frame_callback(jni_frame_callback);
+    dart_client_set_frame_callback(jni_frame_callback);
 
-    return buffer;
+    return JNI_VERSION_1_8;
 }
-
-/*
- * Class:     com_redstone_DartBridgeClient
- * Method:    getFlutterWidth
- * Signature: ()I
- *
- * Get the width of the current Flutter frame.
- */
-JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFlutterWidth(
-    JNIEnv* /* env */, jclass /* cls */) {
-    size_t width, height, row_bytes;
-    flutter_bridge_get_pixels(&width, &height, &row_bytes);
-    return static_cast<jint>(width);
-}
-
-/*
- * Class:     com_redstone_DartBridgeClient
- * Method:    getFlutterHeight
- * Signature: ()I
- *
- * Get the height of the current Flutter frame.
- */
-JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFlutterHeight(
-    JNIEnv* /* env */, jclass /* cls */) {
-    size_t width, height, row_bytes;
-    flutter_bridge_get_pixels(&width, &height, &row_bytes);
-    return static_cast<jint>(height);
-}
-
-/*
- * Class:     com_redstone_DartBridgeClient
- * Method:    sendFlutterPointerEvent
- * Signature: (IDDJ)V
- *
- * Send a pointer (mouse) event to Flutter.
- * Phase values: 0=kCancel, 1=kUp, 2=kDown, 3=kMove, 4=kAdd, 5=kRemove, 6=kHover, 7=kPanZoomStart, etc.
- */
-JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_sendFlutterPointerEvent(
-    JNIEnv* /* env */, jclass /* cls */, jint phase, jdouble x, jdouble y, jlong buttons) {
-    flutter_bridge_send_pointer_event(static_cast<int>(phase),
-                                       static_cast<double>(x),
-                                       static_cast<double>(y),
-                                       static_cast<int64_t>(buttons));
-}
-
-/*
- * Class:     com_redstone_DartBridgeClient
- * Method:    sendFlutterScrollEvent
- * Signature: (DDDD)V
- *
- * Send a scroll event to Flutter.
- */
-JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_sendFlutterScrollEvent(
-    JNIEnv* /* env */, jclass /* cls */, jdouble x, jdouble y, jdouble scroll_x, jdouble scroll_y) {
-    flutter_bridge_send_scroll_event(static_cast<double>(x),
-                                      static_cast<double>(y),
-                                      static_cast<double>(scroll_x),
-                                      static_cast<double>(scroll_y));
-}
-
-/*
- * Class:     com_redstone_DartBridgeClient
- * Method:    isFlutterInitialized
- * Signature: ()Z
- *
- * Check if the Flutter engine is initialized.
- */
-JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_isFlutterInitialized(
-    JNIEnv* /* env */, jclass /* cls */) {
-    return flutter_bridge_is_initialized() ? JNI_TRUE : JNI_FALSE;
-}
-
-#endif // FLUTTER_ENABLED
 
 } // extern "C"

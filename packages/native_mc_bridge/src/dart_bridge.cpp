@@ -1,9 +1,9 @@
 #include "dart_bridge.h"
+#include "dart_bridge_server.h"
 #include "callback_registry.h"
 #include "object_registry.h"
 #include "generic_jni.h"
-#include "dart_dll.h"  // From dart_shared_library
-#include "dart_api.h"  // Dart SDK header
+#include <flutter_embedder.h>
 
 #include <jni.h>
 #include <iostream>
@@ -12,16 +12,104 @@
 #include <mutex>
 #include <thread>
 #include <chrono>
+#include <atomic>
+#include <queue>
+#include <vector>
 
-// Dart VM state
-static Dart_Isolate g_isolate = nullptr;
+// ==========================================================================
+// Flutter Engine State
+// ==========================================================================
+
+static FlutterEngine g_engine = nullptr;
 static bool g_initialized = false;
+static bool g_rendering_enabled = false;
+static std::mutex g_engine_mutex;
 
-// Thread synchronization for isolate access
-// Using recursive_mutex to allow the same thread to check ownership while holding the lock
-static std::recursive_mutex g_isolate_mutex;
-static std::thread::id g_isolate_owner_thread;
-static int g_isolate_entry_count = 0;  // For re-entrant calls from same thread
+// ==========================================================================
+// Custom Task Runner State (for merged thread approach)
+// ==========================================================================
+// By using custom task runners with the same identifier for platform, render,
+// and UI, we make Flutter run the UI isolate on the platform thread. This
+// allows FFI callbacks to be invoked directly from any thread since the Dart
+// isolate runs on the same thread as the JNI calls.
+
+static std::thread::id g_platform_thread_id;
+static std::mutex g_task_mutex;
+static std::queue<std::pair<FlutterTask, uint64_t>> g_pending_flutter_tasks;
+
+// ==========================================================================
+// Registration Queue System
+// ==========================================================================
+// When Flutter engine runs, Dart executes on a separate thread (Thread-3).
+// Minecraft registry calls must happen on the Render thread.
+// This queue system allows Dart to queue registrations from any thread,
+// and Java processes them on the correct thread after FlutterEngineRun() returns.
+
+struct BlockRegistrationRequest {
+    int64_t handler_id;
+    std::string namespace_id;
+    std::string path;
+    float hardness;
+    float resistance;
+    bool requires_tool;
+    int32_t luminance;
+    double slipperiness;
+    double velocity_multiplier;
+    double jump_velocity_multiplier;
+    bool ticks_randomly;
+    bool collidable;
+    bool replaceable;
+    bool burnable;
+};
+
+struct ItemRegistrationRequest {
+    int64_t handler_id;
+    std::string namespace_id;
+    std::string path;
+    int32_t max_stack_size;
+    int32_t max_damage;
+    bool fire_resistant;
+    double attack_damage;
+    double attack_speed;
+    double attack_knockback;
+};
+
+struct EntityRegistrationRequest {
+    int64_t handler_id;
+    std::string namespace_id;
+    std::string path;
+    double width;
+    double height;
+    double max_health;
+    double movement_speed;
+    double attack_damage;
+    int32_t spawn_group;
+    int32_t base_type;
+    std::string breeding_item;  // Empty if not applicable
+    std::string model_type;     // Empty if no model
+    std::string texture_path;   // Empty if no model
+    double model_scale;
+    std::string goals_json;        // Empty if no goals
+    std::string target_goals_json; // Empty if no target goals
+};
+
+// Thread-safe queues for registration requests
+static std::queue<BlockRegistrationRequest> g_block_registration_queue;
+static std::queue<ItemRegistrationRequest> g_item_registration_queue;
+static std::queue<EntityRegistrationRequest> g_entity_registration_queue;
+static std::mutex g_registration_mutex;
+static std::atomic<bool> g_registrations_complete{false};
+static std::atomic<int64_t> g_next_block_handler_id{1};
+static std::atomic<int64_t> g_next_item_handler_id{1};
+static std::atomic<int64_t> g_next_entity_handler_id{1};
+
+// Frame callback for client-side rendering
+static FlutterFrameCallback g_frame_callback = nullptr;
+
+// Window metrics state
+static int32_t g_window_width = 800;
+static int32_t g_window_height = 600;
+static double g_pixel_ratio = 1.0;
 
 // JVM reference for cleanup operations
 static JavaVM* g_jvm_ref = nullptr;
@@ -29,131 +117,212 @@ static JavaVM* g_jvm_ref = nullptr;
 // Java callback for sending chat messages
 static SendChatMessageCallback g_send_chat_callback = nullptr;
 
+// Registry ready callback - called when Java signals it's safe to register items/blocks
+typedef void (*RegistryReadyCallback)();
+static RegistryReadyCallback g_registry_ready_callback = nullptr;
+static bool g_registry_ready_signaled = false;
+
 // Debug: Call counters for profiling
 static int g_tick_count = 0;
 static int g_entity_tick_count = 0;
 static int g_other_callback_count = 0;
 static auto g_last_report_time = std::chrono::steady_clock::now();
 
-// Helper to safely enter isolate with thread synchronization
-// Returns true if we entered (and thus need to exit), false if already entered by this thread
-static bool safe_enter_isolate() {
-    std::thread::id this_thread = std::this_thread::get_id();
+// ==========================================================================
+// Direct Callback System for Java→Dart Callbacks
+// ==========================================================================
+// With the merged thread approach using custom task runners, the Dart isolate
+// runs on the same thread as JNI calls. This means FFI callbacks can be
+// invoked directly without any queuing mechanism.
 
-    // Check if we already own the isolate on this thread (re-entrant call)
-    {
-        std::lock_guard<std::recursive_mutex> lock(g_isolate_mutex);
-        if (g_isolate_owner_thread == this_thread && g_isolate_entry_count > 0) {
-            // Already entered on this thread, just bump the count
-            g_isolate_entry_count++;
-            return false;  // Don't need to exit later
-        }
-    }
+// ==========================================================================
+// Custom Task Runner Callbacks (for merged thread approach)
+// ==========================================================================
 
-    // Need to acquire the isolate - lock and enter
-    g_isolate_mutex.lock();
-    Dart_EnterIsolate(g_isolate);
-    g_isolate_owner_thread = this_thread;
-    g_isolate_entry_count = 1;
-    return true;  // Will need to exit
+// Callback to check if we're on the platform thread
+static bool TaskRunnerRunsOnCurrentThread(void* user_data) {
+    return std::this_thread::get_id() == g_platform_thread_id;
 }
 
-static void safe_exit_isolate(bool did_enter) {
-    if (did_enter) {
-        // We actually entered, so exit and release
-        g_isolate_entry_count = 0;
-        g_isolate_owner_thread = std::thread::id();  // Reset to default
-        Dart_ExitIsolate();
-        g_isolate_mutex.unlock();
-    } else {
-        // Re-entrant call - we already own the mutex, just decrement count
-        // No lock needed since we're the owning thread
-        g_isolate_entry_count--;
-    }
+// Callback to post a task - we store tasks and run them during processFlutterTasks
+static void TaskRunnerPostTask(FlutterTask task, uint64_t target_time, void* user_data) {
+    std::lock_guard<std::mutex> lock(g_task_mutex);
+    g_pending_flutter_tasks.push({task, target_time});
 }
+
+// ==========================================================================
+// Flutter Embedder Callbacks
+// ==========================================================================
+
+// Software renderer callback - called when Flutter has a frame ready
+static bool OnSoftwareSurfacePresent(void* user_data,
+                                      const void* allocation,
+                                      size_t row_bytes,
+                                      size_t height) {
+    if (g_frame_callback && g_rendering_enabled) {
+        size_t width = row_bytes / 4;  // RGBA = 4 bytes per pixel
+        g_frame_callback(allocation, width, height, row_bytes);
+    }
+    return true;
+}
+
+// No-op callback for headless mode - discards frames
+// Flutter requires a valid callback even when not rendering
+static bool OnSoftwareSurfacePresentNoop(void* user_data,
+                                          const void* allocation,
+                                          size_t row_bytes,
+                                          size_t height) {
+    // Discard the frame - return true to indicate success
+    return true;
+}
+
+// Platform message callback - handles messages from Dart to the native side
+static void OnPlatformMessage(const FlutterPlatformMessage* message, void* user_data) {
+    // Handle platform channel messages here if needed
+    // For now, we don't need any platform channels for the Minecraft bridge
+    // The callback system works through FFI, not platform channels
+}
+
+// Vsync callback - provides vsync timing to Flutter
+static void OnVsync(void* user_data, intptr_t baton) {
+    // For headless/software rendering, we don't have vsync
+    // Just signal immediately
+    uint64_t now = FlutterEngineGetCurrentTime();
+    uint64_t frame_interval = 16666667;  // ~60fps in nanoseconds
+    FlutterEngineOnVsync(g_engine, baton, now, now + frame_interval);
+}
+
+// Root isolate create callback - called when root isolate is created
+static void OnRootIsolateCreate(void* user_data) {
+    std::cout << "Flutter root isolate created" << std::endl;
+}
+
+// ==========================================================================
+// Lifecycle Functions
+// ==========================================================================
 
 extern "C" {
 
-bool dart_bridge_init(const char* script_path) {
+bool dart_bridge_init(const char* assets_path, const char* icu_data_path,
+                      const char* aot_library_path, bool enable_rendering) {
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+
     if (g_initialized) {
         std::cerr << "Dart bridge already initialized" << std::endl;
         return false;
     }
 
-    // Configure Dart VM
-    DartDllConfig config;
-    config.start_service_isolate = true;  // Enable for hot reload
-    config.service_port = 5858;           // Debug/hot reload port
+    g_rendering_enabled = enable_rendering;
 
-    // Initialize VM
-    DartDll_Initialize(config);
+    std::cout << "Initializing Flutter engine..." << std::endl;
+    std::cout << "  Assets path: " << (assets_path ? assets_path : "null") << std::endl;
+    std::cout << "  ICU data path: " << (icu_data_path ? icu_data_path : "null") << std::endl;
+    std::cout << "  AOT library: " << (aot_library_path ? aot_library_path : "JIT mode") << std::endl;
+    std::cout << "  Rendering enabled: " << (enable_rendering ? "yes" : "no (headless)") << std::endl;
 
-    // Build package config path (at package root, which is parent of lib/)
-    // Script is typically at: package_root/lib/dart_mod.dart
-    // Package config is at: package_root/.dart_tool/package_config.json
-    std::string script_str(script_path);
-    std::string package_config;
-    size_t last_slash = script_str.find_last_of("/\\");
-    if (last_slash != std::string::npos) {
-        std::string script_dir = script_str.substr(0, last_slash);
-        // Check if we're in a lib/ directory
-        size_t lib_pos = script_dir.rfind("/lib");
-        if (lib_pos != std::string::npos && lib_pos == script_dir.length() - 4) {
-            // Script is in lib/, go up to package root
-            package_config = script_dir.substr(0, lib_pos) + "/.dart_tool/package_config.json";
-        } else {
-            // Script is at package root
-            package_config = script_dir + "/.dart_tool/package_config.json";
-        }
-    } else {
-        package_config = ".dart_tool/package_config.json";
+    // Configure renderer
+    FlutterRendererConfig renderer = {};
+    renderer.type = kSoftware;
+    renderer.software.struct_size = sizeof(FlutterSoftwareRendererConfig);
+    // Use no-op callback for headless mode - Flutter requires a valid callback
+    renderer.software.surface_present_callback = enable_rendering ? OnSoftwareSurfacePresent : OnSoftwareSurfacePresentNoop;
+
+    // Configure project args
+    FlutterProjectArgs args = {};
+    args.struct_size = sizeof(FlutterProjectArgs);
+    args.assets_path = assets_path;
+    args.icu_data_path = icu_data_path;
+
+    // Set AOT library path if provided (for release mode)
+    if (aot_library_path != nullptr && strlen(aot_library_path) > 0) {
+        args.aot_data = nullptr;  // Will be loaded from the library path
+        // Note: For AOT, we might need to load the library differently
+        // depending on the platform. For now, assume assets_path contains the AOT data.
     }
 
-    std::cout << "Package config path: " << package_config << std::endl;
+    // Enable VM service for hot reload in debug mode
+    // Note: In Flutter embedder, this is handled differently than dart_dll
+    const char* vm_args[] = {
+        "--enable-dart-profiling",
+        "--enable-asserts",  // Enable asserts in debug mode
+    };
+    args.command_line_argc = 2;
+    args.command_line_argv = vm_args;
 
-    // Load the Dart script
-    g_isolate = DartDll_LoadScript(script_path, package_config.c_str());
-    if (g_isolate == nullptr) {
-        std::cerr << "Failed to load Dart script: " << script_path << std::endl;
-        DartDll_Shutdown();
+    // Set up vsync callback
+    args.vsync_callback = OnVsync;
+
+    // Set up platform message callback
+    args.platform_message_callback = OnPlatformMessage;
+
+    // Set up root isolate create callback
+    args.root_isolate_create_callback = OnRootIsolateCreate;
+
+    // ==========================================================================
+    // Set up custom task runners to run Flutter UI on the calling thread
+    // This allows FFI callbacks to be invoked directly from the Java thread
+    // since the Dart isolate runs on the same thread as the platform.
+    // ==========================================================================
+
+    // Remember the platform thread ID (the calling thread)
+    g_platform_thread_id = std::this_thread::get_id();
+    std::cout << "Platform thread ID captured" << std::endl;
+
+    // Create the task runner description - all task runners use the same configuration
+    // because we want everything to run on the same thread
+    static FlutterTaskRunnerDescription platform_task_runner = {};
+    platform_task_runner.struct_size = sizeof(FlutterTaskRunnerDescription);
+    platform_task_runner.user_data = nullptr;
+    platform_task_runner.runs_task_on_current_thread_callback = TaskRunnerRunsOnCurrentThread;
+    platform_task_runner.post_task_callback = TaskRunnerPostTask;
+    platform_task_runner.identifier = 1;  // All task runners with same identifier run on same thread
+    platform_task_runner.destruction_callback = nullptr;
+
+    // Create custom task runners - use same runner for platform, render, and UI
+    static FlutterCustomTaskRunners custom_task_runners = {};
+    custom_task_runners.struct_size = sizeof(FlutterCustomTaskRunners);
+    custom_task_runners.platform_task_runner = &platform_task_runner;
+    custom_task_runners.render_task_runner = &platform_task_runner;  // Same as platform
+    custom_task_runners.ui_task_runner = &platform_task_runner;      // Run UI on platform thread
+    custom_task_runners.thread_priority_setter = nullptr;
+
+    args.custom_task_runners = &custom_task_runners;
+
+    std::cout << "Custom task runners configured for merged thread approach" << std::endl;
+
+    // Run the Flutter engine
+    FlutterEngineResult result = FlutterEngineRun(
+        FLUTTER_ENGINE_VERSION,
+        &renderer,
+        &args,
+        nullptr,  // user_data
+        &g_engine
+    );
+
+    if (result != kSuccess) {
+        std::cerr << "Failed to start Flutter engine, error code: " << result << std::endl;
         return false;
     }
 
-    // Enter isolate and run main()
-    Dart_EnterIsolate(g_isolate);
-    Dart_EnterScope();
+    // Send initial window metrics if rendering is enabled
+    if (enable_rendering) {
+        FlutterWindowMetricsEvent metrics = {};
+        metrics.struct_size = sizeof(FlutterWindowMetricsEvent);
+        metrics.width = g_window_width;
+        metrics.height = g_window_height;
+        metrics.pixel_ratio = g_pixel_ratio;
 
-    Dart_Handle library = Dart_RootLibrary();
-    if (Dart_IsError(library)) {
-        std::cerr << "Failed to get root library: " << Dart_GetError(library) << std::endl;
-        Dart_ExitScope();
-        Dart_ShutdownIsolate();
-        DartDll_Shutdown();
-        return false;
+        FlutterEngineSendWindowMetricsEvent(g_engine, &metrics);
     }
-
-    // Run main() - this will register callbacks
-    Dart_Handle result = Dart_Invoke(library, Dart_NewStringFromCString("main"), 0, nullptr);
-    if (Dart_IsError(result)) {
-        std::cerr << "Failed to invoke main(): " << Dart_GetError(result) << std::endl;
-        Dart_ExitScope();
-        Dart_ShutdownIsolate();
-        DartDll_Shutdown();
-        return false;
-    }
-
-    // Process any pending microtasks from initialization
-    DartDll_DrainMicrotaskQueue();
-
-    Dart_ExitScope();
-    Dart_ExitIsolate();
 
     g_initialized = true;
-    std::cout << "Dart bridge initialized successfully" << std::endl;
+    std::cout << "Flutter engine initialized successfully" << std::endl;
     return true;
 }
 
 void dart_bridge_shutdown() {
+    std::lock_guard<std::mutex> lock(g_engine_mutex);
+
     if (!g_initialized) return;
 
     // Clear all callbacks
@@ -185,17 +354,18 @@ void dart_bridge_shutdown() {
         }
     }
 
-    // Shutdown Dart
-    if (g_isolate != nullptr) {
-        std::lock_guard<std::recursive_mutex> lock(g_isolate_mutex);
-        Dart_EnterIsolate(g_isolate);
-        Dart_ShutdownIsolate();
-        g_isolate = nullptr;
+    // Shutdown Flutter engine
+    if (g_engine != nullptr) {
+        FlutterEngineResult result = FlutterEngineShutdown(g_engine);
+        if (result != kSuccess) {
+            std::cerr << "Warning: Flutter engine shutdown returned error: " << result << std::endl;
+        }
+        g_engine = nullptr;
     }
 
-    DartDll_Shutdown();
     g_initialized = false;
     g_jvm_ref = nullptr;
+    g_frame_callback = nullptr;
 
     std::cout << "Dart bridge shutdown complete" << std::endl;
 }
@@ -207,14 +377,74 @@ void dart_bridge_set_jvm(JavaVM* jvm) {
 }
 
 void dart_bridge_tick() {
-    if (!g_initialized || g_isolate == nullptr) return;
+    // In Flutter embedder mode, there's no explicit microtask queue draining needed.
+    // Flutter handles its own event loop internally.
+    // This function is kept for API compatibility but does nothing.
 
-    bool did_enter = safe_enter_isolate();
-    DartDll_DrainMicrotaskQueue();
-    safe_exit_isolate(did_enter);
+    // However, we might want to pump events here if Flutter isn't running its own thread
+    // For now, this is a no-op as Flutter should handle its own scheduling
 }
 
+// ==========================================================================
+// Flutter Rendering Support
+// ==========================================================================
+
+void dart_bridge_set_frame_callback(FlutterFrameCallback callback) {
+    g_frame_callback = callback;
+}
+
+void dart_bridge_send_window_metrics(int32_t width, int32_t height, double pixel_ratio) {
+    if (!g_initialized || g_engine == nullptr || !g_rendering_enabled) return;
+
+    g_window_width = width;
+    g_window_height = height;
+    g_pixel_ratio = pixel_ratio;
+
+    FlutterWindowMetricsEvent metrics = {};
+    metrics.struct_size = sizeof(FlutterWindowMetricsEvent);
+    metrics.width = width;
+    metrics.height = height;
+    metrics.pixel_ratio = pixel_ratio;
+
+    FlutterEngineSendWindowMetricsEvent(g_engine, &metrics);
+}
+
+void dart_bridge_send_pointer_event(int32_t phase, double x, double y, int64_t buttons) {
+    if (!g_initialized || g_engine == nullptr || !g_rendering_enabled) return;
+
+    FlutterPointerEvent event = {};
+    event.struct_size = sizeof(FlutterPointerEvent);
+    event.phase = static_cast<FlutterPointerPhase>(phase);
+    event.timestamp = FlutterEngineGetCurrentTime() / 1000;  // Convert to microseconds
+    event.x = x;
+    event.y = y;
+    event.buttons = buttons;
+    event.device_kind = kFlutterPointerDeviceKindMouse;
+
+    FlutterEngineSendPointerEvent(g_engine, &event, 1);
+}
+
+void dart_bridge_send_key_event(int32_t type, int64_t physical_key, int64_t logical_key,
+                                const char* character, int32_t modifiers) {
+    if (!g_initialized || g_engine == nullptr || !g_rendering_enabled) return;
+
+    FlutterKeyEvent event = {};
+    event.struct_size = sizeof(FlutterKeyEvent);
+    event.timestamp = static_cast<double>(FlutterEngineGetCurrentTime()) / 1000000000.0;  // Convert to seconds
+    event.type = static_cast<FlutterKeyEventType>(type);
+    event.physical = physical_key;
+    event.logical = logical_key;
+    event.character = character;
+    event.synthesized = false;
+
+    FlutterEngineSendKeyEvent(g_engine, &event, nullptr, nullptr);
+}
+
+// ==========================================================================
 // Callback registration (called from Dart via FFI)
+// Note: These work through FFI which is supported by Flutter's Dart VM
+// ==========================================================================
+
 void register_block_break_handler(BlockBreakCallback cb) {
     dart_mc_bridge::CallbackRegistry::instance().setBlockBreakHandler(cb);
 }
@@ -263,32 +493,25 @@ void register_proxy_block_entity_inside_handler(ProxyBlockEntityInsideCallback c
     dart_mc_bridge::CallbackRegistry::instance().setProxyBlockEntityInsideHandler(cb);
 }
 
+// ==========================================================================
 // Event dispatch (called from Java via JNI)
-// These functions must enter/exit the isolate to invoke Dart callbacks
-int32_t dispatch_block_break(int32_t x, int32_t y, int32_t z, int64_t player_id) {
-    if (!g_initialized || g_isolate == nullptr) return 1;
+// Note: With Flutter embedder, we don't need manual isolate management.
+// Flutter handles its own isolate and message loop internally.
+// FFI callbacks registered from Dart will be called on the correct isolate.
+// ==========================================================================
 
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchBlockBreak(x, y, z, player_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+int32_t dispatch_block_break(int32_t x, int32_t y, int32_t z, int64_t player_id) {
+    if (!g_initialized || g_engine == nullptr) return 1;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchBlockBreak(x, y, z, player_id);
 }
 
 int32_t dispatch_block_interact(int32_t x, int32_t y, int32_t z, int64_t player_id, int32_t hand) {
-    if (!g_initialized || g_isolate == nullptr) return 1;
-
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchBlockInteract(x, y, z, player_id, hand);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return 1;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchBlockInteract(x, y, z, player_id, hand);
 }
 
-void dispatch_tick(int64_t tick) {
-    if (!g_initialized || g_isolate == nullptr) return;
+void dispatch_tick(int64_t tick_value) {
+    if (!g_initialized || g_engine == nullptr) return;
 
     g_tick_count++;
 
@@ -306,119 +529,82 @@ void dispatch_tick(int64_t tick) {
         g_last_report_time = now;
     }
 
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    dart_mc_bridge::CallbackRegistry::instance().dispatchTick(tick);
-    DartDll_DrainMicrotaskQueue(); // Process async tasks while we're in the isolate
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
+    // Direct callback - merged thread approach allows this
+    dart_mc_bridge::CallbackRegistry::instance().dispatchTick(tick_value);
 }
 
 // Proxy block dispatch (called from Java proxy classes via JNI)
 // Returns true if break should be allowed, false to cancel
 bool dispatch_proxy_block_break(int64_t handler_id, int64_t world_id,
                                  int32_t x, int32_t y, int32_t z, int64_t player_id) {
-    if (!g_initialized || g_isolate == nullptr) return true; // Allow break if not initialized
-
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockBreak(
+    if (!g_initialized || g_engine == nullptr) return true; // Allow break if not initialized
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockBreak(
         handler_id, world_id, x, y, z, player_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 int32_t dispatch_proxy_block_use(int64_t handler_id, int64_t world_id,
                                   int32_t x, int32_t y, int32_t z,
                                   int64_t player_id, int32_t hand) {
-    if (!g_initialized || g_isolate == nullptr) return 3; // ActionResult.pass
-
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockUse(
+    if (!g_initialized || g_engine == nullptr) return 3; // ActionResult.pass
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockUse(
         handler_id, world_id, x, y, z, player_id, hand);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 void dispatch_proxy_block_stepped_on(int64_t handler_id, int64_t world_id,
                                       int32_t x, int32_t y, int32_t z, int32_t entity_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockSteppedOn(
         handler_id, world_id, x, y, z, entity_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_proxy_block_fallen_upon(int64_t handler_id, int64_t world_id,
                                        int32_t x, int32_t y, int32_t z, int32_t entity_id, float fall_distance) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockFallenUpon(
         handler_id, world_id, x, y, z, entity_id, fall_distance);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_proxy_block_random_tick(int64_t handler_id, int64_t world_id,
                                        int32_t x, int32_t y, int32_t z) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockRandomTick(
         handler_id, world_id, x, y, z);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_proxy_block_placed(int64_t handler_id, int64_t world_id,
                                   int32_t x, int32_t y, int32_t z, int64_t player_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockPlaced(
         handler_id, world_id, x, y, z, player_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_proxy_block_removed(int64_t handler_id, int64_t world_id,
                                    int32_t x, int32_t y, int32_t z) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockRemoved(
         handler_id, world_id, x, y, z);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_proxy_block_neighbor_changed(int64_t handler_id, int64_t world_id,
                                             int32_t x, int32_t y, int32_t z,
                                             int32_t neighbor_x, int32_t neighbor_y, int32_t neighbor_z) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockNeighborChanged(
         handler_id, world_id, x, y, z, neighbor_x, neighbor_y, neighbor_z);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_proxy_block_entity_inside(int64_t handler_id, int64_t world_id,
                                          int32_t x, int32_t y, int32_t z, int32_t entity_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchProxyBlockEntityInside(
         handler_id, world_id, x, y, z, entity_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 // Dart -> Java communication
@@ -436,11 +622,13 @@ void send_chat_message(int64_t player_id, const char* message) {
 }
 
 // Service URL for hot reload/debugging
-static const char* DART_SERVICE_URL = "http://127.0.0.1:5858/";
-
+// Note: With Flutter embedder, the observatory/DevTools URL is different
+// It's typically ws://127.0.0.1:<port>/ws for Flutter DevTools
 const char* get_dart_service_url() {
+    // TODO: Get the actual VM service URI from Flutter engine
+    // For now, return a placeholder that indicates Flutter mode
     if (g_initialized) {
-        return DART_SERVICE_URL;
+        return "flutter://vm-service";
     }
     return nullptr;
 }
@@ -526,181 +714,104 @@ void register_server_stopping_handler(ServerStoppingCallback cb) {
 // ==========================================================================
 
 void dispatch_player_join(int32_t player_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerJoin(player_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_player_leave(int32_t player_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerLeave(player_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_player_respawn(int32_t player_id, bool end_conquered) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerRespawn(player_id, end_conquered);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 char* dispatch_player_death(int32_t player_id, const char* damage_source) {
-    if (!g_initialized || g_isolate == nullptr) return nullptr;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    char* result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerDeath(player_id, damage_source);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return nullptr;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerDeath(player_id, damage_source);
 }
 
 bool dispatch_entity_damage(int32_t entity_id, const char* damage_source, double amount) {
-    if (!g_initialized || g_isolate == nullptr) return true;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchEntityDamage(entity_id, damage_source, amount);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return true;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchEntityDamage(entity_id, damage_source, amount);
 }
 
 void dispatch_entity_death(int32_t entity_id, const char* damage_source) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchEntityDeath(entity_id, damage_source);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 bool dispatch_player_attack_entity(int32_t player_id, int32_t target_id) {
-    if (!g_initialized || g_isolate == nullptr) return true;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerAttackEntity(player_id, target_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return true;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerAttackEntity(player_id, target_id);
 }
 
 char* dispatch_player_chat(int32_t player_id, const char* message) {
-    if (!g_initialized || g_isolate == nullptr) return nullptr;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    char* result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerChat(player_id, message);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return nullptr;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerChat(player_id, message);
 }
 
 bool dispatch_player_command(int32_t player_id, const char* command) {
-    if (!g_initialized || g_isolate == nullptr) return true;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerCommand(player_id, command);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return true;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerCommand(player_id, command);
 }
 
 bool dispatch_item_use(int32_t player_id, const char* item_id, int32_t count, int32_t hand) {
-    if (!g_initialized || g_isolate == nullptr) return true;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchItemUse(player_id, item_id, count, hand);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return true;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchItemUse(player_id, item_id, count, hand);
 }
 
 int32_t dispatch_item_use_on_block(int32_t player_id, const char* item_id, int32_t count, int32_t hand,
                                     int32_t x, int32_t y, int32_t z, int32_t face) {
-    if (!g_initialized || g_isolate == nullptr) return 1;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchItemUseOnBlock(
+    if (!g_initialized || g_engine == nullptr) return 1;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchItemUseOnBlock(
         player_id, item_id, count, hand, x, y, z, face);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 int32_t dispatch_item_use_on_entity(int32_t player_id, const char* item_id, int32_t count, int32_t hand,
                                      int32_t target_id) {
-    if (!g_initialized || g_isolate == nullptr) return 1;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchItemUseOnEntity(
+    if (!g_initialized || g_engine == nullptr) return 1;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchItemUseOnEntity(
         player_id, item_id, count, hand, target_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 bool dispatch_block_place(int32_t player_id, int32_t x, int32_t y, int32_t z, const char* block_id) {
-    if (!g_initialized || g_isolate == nullptr) return true;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchBlockPlace(player_id, x, y, z, block_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return true;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchBlockPlace(player_id, x, y, z, block_id);
 }
 
 bool dispatch_player_pickup_item(int32_t player_id, int32_t item_entity_id) {
-    if (!g_initialized || g_isolate == nullptr) return true;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerPickupItem(player_id, item_entity_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return true;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerPickupItem(player_id, item_entity_id);
 }
 
 bool dispatch_player_drop_item(int32_t player_id, const char* item_id, int32_t count) {
-    if (!g_initialized || g_isolate == nullptr) return true;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerDropItem(player_id, item_id, count);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return true;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchPlayerDropItem(player_id, item_id, count);
 }
 
 void dispatch_server_starting() {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchServerStarting();
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_server_started() {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchServerStarted();
-    DartDll_DrainMicrotaskQueue(); // Process async tasks from server started handlers
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_server_stopping() {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchServerStopping();
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 // ==========================================================================
@@ -756,109 +867,61 @@ void register_screen_mouse_scrolled_callback(ScreenMouseScrolledCallback callbac
 // ==========================================================================
 
 void dispatch_screen_init(int64_t screen_id, int32_t width, int32_t height) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchScreenInit(screen_id, width, height);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_screen_tick(int64_t screen_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchScreenTick(screen_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_screen_render(int64_t screen_id, int32_t mouse_x, int32_t mouse_y, float partial_tick) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
     dart_mc_bridge::CallbackRegistry::instance().dispatchScreenRender(screen_id, mouse_x, mouse_y, partial_tick);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_screen_close(int64_t screen_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchScreenClose(screen_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 bool dispatch_screen_key_pressed(int64_t screen_id, int32_t key_code, int32_t scan_code, int32_t modifiers) {
-    if (!g_initialized || g_isolate == nullptr) return false;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenKeyPressed(screen_id, key_code, scan_code, modifiers);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return false;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchScreenKeyPressed(screen_id, key_code, scan_code, modifiers);
 }
 
 bool dispatch_screen_key_released(int64_t screen_id, int32_t key_code, int32_t scan_code, int32_t modifiers) {
-    if (!g_initialized || g_isolate == nullptr) return false;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenKeyReleased(screen_id, key_code, scan_code, modifiers);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return false;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchScreenKeyReleased(screen_id, key_code, scan_code, modifiers);
 }
 
 bool dispatch_screen_char_typed(int64_t screen_id, int32_t code_point, int32_t modifiers) {
-    if (!g_initialized || g_isolate == nullptr) return false;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenCharTyped(screen_id, code_point, modifiers);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return false;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchScreenCharTyped(screen_id, code_point, modifiers);
 }
 
 bool dispatch_screen_mouse_clicked(int64_t screen_id, double mouse_x, double mouse_y, int32_t button) {
-    if (!g_initialized || g_isolate == nullptr) return false;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseClicked(screen_id, mouse_x, mouse_y, button);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return false;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseClicked(screen_id, mouse_x, mouse_y, button);
 }
 
 bool dispatch_screen_mouse_released(int64_t screen_id, double mouse_x, double mouse_y, int32_t button) {
-    if (!g_initialized || g_isolate == nullptr) return false;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseReleased(screen_id, mouse_x, mouse_y, button);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return false;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseReleased(screen_id, mouse_x, mouse_y, button);
 }
 
 bool dispatch_screen_mouse_dragged(int64_t screen_id, double mouse_x, double mouse_y, int32_t button, double drag_x, double drag_y) {
-    if (!g_initialized || g_isolate == nullptr) return false;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseDragged(screen_id, mouse_x, mouse_y, button, drag_x, drag_y);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return false;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseDragged(screen_id, mouse_x, mouse_y, button, drag_x, drag_y);
 }
 
 bool dispatch_screen_mouse_scrolled(int64_t screen_id, double mouse_x, double mouse_y, double delta_x, double delta_y) {
-    if (!g_initialized || g_isolate == nullptr) return false;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseScrolled(screen_id, mouse_x, mouse_y, delta_x, delta_y);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return false;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchScreenMouseScrolled(screen_id, mouse_x, mouse_y, delta_x, delta_y);
 }
 
 // ==========================================================================
@@ -878,21 +941,15 @@ void register_widget_text_changed_callback(WidgetTextChangedCallback callback) {
 // ==========================================================================
 
 void dispatch_widget_pressed(int64_t screen_id, int64_t widget_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchWidgetPressed(screen_id, widget_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_widget_text_changed(int64_t screen_id, int64_t widget_id, const char* text) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchWidgetTextChanged(screen_id, widget_id, text);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 // ==========================================================================
@@ -917,33 +974,23 @@ void register_container_screen_close_callback(ContainerScreenCloseCallback callb
 
 void dispatch_container_screen_init(int64_t screen_id, int32_t width, int32_t height,
                                     int32_t left_pos, int32_t top_pos, int32_t image_width, int32_t image_height) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchContainerScreenInit(
         screen_id, width, height, left_pos, top_pos, image_width, image_height);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_container_screen_render_bg(int64_t screen_id, int32_t mouse_x, int32_t mouse_y,
                                          float partial_tick, int32_t left_pos, int32_t top_pos) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
     dart_mc_bridge::CallbackRegistry::instance().dispatchContainerScreenRenderBg(
         screen_id, mouse_x, mouse_y, partial_tick, left_pos, top_pos);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 void dispatch_container_screen_close(int64_t screen_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
     dart_mc_bridge::CallbackRegistry::instance().dispatchContainerScreenClose(screen_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
 }
 
 // ==========================================================================
@@ -972,47 +1019,27 @@ void register_container_may_pickup_callback(ContainerMayPickupCallback callback)
 
 int32_t dispatch_container_slot_click(int64_t menu_id, int32_t slot_index,
                                        int32_t button, int32_t click_type, const char* carried_item) {
-    if (!g_initialized || g_isolate == nullptr) return 0;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchContainerSlotClick(
+    if (!g_initialized || g_engine == nullptr) return 0;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchContainerSlotClick(
         menu_id, slot_index, button, click_type, carried_item);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 const char* dispatch_container_quick_move(int64_t menu_id, int32_t slot_index) {
-    if (!g_initialized || g_isolate == nullptr) return nullptr;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    const char* result = dart_mc_bridge::CallbackRegistry::instance().dispatchContainerQuickMove(
+    if (!g_initialized || g_engine == nullptr) return nullptr;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchContainerQuickMove(
         menu_id, slot_index);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 bool dispatch_container_may_place(int64_t menu_id, int32_t slot_index, const char* item_data) {
-    if (!g_initialized || g_isolate == nullptr) return true;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchContainerMayPlace(
+    if (!g_initialized || g_engine == nullptr) return true;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchContainerMayPlace(
         menu_id, slot_index, item_data);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 bool dispatch_container_may_pickup(int64_t menu_id, int32_t slot_index) {
-    if (!g_initialized || g_isolate == nullptr) return true;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchContainerMayPickup(
+    if (!g_initialized || g_engine == nullptr) return true;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchContainerMayPickup(
         menu_id, slot_index);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 // ==========================================================================
@@ -1267,59 +1294,45 @@ void register_proxy_item_use_on_entity_handler(ProxyItemUseOnEntityCallback cb) 
 // ==========================================================================
 
 void dispatch_proxy_entity_spawn(int64_t handler_id, int32_t entity_id, int64_t world_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntitySpawn(handler_id, entity_id, world_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntitySpawn(
+        handler_id, entity_id, world_id);
 }
 
 void dispatch_proxy_entity_tick(int64_t handler_id, int32_t entity_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityTick(handler_id, entity_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
+    if (!g_initialized || g_engine == nullptr) return;
+    g_entity_tick_count++;
+    // Direct callback - merged thread approach allows this
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityTick(
+        handler_id, entity_id);
 }
 
 void dispatch_proxy_entity_death(int64_t handler_id, int32_t entity_id, const char* damage_source) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityDeath(handler_id, entity_id, damage_source);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityDeath(
+        handler_id, entity_id, damage_source);
 }
 
 bool dispatch_proxy_entity_damage(int64_t handler_id, int32_t entity_id, const char* damage_source, double amount) {
-    if (!g_initialized || g_isolate == nullptr) return true; // Allow damage if not initialized
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityDamage(
+    if (!g_initialized || g_engine == nullptr) return true; // Allow damage if not initialized
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityDamage(
         handler_id, entity_id, damage_source, amount);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 void dispatch_proxy_entity_attack(int64_t handler_id, int32_t entity_id, int32_t target_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityAttack(handler_id, entity_id, target_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityAttack(
+        handler_id, entity_id, target_id);
 }
 
 void dispatch_proxy_entity_target(int64_t handler_id, int32_t entity_id, int32_t target_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityTarget(handler_id, entity_id, target_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
+    dart_mc_bridge::CallbackRegistry::instance().dispatchProxyEntityTarget(
+        handler_id, entity_id, target_id);
 }
 
 // ==========================================================================
@@ -1327,47 +1340,27 @@ void dispatch_proxy_entity_target(int64_t handler_id, int32_t entity_id, int32_t
 // ==========================================================================
 
 bool dispatch_proxy_item_attack_entity(int64_t handler_id, int32_t world_id, int32_t attacker_id, int32_t target_id) {
-    if (!g_initialized || g_isolate == nullptr) return true; // Allow attack if not initialized
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemAttackEntity(
+    if (!g_initialized || g_engine == nullptr) return true; // Allow attack if not initialized
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemAttackEntity(
         handler_id, world_id, attacker_id, target_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 int32_t dispatch_proxy_item_use(int64_t handler_id, int64_t world_id, int32_t player_id, int32_t hand) {
-    if (!g_initialized || g_isolate == nullptr) return 4; // PASS if not initialized
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemUse(
+    if (!g_initialized || g_engine == nullptr) return 4; // PASS if not initialized
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemUse(
         handler_id, world_id, player_id, hand);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 int32_t dispatch_proxy_item_use_on_block(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t player_id, int32_t hand) {
-    if (!g_initialized || g_isolate == nullptr) return 4; // PASS if not initialized
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemUseOnBlock(
+    if (!g_initialized || g_engine == nullptr) return 4; // PASS if not initialized
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemUseOnBlock(
         handler_id, world_id, x, y, z, player_id, hand);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 int32_t dispatch_proxy_item_use_on_entity(int64_t handler_id, int64_t world_id, int32_t entity_id, int32_t player_id, int32_t hand) {
-    if (!g_initialized || g_isolate == nullptr) return 4; // PASS if not initialized
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemUseOnEntity(
+    if (!g_initialized || g_engine == nullptr) return 4; // PASS if not initialized
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchProxyItemUseOnEntity(
         handler_id, world_id, entity_id, player_id, hand);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
 }
 
 // ==========================================================================
@@ -1379,14 +1372,35 @@ void register_command_execute_handler(CommandExecuteCallback cb) {
 }
 
 int32_t dispatch_command_execute(int64_t command_id, int32_t player_id, const char* args_json) {
-    if (!g_initialized || g_isolate == nullptr) return 0; // Failure if not initialized
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    int32_t result = dart_mc_bridge::CallbackRegistry::instance().dispatchCommandExecute(
+    if (!g_initialized || g_engine == nullptr) return 0; // Failure if not initialized
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchCommandExecute(
         command_id, player_id, args_json);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+}
+
+// ==========================================================================
+// Registry Ready Callback (for Flutter embedder timing)
+// ==========================================================================
+
+void register_registry_ready_callback(RegistryReadyCallback callback) {
+    g_registry_ready_callback = callback;
+    std::cout << "Registry ready callback registered" << std::endl;
+
+    // If signal was already received, invoke callback immediately
+    if (g_registry_ready_signaled && callback) {
+        std::cout << "Registry already ready - invoking callback immediately" << std::endl;
+        callback();
+    }
+}
+
+void signal_registry_ready() {
+    std::cout << "Registry ready signal received from Java" << std::endl;
+    g_registry_ready_signaled = true;
+
+    // In dual-runtime mode, delegate to server_dispatch_registry_ready which
+    // properly enters the server isolate before calling the callback.
+    // This is needed because Java calls signalRegistryReady from the Render thread,
+    // but the Dart callback is registered in the Server isolate's thread.
+    server_dispatch_registry_ready();
 }
 
 // ==========================================================================
@@ -1418,50 +1432,382 @@ void register_custom_goal_stop_handler(CustomGoalStopCallback cb) {
 // ==========================================================================
 
 bool dispatch_custom_goal_can_use(const char* goal_id, int32_t entity_id) {
-    if (!g_initialized || g_isolate == nullptr) return false;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalCanUse(goal_id, entity_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return false;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalCanUse(goal_id, entity_id);
 }
 
 bool dispatch_custom_goal_can_continue_to_use(const char* goal_id, int32_t entity_id) {
-    if (!g_initialized || g_isolate == nullptr) return false;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    bool result = dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalCanContinueToUse(goal_id, entity_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
-    return result;
+    if (!g_initialized || g_engine == nullptr) return false;
+    return dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalCanContinueToUse(goal_id, entity_id);
 }
 
 void dispatch_custom_goal_start(const char* goal_id, int32_t entity_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalStart(goal_id, entity_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
+    dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalStart(
+        goal_id, entity_id);
 }
 
 void dispatch_custom_goal_tick(const char* goal_id, int32_t entity_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalTick(goal_id, entity_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
+    dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalTick(
+        goal_id, entity_id);
 }
 
 void dispatch_custom_goal_stop(const char* goal_id, int32_t entity_id) {
-    if (!g_initialized || g_isolate == nullptr) return;
-    bool did_enter = safe_enter_isolate();
-    Dart_EnterScope();
-    dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalStop(goal_id, entity_id);
-    Dart_ExitScope();
-    safe_exit_isolate(did_enter);
+    if (!g_initialized || g_engine == nullptr) return;
+    // Direct callback - merged thread approach allows this
+    dart_mc_bridge::CallbackRegistry::instance().dispatchCustomGoalStop(
+        goal_id, entity_id);
+}
+
+// ==========================================================================
+// Registration Queue Functions (called from Dart via FFI on Thread-3)
+// ==========================================================================
+
+// Queue a block registration - called from Dart (any thread)
+// Returns the pre-allocated handler ID so Dart can use it immediately
+int64_t queue_block_registration(
+    const char* namespace_id,
+    const char* path,
+    float hardness,
+    float resistance,
+    bool requires_tool,
+    int32_t luminance,
+    double slipperiness,
+    double velocity_multiplier,
+    double jump_velocity_multiplier,
+    bool ticks_randomly,
+    bool collidable,
+    bool replaceable,
+    bool burnable
+) {
+    std::lock_guard<std::mutex> lock(g_registration_mutex);
+
+    // Pre-allocate handler ID
+    int64_t handler_id = g_next_block_handler_id.fetch_add(1);
+
+    BlockRegistrationRequest req;
+    req.handler_id = handler_id;
+    req.namespace_id = namespace_id ? namespace_id : "";
+    req.path = path ? path : "";
+    req.hardness = hardness;
+    req.resistance = resistance;
+    req.requires_tool = requires_tool;
+    req.luminance = luminance;
+    req.slipperiness = slipperiness;
+    req.velocity_multiplier = velocity_multiplier;
+    req.jump_velocity_multiplier = jump_velocity_multiplier;
+    req.ticks_randomly = ticks_randomly;
+    req.collidable = collidable;
+    req.replaceable = replaceable;
+    req.burnable = burnable;
+
+    g_block_registration_queue.push(req);
+
+    std::cout << "Queued block registration: " << namespace_id << ":" << path
+              << " (handler_id=" << handler_id << ")" << std::endl;
+
+    return handler_id;
+}
+
+// Queue an item registration - called from Dart (any thread)
+// Returns the pre-allocated handler ID so Dart can use it immediately
+int64_t queue_item_registration(
+    const char* namespace_id,
+    const char* path,
+    int32_t max_stack_size,
+    int32_t max_damage,
+    bool fire_resistant,
+    double attack_damage,
+    double attack_speed,
+    double attack_knockback
+) {
+    std::lock_guard<std::mutex> lock(g_registration_mutex);
+
+    // Pre-allocate handler ID
+    int64_t handler_id = g_next_item_handler_id.fetch_add(1);
+
+    ItemRegistrationRequest req;
+    req.handler_id = handler_id;
+    req.namespace_id = namespace_id ? namespace_id : "";
+    req.path = path ? path : "";
+    req.max_stack_size = max_stack_size;
+    req.max_damage = max_damage;
+    req.fire_resistant = fire_resistant;
+    req.attack_damage = attack_damage;
+    req.attack_speed = attack_speed;
+    req.attack_knockback = attack_knockback;
+
+    g_item_registration_queue.push(req);
+
+    std::cout << "Queued item registration: " << namespace_id << ":" << path
+              << " (handler_id=" << handler_id << ")" << std::endl;
+
+    return handler_id;
+}
+
+// Signal that Dart has finished queueing registrations
+void signal_registrations_queued() {
+    std::cout << "Dart signaled registrations are queued" << std::endl;
+    g_registrations_complete.store(true);
+}
+
+// Check if Dart has signaled completion
+bool are_registrations_queued() {
+    return g_registrations_complete.load();
+}
+
+// Check if there are pending block registrations
+bool has_pending_block_registrations() {
+    std::lock_guard<std::mutex> lock(g_registration_mutex);
+    return !g_block_registration_queue.empty();
+}
+
+// Check if there are pending item registrations
+bool has_pending_item_registrations() {
+    std::lock_guard<std::mutex> lock(g_registration_mutex);
+    return !g_item_registration_queue.empty();
+}
+
+// Get next block registration from queue
+// Returns false if queue is empty
+// out_* parameters are filled with the registration data
+bool get_next_block_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, int32_t namespace_len,
+    char* out_path, int32_t path_len,
+    float* out_hardness,
+    float* out_resistance,
+    bool* out_requires_tool,
+    int32_t* out_luminance,
+    double* out_slipperiness,
+    double* out_velocity_multiplier,
+    double* out_jump_velocity_multiplier,
+    bool* out_ticks_randomly,
+    bool* out_collidable,
+    bool* out_replaceable,
+    bool* out_burnable
+) {
+    std::lock_guard<std::mutex> lock(g_registration_mutex);
+
+    if (g_block_registration_queue.empty()) return false;
+
+    const auto& req = g_block_registration_queue.front();
+
+    *out_handler_id = req.handler_id;
+    strncpy(out_namespace, req.namespace_id.c_str(), namespace_len - 1);
+    out_namespace[namespace_len - 1] = '\0';
+    strncpy(out_path, req.path.c_str(), path_len - 1);
+    out_path[path_len - 1] = '\0';
+    *out_hardness = req.hardness;
+    *out_resistance = req.resistance;
+    *out_requires_tool = req.requires_tool;
+    *out_luminance = req.luminance;
+    *out_slipperiness = req.slipperiness;
+    *out_velocity_multiplier = req.velocity_multiplier;
+    *out_jump_velocity_multiplier = req.jump_velocity_multiplier;
+    *out_ticks_randomly = req.ticks_randomly;
+    *out_collidable = req.collidable;
+    *out_replaceable = req.replaceable;
+    *out_burnable = req.burnable;
+
+    g_block_registration_queue.pop();
+    return true;
+}
+
+// Get next item registration from queue
+// Returns false if queue is empty
+bool get_next_item_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, int32_t namespace_len,
+    char* out_path, int32_t path_len,
+    int32_t* out_max_stack_size,
+    int32_t* out_max_damage,
+    bool* out_fire_resistant,
+    double* out_attack_damage,
+    double* out_attack_speed,
+    double* out_attack_knockback
+) {
+    std::lock_guard<std::mutex> lock(g_registration_mutex);
+
+    if (g_item_registration_queue.empty()) return false;
+
+    const auto& req = g_item_registration_queue.front();
+
+    *out_handler_id = req.handler_id;
+    strncpy(out_namespace, req.namespace_id.c_str(), namespace_len - 1);
+    out_namespace[namespace_len - 1] = '\0';
+    strncpy(out_path, req.path.c_str(), path_len - 1);
+    out_path[path_len - 1] = '\0';
+    *out_max_stack_size = req.max_stack_size;
+    *out_max_damage = req.max_damage;
+    *out_fire_resistant = req.fire_resistant;
+    *out_attack_damage = req.attack_damage;
+    *out_attack_speed = req.attack_speed;
+    *out_attack_knockback = req.attack_knockback;
+
+    g_item_registration_queue.pop();
+    return true;
+}
+
+// ==========================================================================
+// Entity Registration Queue Functions (called from Dart via FFI on Thread-3)
+// ==========================================================================
+
+// Queue an entity registration - called from Dart (any thread)
+// Returns the pre-allocated handler ID so Dart can use it immediately
+int64_t queue_entity_registration(
+    const char* namespace_id,
+    const char* path,
+    double width,
+    double height,
+    double max_health,
+    double movement_speed,
+    double attack_damage,
+    int32_t spawn_group,
+    int32_t base_type,
+    const char* breeding_item,
+    const char* model_type,
+    const char* texture_path,
+    double model_scale,
+    const char* goals_json,
+    const char* target_goals_json
+) {
+    std::lock_guard<std::mutex> lock(g_registration_mutex);
+
+    // Pre-allocate handler ID
+    int64_t handler_id = g_next_entity_handler_id.fetch_add(1);
+
+    EntityRegistrationRequest req;
+    req.handler_id = handler_id;
+    req.namespace_id = namespace_id ? namespace_id : "";
+    req.path = path ? path : "";
+    req.width = width;
+    req.height = height;
+    req.max_health = max_health;
+    req.movement_speed = movement_speed;
+    req.attack_damage = attack_damage;
+    req.spawn_group = spawn_group;
+    req.base_type = base_type;
+    req.breeding_item = breeding_item ? breeding_item : "";
+    req.model_type = model_type ? model_type : "";
+    req.texture_path = texture_path ? texture_path : "";
+    req.model_scale = model_scale;
+    req.goals_json = goals_json ? goals_json : "";
+    req.target_goals_json = target_goals_json ? target_goals_json : "";
+
+    g_entity_registration_queue.push(req);
+
+    std::cout << "Queued entity registration: " << namespace_id << ":" << path
+              << " (handler_id=" << handler_id << ", base_type=" << base_type << ")" << std::endl;
+
+    return handler_id;
+}
+
+// Check if there are pending entity registrations
+bool has_pending_entity_registrations() {
+    std::lock_guard<std::mutex> lock(g_registration_mutex);
+    return !g_entity_registration_queue.empty();
+}
+
+// Get next entity registration from queue
+// Returns false if queue is empty
+bool get_next_entity_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, int32_t namespace_len,
+    char* out_path, int32_t path_len,
+    double* out_width,
+    double* out_height,
+    double* out_max_health,
+    double* out_movement_speed,
+    double* out_attack_damage,
+    int32_t* out_spawn_group,
+    int32_t* out_base_type,
+    char* out_breeding_item, int32_t breeding_item_len,
+    char* out_model_type, int32_t model_type_len,
+    char* out_texture_path, int32_t texture_path_len,
+    double* out_model_scale,
+    char* out_goals_json, int32_t goals_json_len,
+    char* out_target_goals_json, int32_t target_goals_json_len
+) {
+    std::lock_guard<std::mutex> lock(g_registration_mutex);
+
+    if (g_entity_registration_queue.empty()) return false;
+
+    const auto& req = g_entity_registration_queue.front();
+
+    *out_handler_id = req.handler_id;
+    strncpy(out_namespace, req.namespace_id.c_str(), namespace_len - 1);
+    out_namespace[namespace_len - 1] = '\0';
+    strncpy(out_path, req.path.c_str(), path_len - 1);
+    out_path[path_len - 1] = '\0';
+    *out_width = req.width;
+    *out_height = req.height;
+    *out_max_health = req.max_health;
+    *out_movement_speed = req.movement_speed;
+    *out_attack_damage = req.attack_damage;
+    *out_spawn_group = req.spawn_group;
+    *out_base_type = req.base_type;
+    strncpy(out_breeding_item, req.breeding_item.c_str(), breeding_item_len - 1);
+    out_breeding_item[breeding_item_len - 1] = '\0';
+    strncpy(out_model_type, req.model_type.c_str(), model_type_len - 1);
+    out_model_type[model_type_len - 1] = '\0';
+    strncpy(out_texture_path, req.texture_path.c_str(), texture_path_len - 1);
+    out_texture_path[texture_path_len - 1] = '\0';
+    *out_model_scale = req.model_scale;
+    strncpy(out_goals_json, req.goals_json.c_str(), goals_json_len - 1);
+    out_goals_json[goals_json_len - 1] = '\0';
+    strncpy(out_target_goals_json, req.target_goals_json.c_str(), target_goals_json_len - 1);
+    out_target_goals_json[target_goals_json_len - 1] = '\0';
+
+    g_entity_registration_queue.pop();
+    return true;
+}
+
+// ==========================================================================
+// Flutter Task Processing (for merged thread approach)
+// ==========================================================================
+// Process pending Flutter tasks - call this from the game loop to pump
+// the Flutter engine's event loop. This executes tasks that Flutter has
+// scheduled (timers, UI updates, etc.)
+
+void process_flutter_tasks() {
+    if (!g_initialized || g_engine == nullptr) return;
+
+    // Extract all tasks that are ready to run
+    std::queue<std::pair<FlutterTask, uint64_t>> tasks_to_run;
+    {
+        std::lock_guard<std::mutex> lock(g_task_mutex);
+        std::swap(tasks_to_run, g_pending_flutter_tasks);
+    }
+
+    uint64_t current_time = FlutterEngineGetCurrentTime();
+
+    while (!tasks_to_run.empty()) {
+        auto& task_pair = tasks_to_run.front();
+        if (task_pair.second <= current_time) {
+            // Task is ready to run
+            FlutterEngineRunTask(g_engine, &task_pair.first);
+        } else {
+            // Task is not ready yet - re-queue it
+            std::lock_guard<std::mutex> lock(g_task_mutex);
+            g_pending_flutter_tasks.push(task_pair);
+        }
+        tasks_to_run.pop();
+    }
 }
 
 } // extern "C"
+
+// ==========================================================================
+// JNI Interface for Flutter Task Processing
+// ==========================================================================
+
+// Process pending Flutter tasks - call this from Java's game loop
+// This allows Flutter's scheduled tasks to execute on the correct thread
+extern "C" JNIEXPORT void JNICALL
+Java_com_redstone_DartBridge_processFlutterTasks(JNIEnv* env, jclass clazz) {
+    process_flutter_tasks();
+}

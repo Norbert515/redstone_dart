@@ -6,7 +6,7 @@ import 'dart:io';
 
 import 'custom_entity.dart';
 import 'entity_goal.dart';
-import '../src/jni/generic_bridge.dart';
+import '../src/bridge.dart';
 
 /// Registry for Dart-defined entities.
 ///
@@ -61,100 +61,58 @@ class EntityRegistry {
     final namespace = parts[0];
     final path = parts[1];
 
-    // Create the proxy entity in Java
-    // For animals, we need to pass the breeding item
-    final int handlerId;
-    if (entity is CustomAnimal) {
-      handlerId = GenericJniBridge.callStaticLongMethod(
-        'com/redstone/proxy/EntityProxyRegistry',
-        'createEntityWithBreedingItem',
-        '(DDDDDIILjava/lang/String;)J',
-        [
-          entity.settings.width,
-          entity.settings.height,
-          entity.settings.maxHealth,
-          entity.settings.movementSpeed,
-          entity.settings.attackDamage,
-          entity.settings.spawnGroup.index,
-          entity.settings.baseType.index,
-          entity.settings.breedingItem,
-        ],
-      );
-    } else {
-      handlerId = GenericJniBridge.callStaticLongMethod(
-        'com/redstone/proxy/EntityProxyRegistry',
-        'createEntity',
-        '(DDDDDII)J',
-        [
-          entity.settings.width,
-          entity.settings.height,
-          entity.settings.maxHealth,
-          entity.settings.movementSpeed,
-          entity.settings.attackDamage,
-          entity.settings.spawnGroup.index,
-          entity.settings.baseType.index,
-        ],
-      );
-    }
-
-    if (handlerId == 0) {
-      throw StateError('Failed to create proxy entity for: ${entity.id}');
-    }
-
-    // Register model config BEFORE registering entity with Minecraft.
-    // This is important because registerEntity() triggers a callback that
-    // checks for model config to decide which renderer to use.
+    // Extract model info if present
+    String modelType = '';
+    String texturePath = '';
+    double modelScale = 1.0;
     final model = entity.settings.model;
     if (model != null) {
       final modelJson = model.toJson();
-      final modelType = modelJson['type'] as String;
-      final texturePath = modelJson['texture'] as String;
-      final scale = (modelJson['scale'] as num?)?.toDouble() ?? 1.0;
-
-      GenericJniBridge.callStaticVoidMethod(
-        'com/redstone/proxy/EntityProxyRegistry',
-        'registerModelConfig',
-        '(JLjava/lang/String;Ljava/lang/String;D)V',
-        [handlerId, modelType, texturePath, scale],
-      );
-
-      print('EntityRegistry: Registered model config for ${entity.id} '
-          '(type: $modelType, texture: $texturePath, scale: $scale)');
+      modelType = modelJson['type'] as String;
+      texturePath = modelJson['texture'] as String;
+      modelScale = (modelJson['scale'] as num?)?.toDouble() ?? 1.0;
     }
 
-    // Register goal config for monsters and animals BEFORE registering with Minecraft.
-    // This ensures the goals are available when the entity type is created.
-    String? goalsJson;
-    String? targetGoalsJson;
+    // Extract goal configs for monsters and animals
+    String goalsJson = '';
+    String targetGoalsJson = '';
     if (entity is CustomMonster) {
-      goalsJson = _serializeGoals(entity.settings.goals);
-      targetGoalsJson = _serializeGoals(entity.settings.targetGoals);
+      goalsJson = _serializeGoals(entity.settings.goals) ?? '';
+      targetGoalsJson = _serializeGoals(entity.settings.targetGoals) ?? '';
     } else if (entity is CustomAnimal) {
-      goalsJson = _serializeGoals(entity.settings.goals);
-      targetGoalsJson = _serializeGoals(entity.settings.targetGoals);
+      goalsJson = _serializeGoals(entity.settings.goals) ?? '';
+      targetGoalsJson = _serializeGoals(entity.settings.targetGoals) ?? '';
     }
 
-    if (goalsJson != null || targetGoalsJson != null) {
-      GenericJniBridge.callStaticVoidMethod(
-        'com/redstone/proxy/EntityProxyRegistry',
-        'registerGoalConfig',
-        '(JLjava/lang/String;Ljava/lang/String;)V',
-        [handlerId, goalsJson ?? '', targetGoalsJson ?? ''],
-      );
-
-      print('EntityRegistry: Registered goal config for ${entity.id}');
+    // Get breeding item for animals
+    String breedingItem = '';
+    if (entity is CustomAnimal) {
+      breedingItem = entity.settings.breedingItem ?? '';
     }
 
-    // Register with Minecraft's registry (triggers renderer registration callback)
-    final success = GenericJniBridge.callStaticBoolMethod(
-      'com/redstone/proxy/EntityProxyRegistry',
-      'registerEntity',
-      '(JLjava/lang/String;Ljava/lang/String;)Z',
-      [handlerId, namespace, path],
+    // Queue the entity registration using the thread-safe queue mechanism.
+    // This avoids the "Game version not set" error by deferring actual
+    // registration to the Java main thread.
+    final handlerId = Bridge.queueEntityRegistration(
+      namespace: namespace,
+      path: path,
+      width: entity.settings.width,
+      height: entity.settings.height,
+      maxHealth: entity.settings.maxHealth,
+      movementSpeed: entity.settings.movementSpeed,
+      attackDamage: entity.settings.attackDamage,
+      spawnGroup: entity.settings.spawnGroup.index,
+      baseType: entity.settings.baseType.index,
+      breedingItem: breedingItem,
+      modelType: modelType,
+      texturePath: texturePath,
+      modelScale: modelScale,
+      goalsJson: goalsJson,
+      targetGoalsJson: targetGoalsJson,
     );
 
-    if (!success) {
-      throw StateError('Failed to register entity with Minecraft: ${entity.id}');
+    if (handlerId == 0) {
+      throw StateError('Failed to queue entity registration for: ${entity.id}');
     }
 
     // Store the entity and set its handler ID
@@ -164,7 +122,7 @@ class EntityRegistry {
     // Write manifest after each registration
     _writeManifest();
 
-    print('EntityRegistry: Registered ${entity.id} with handler ID $handlerId');
+    print('EntityRegistry: Queued ${entity.id} with handler ID $handlerId');
     return handlerId;
   }
 

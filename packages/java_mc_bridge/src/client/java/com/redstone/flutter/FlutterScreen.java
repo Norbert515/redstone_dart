@@ -1,6 +1,7 @@
 package com.redstone.flutter;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import com.redstone.DartBridge;
 import com.redstone.DartBridgeClient;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -76,32 +77,26 @@ public class FlutterScreen extends Screen {
     protected void init() {
         super.init();
 
-        // Initialize Flutter if not already
-        if (!flutterInitialized && !DartBridgeClient.isFlutterInitialized()) {
-            String assetsPath = getFlutterAssetsPath();
-            String icuPath = getFlutterIcuPath();
+        // In dual-runtime mode, Flutter is initialized separately by DartModClientLoader.
+        // Check the client runtime, not the server runtime.
+        flutterInitialized = DartBridgeClient.isClientInitialized();
 
-            if (assetsPath != null && icuPath != null) {
-                flutterInitialized = DartBridgeClient.initFlutter(assetsPath, icuPath);
-                if (flutterInitialized) {
-                    LOGGER.info("Flutter initialized successfully");
-                } else {
-                    LOGGER.error("Failed to initialize Flutter");
-                }
-            } else {
-                LOGGER.warn("Flutter assets or ICU path not provided");
-            }
-        } else {
-            flutterInitialized = DartBridgeClient.isFlutterInitialized();
+        LOGGER.info("[FlutterScreen] init() - Flutter client initialized: {}", flutterInitialized);
+
+        if (!flutterInitialized) {
+            LOGGER.warn("Flutter client runtime not initialized - screen will show placeholder");
         }
 
-        // Notify Flutter of screen size with pixel ratio for sharp rendering
+        // Notify Flutter of screen size
         if (flutterInitialized) {
-            // Flutter needs to render at framebuffer resolution
-            // this.width/height are GUI coordinates, multiply by guiScale for framebuffer pixels
+            // Send FRAMEBUFFER dimensions with pixel_ratio=guiScale
+            // Flutter calculates logical size = physical / pixel_ratio = GUI coordinates
             var window = this.minecraft.getWindow();
             int guiScale = window.getGuiScale();
-            DartBridgeClient.resizeFlutter(this.width, this.height, (double) guiScale);
+            int fbWidth = this.width * guiScale;
+            int fbHeight = this.height * guiScale;
+            LOGGER.info("[FlutterScreen] Sending window metrics: {}x{} (framebuffer), pixel_ratio={}", fbWidth, fbHeight, guiScale);
+            DartBridgeClient.sendWindowMetrics(fbWidth, fbHeight, (double) guiScale);
         }
     }
 
@@ -138,7 +133,7 @@ public class FlutterScreen extends Screen {
         }
 
         // Check if Flutter has a new frame
-        if (DartBridgeClient.flutterHasNewFrame()) {
+        if (DartBridgeClient.hasNewFrame()) {
             updateTexture();
         }
 
@@ -158,11 +153,11 @@ public class FlutterScreen extends Screen {
     }
 
     private void updateTexture() {
-        ByteBuffer pixels = DartBridgeClient.getFlutterPixels();
+        ByteBuffer pixels = DartBridgeClient.getFramePixels();
         if (pixels == null) return;
 
-        int newWidth = DartBridgeClient.getFlutterWidth();
-        int newHeight = DartBridgeClient.getFlutterHeight();
+        int newWidth = DartBridgeClient.getFrameWidth();
+        int newHeight = DartBridgeClient.getFrameHeight();
 
         if (newWidth <= 0 || newHeight <= 0) return;
 
@@ -241,10 +236,12 @@ public class FlutterScreen extends Screen {
     public void resize(int width, int height) {
         super.resize(width, height);
         if (flutterInitialized) {
-            // Flutter needs to render at framebuffer resolution
+            // Send FRAMEBUFFER dimensions with pixel_ratio=guiScale
             var window = this.minecraft.getWindow();
             int guiScale = window.getGuiScale();
-            DartBridgeClient.resizeFlutter(width, height, (double) guiScale);
+            int fbWidth = width * guiScale;
+            int fbHeight = height * guiScale;
+            DartBridgeClient.sendWindowMetrics(fbWidth, fbHeight, (double) guiScale);
         }
     }
 
@@ -252,6 +249,7 @@ public class FlutterScreen extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean bl) {
         LOGGER.info("[FlutterScreen] mouseClicked: x={}, y={}, button={}, flutterInitialized={}", event.x(), event.y(), event.button(), flutterInitialized);
         if (flutterInitialized) {
+            // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
             double mouseX = event.x();
             double mouseY = event.y();
             int button = event.button();
@@ -259,11 +257,11 @@ public class FlutterScreen extends Screen {
             currentButtons |= getButtonMask(button);
 
             if (!pointerAdded) {
-                DartBridgeClient.sendFlutterPointerEvent(PHASE_ADD, mouseX, mouseY, 0);
+                DartBridgeClient.sendPointerEvent(PHASE_ADD, mouseX, mouseY, 0);
                 pointerAdded = true;
             }
 
-            DartBridgeClient.sendFlutterPointerEvent(PHASE_DOWN, mouseX, mouseY, currentButtons);
+            DartBridgeClient.sendPointerEvent(PHASE_DOWN, mouseX, mouseY, currentButtons);
             return true; // Consume the event - Flutter handled it
         }
         return super.mouseClicked(event, bl);
@@ -273,12 +271,13 @@ public class FlutterScreen extends Screen {
     public boolean mouseReleased(MouseButtonEvent event) {
         LOGGER.info("[FlutterScreen] mouseReleased: x={}, y={}, button={}", event.x(), event.y(), event.button());
         if (flutterInitialized) {
+            // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
             double mouseX = event.x();
             double mouseY = event.y();
             int button = event.button();
 
             currentButtons &= ~getButtonMask(button);
-            DartBridgeClient.sendFlutterPointerEvent(PHASE_UP, mouseX, mouseY, currentButtons);
+            DartBridgeClient.sendPointerEvent(PHASE_UP, mouseX, mouseY, currentButtons);
             return true; // Consume the event - Flutter handled it
         }
         return super.mouseReleased(event);
@@ -287,9 +286,10 @@ public class FlutterScreen extends Screen {
     @Override
     public void mouseMoved(double mouseX, double mouseY) {
         if (flutterInitialized) {
+            // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
             if (!pointerAdded) {
                 LOGGER.info("[FlutterScreen] Pointer ADD: x={}, y={}", mouseX, mouseY);
-                DartBridgeClient.sendFlutterPointerEvent(PHASE_ADD, mouseX, mouseY, 0);
+                DartBridgeClient.sendPointerEvent(PHASE_ADD, mouseX, mouseY, 0);
                 pointerAdded = true;
                 // Don't send HOVER on the same frame as ADD - let Flutter process ADD first
                 super.mouseMoved(mouseX, mouseY);
@@ -297,9 +297,9 @@ public class FlutterScreen extends Screen {
             }
 
             if (currentButtons != 0) {
-                DartBridgeClient.sendFlutterPointerEvent(PHASE_MOVE, mouseX, mouseY, currentButtons);
+                DartBridgeClient.sendPointerEvent(PHASE_MOVE, mouseX, mouseY, currentButtons);
             } else {
-                DartBridgeClient.sendFlutterPointerEvent(PHASE_HOVER, mouseX, mouseY, 0);
+                DartBridgeClient.sendPointerEvent(PHASE_HOVER, mouseX, mouseY, 0);
             }
         }
         super.mouseMoved(mouseX, mouseY);
@@ -308,7 +308,8 @@ public class FlutterScreen extends Screen {
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
         if (flutterInitialized) {
-            DartBridgeClient.sendFlutterPointerEvent(PHASE_MOVE, event.x(), event.y(), currentButtons);
+            // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
+            DartBridgeClient.sendPointerEvent(PHASE_MOVE, event.x(), event.y(), currentButtons);
             return true; // Consume the event - Flutter handled it
         }
         return super.mouseDragged(event, dragX, dragY);
@@ -317,9 +318,16 @@ public class FlutterScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         if (flutterInitialized) {
-            // Convert to Flutter scroll units (typically pixels)
-            // The multiplier may need adjustment based on Flutter's expectations
-            DartBridgeClient.sendFlutterScrollEvent(mouseX, mouseY, horizontalAmount * 100, -verticalAmount * 100);
+            // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
+            // Flutter handles scroll via pointer events with scroll phase
+            // For now, we send scroll as a HOVER event at the scroll position
+            // A more complete implementation would use Flutter's scroll event API
+            // with scroll_delta_x and scroll_delta_y in the pointer event structure
+            //
+            // Note: The current sendPointerEvent doesn't support scroll deltas directly.
+            // This is a simplified implementation that should work for basic scrolling.
+            // TODO: Add dedicated scroll event support to the native bridge if needed.
+            DartBridgeClient.sendPointerEvent(PHASE_HOVER, mouseX, mouseY, 0);
             return true; // Consume the event - Flutter handled it
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
@@ -340,7 +348,7 @@ public class FlutterScreen extends Screen {
 
         // Send pointer remove event
         if (flutterInitialized && pointerAdded) {
-            DartBridgeClient.sendFlutterPointerEvent(PHASE_REMOVE, 0, 0, 0);
+            DartBridgeClient.sendPointerEvent(PHASE_REMOVE, 0, 0, 0);
             pointerAdded = false;
         }
 
@@ -355,14 +363,17 @@ public class FlutterScreen extends Screen {
     }
 
     /**
-     * Call this to explicitly shutdown Flutter when it's no longer needed.
+     * Call this to explicitly shutdown Flutter/Dart when it's no longer needed.
      * This should typically be called when the game is closing or when
      * Flutter functionality is completely done.
+     *
+     * Note: This shuts down the Flutter client runtime. The server runtime
+     * is managed separately by DartBridge.
      */
     public static void shutdownFlutter() {
-        if (DartBridgeClient.isFlutterInitialized()) {
-            DartBridgeClient.shutdownFlutter();
-            LOGGER.info("Flutter shutdown complete");
+        if (DartBridgeClient.isClientInitialized()) {
+            DartBridgeClient.safeShutdownClientRuntime();
+            LOGGER.info("Flutter client runtime shutdown complete");
         }
     }
 }

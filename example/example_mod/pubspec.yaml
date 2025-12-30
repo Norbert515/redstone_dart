@@ -5,11 +5,22 @@ publish_to: none
 
 environment:
   sdk: ^3.0.0
+  flutter: ">=3.0.0"
 
 dependencies:
   ffi: ^2.1.0
   dart_mc:
     path: ../../packages/dart_mc
+  dart_mod_server:
+    path: ../../packages/dart_mod_server
+  dart_mod_client:
+    path: ../../packages/dart_mod_client
+  dart_mod_common:
+    path: ../../packages/dart_mod_common
+  minecraft_ui:
+    path: ../../packages/minecraft_ui
+  flutter:
+    sdk: flutter
 
 dev_dependencies:
   redstone_test:

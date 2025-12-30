@@ -168,6 +168,13 @@ typedef PlayerDropItemCallbackNative = Bool Function(Int32 playerId, Pointer<Utf
 typedef ServerLifecycleCallbackNative = Void Function();
 
 // =============================================================================
+// Registry Ready Callback (for Flutter embedder timing)
+// =============================================================================
+
+/// Registry ready callback - called when Java signals it's safe to register items/blocks
+typedef RegistryReadyCallbackNative = Void Function();
+
+// =============================================================================
 // Screen/GUI Callback Types
 // =============================================================================
 
@@ -539,6 +546,15 @@ typedef RegisterServerLifecycleHandler = void Function(
     Pointer<NativeFunction<ServerLifecycleCallbackNative>> callback);
 
 // =============================================================================
+// Registry Ready Callback Registration Signatures
+// =============================================================================
+
+typedef RegisterRegistryReadyHandlerNative = Void Function(
+    Pointer<NativeFunction<RegistryReadyCallbackNative>> callback);
+typedef RegisterRegistryReadyHandler = void Function(
+    Pointer<NativeFunction<RegistryReadyCallbackNative>> callback);
+
+// =============================================================================
 // Screen Callback Registration Signatures
 // =============================================================================
 
@@ -682,6 +698,98 @@ typedef RegisterCustomGoalStopHandlerNative = Void Function(
     Pointer<NativeFunction<CustomGoalStopCallbackNative>> callback);
 typedef RegisterCustomGoalStopHandler = void Function(
     Pointer<NativeFunction<CustomGoalStopCallbackNative>> callback);
+
+// =============================================================================
+// Registration Queue Types (for Flutter threading)
+// =============================================================================
+
+/// Queue a block registration - returns pre-allocated handler ID
+typedef QueueBlockRegistrationNative = Int64 Function(
+    Pointer<Utf8> namespaceId,
+    Pointer<Utf8> path,
+    Float hardness,
+    Float resistance,
+    Bool requiresTool,
+    Int32 luminance,
+    Double slipperiness,
+    Double velocityMultiplier,
+    Double jumpVelocityMultiplier,
+    Bool ticksRandomly,
+    Bool collidable,
+    Bool replaceable,
+    Bool burnable);
+typedef QueueBlockRegistrationDart = int Function(
+    Pointer<Utf8> namespaceId,
+    Pointer<Utf8> path,
+    double hardness,
+    double resistance,
+    bool requiresTool,
+    int luminance,
+    double slipperiness,
+    double velocityMultiplier,
+    double jumpVelocityMultiplier,
+    bool ticksRandomly,
+    bool collidable,
+    bool replaceable,
+    bool burnable);
+
+/// Queue an item registration - returns pre-allocated handler ID
+typedef QueueItemRegistrationNative = Int64 Function(
+    Pointer<Utf8> namespaceId,
+    Pointer<Utf8> path,
+    Int32 maxStackSize,
+    Int32 maxDamage,
+    Bool fireResistant,
+    Double attackDamage,
+    Double attackSpeed,
+    Double attackKnockback);
+typedef QueueItemRegistrationDart = int Function(
+    Pointer<Utf8> namespaceId,
+    Pointer<Utf8> path,
+    int maxStackSize,
+    int maxDamage,
+    bool fireResistant,
+    double attackDamage,
+    double attackSpeed,
+    double attackKnockback);
+
+/// Queue an entity registration - returns pre-allocated handler ID
+typedef QueueEntityRegistrationNative = Int64 Function(
+    Pointer<Utf8> namespaceId,
+    Pointer<Utf8> path,
+    Double width,
+    Double height,
+    Double maxHealth,
+    Double movementSpeed,
+    Double attackDamage,
+    Int32 spawnGroup,
+    Int32 baseType,
+    Pointer<Utf8> breedingItem,
+    Pointer<Utf8> modelType,
+    Pointer<Utf8> texturePath,
+    Double modelScale,
+    Pointer<Utf8> goalsJson,
+    Pointer<Utf8> targetGoalsJson);
+typedef QueueEntityRegistrationDart = int Function(
+    Pointer<Utf8> namespaceId,
+    Pointer<Utf8> path,
+    double width,
+    double height,
+    double maxHealth,
+    double movementSpeed,
+    double attackDamage,
+    int spawnGroup,
+    int baseType,
+    Pointer<Utf8> breedingItem,
+    Pointer<Utf8> modelType,
+    Pointer<Utf8> texturePath,
+    double modelScale,
+    Pointer<Utf8> goalsJson,
+    Pointer<Utf8> targetGoalsJson);
+
+/// Signal that all registrations are queued
+typedef SignalRegistrationsQueuedNative = Void Function();
+typedef SignalRegistrationsQueuedDart = void Function();
 
 /// Bridge to the native library.
 class Bridge {
@@ -1154,6 +1262,60 @@ class Bridge {
     register(callback);
   }
 
+  // ===========================================================================
+  // Registry Ready Callback (for Flutter embedder timing)
+  // ===========================================================================
+
+  /// User-provided callback to be invoked when registries are ready
+  static void Function()? _onRegistryReadyCallback;
+
+  /// Native callback function pointer that bridges to Dart
+  static void _nativeRegistryReadyCallback() {
+    print('Bridge: Registry ready callback received from Java');
+    _onRegistryReadyCallback?.call();
+  }
+
+  /// Register a callback to be invoked when Java signals that registries are ready.
+  ///
+  /// With the Flutter embedder, Dart's `main()` runs immediately when the engine starts,
+  /// but Minecraft's registries may not be ready yet. Use this method to defer registration
+  /// of blocks, items, and entities until it's safe.
+  ///
+  /// Example:
+  /// ```dart
+  /// void main() {
+  ///   Bridge.initialize();
+  ///   Events.registerProxyBlockHandlers(); // These don't use registries
+  ///
+  ///   Bridge.onRegistryReady(() {
+  ///     // Now safe to register items, blocks, entities
+  ///     registerItems();
+  ///     registerBlocks();
+  ///     registerEntities();
+  ///   });
+  /// }
+  /// ```
+  static void onRegistryReady(void Function() callback) {
+    if (isDatagenMode) {
+      // In datagen mode, call immediately since there's no Java to signal
+      callback();
+      return;
+    }
+
+    _onRegistryReadyCallback = callback;
+
+    // Register the native callback with the C++ layer
+    // Use the server-side registration function which properly handles isolate entry/exit
+    // This is needed for dual-runtime mode where the callback is invoked from a different thread
+    final nativeCallback = Pointer.fromFunction<RegistryReadyCallbackNative>(
+      _nativeRegistryReadyCallback,
+    );
+    final register = library.lookupFunction<RegisterRegistryReadyHandlerNative,
+        RegisterRegistryReadyHandler>('server_register_registry_ready_handler');
+    register(nativeCallback);
+    print('Bridge: Registry ready callback registered');
+  }
+
   /// Stop the Minecraft server gracefully.
   ///
   /// This will cause the server to halt and exit. Use this when you need
@@ -1462,4 +1624,198 @@ class Bridge {
         RegisterCustomGoalStopHandler>('register_custom_goal_stop_handler');
     register(callback);
   }
+
+  // ===========================================================================
+  // Registration Queue Methods (for Flutter threading)
+  // ===========================================================================
+  //
+  // When running with Flutter embedder, Dart code executes on Thread-3 (Flutter's
+  // dart thread), but Minecraft registry calls must happen on the Render thread.
+  //
+  // These methods allow Dart to queue registrations from any thread, and Java
+  // processes them on the correct thread after FlutterEngineRun() returns.
+
+  /// Queue a block registration.
+  ///
+  /// This queues the block registration to be processed by Java on the correct thread.
+  /// Returns the pre-allocated handler ID so Dart can use it immediately for callbacks.
+  ///
+  /// Called from BlockRegistry.register() when running in Flutter mode.
+  static int queueBlockRegistration({
+    required String namespace,
+    required String path,
+    required double hardness,
+    required double resistance,
+    required bool requiresTool,
+    required int luminance,
+    required double slipperiness,
+    required double velocityMultiplier,
+    required double jumpVelocityMultiplier,
+    required bool ticksRandomly,
+    required bool collidable,
+    required bool replaceable,
+    required bool burnable,
+  }) {
+    if (isDatagenMode) {
+      // In datagen mode, return a dummy handler ID
+      return _datagenHandlerId++;
+    }
+
+    final fn = library.lookupFunction<QueueBlockRegistrationNative,
+        QueueBlockRegistrationDart>('queue_block_registration');
+
+    final nsPtr = namespace.toNativeUtf8();
+    final pathPtr = path.toNativeUtf8();
+
+    try {
+      return fn(
+        nsPtr,
+        pathPtr,
+        hardness,
+        resistance,
+        requiresTool,
+        luminance,
+        slipperiness,
+        velocityMultiplier,
+        jumpVelocityMultiplier,
+        ticksRandomly,
+        collidable,
+        replaceable,
+        burnable,
+      );
+    } finally {
+      calloc.free(nsPtr);
+      calloc.free(pathPtr);
+    }
+  }
+
+  /// Queue an item registration.
+  ///
+  /// This queues the item registration to be processed by Java on the correct thread.
+  /// Returns the pre-allocated handler ID so Dart can use it immediately for callbacks.
+  ///
+  /// Called from ItemRegistry.register() when running in Flutter mode.
+  static int queueItemRegistration({
+    required String namespace,
+    required String path,
+    required int maxStackSize,
+    required int maxDamage,
+    required bool fireResistant,
+    required double attackDamage,
+    required double attackSpeed,
+    required double attackKnockback,
+  }) {
+    if (isDatagenMode) {
+      // In datagen mode, return a dummy handler ID
+      return _datagenHandlerId++;
+    }
+
+    final fn = library.lookupFunction<QueueItemRegistrationNative,
+        QueueItemRegistrationDart>('queue_item_registration');
+
+    final nsPtr = namespace.toNativeUtf8();
+    final pathPtr = path.toNativeUtf8();
+
+    try {
+      return fn(
+        nsPtr,
+        pathPtr,
+        maxStackSize,
+        maxDamage,
+        fireResistant,
+        attackDamage,
+        attackSpeed,
+        attackKnockback,
+      );
+    } finally {
+      calloc.free(nsPtr);
+      calloc.free(pathPtr);
+    }
+  }
+
+  /// Queue an entity registration.
+  ///
+  /// This queues the entity registration to be processed by Java on the correct thread.
+  /// Returns the pre-allocated handler ID so Dart can use it immediately for callbacks.
+  ///
+  /// Called from EntityRegistry.register() when running in Flutter mode.
+  static int queueEntityRegistration({
+    required String namespace,
+    required String path,
+    required double width,
+    required double height,
+    required double maxHealth,
+    required double movementSpeed,
+    required double attackDamage,
+    required int spawnGroup,
+    required int baseType,
+    required String breedingItem,
+    required String modelType,
+    required String texturePath,
+    required double modelScale,
+    required String goalsJson,
+    required String targetGoalsJson,
+  }) {
+    if (isDatagenMode) {
+      // In datagen mode, return a dummy handler ID
+      return _datagenHandlerId++;
+    }
+
+    final fn = library.lookupFunction<QueueEntityRegistrationNative,
+        QueueEntityRegistrationDart>('queue_entity_registration');
+
+    final nsPtr = namespace.toNativeUtf8();
+    final pathPtr = path.toNativeUtf8();
+    final breedingItemPtr = breedingItem.toNativeUtf8();
+    final modelTypePtr = modelType.toNativeUtf8();
+    final texturePathPtr = texturePath.toNativeUtf8();
+    final goalsJsonPtr = goalsJson.toNativeUtf8();
+    final targetGoalsJsonPtr = targetGoalsJson.toNativeUtf8();
+
+    try {
+      return fn(
+        nsPtr,
+        pathPtr,
+        width,
+        height,
+        maxHealth,
+        movementSpeed,
+        attackDamage,
+        spawnGroup,
+        baseType,
+        breedingItemPtr,
+        modelTypePtr,
+        texturePathPtr,
+        modelScale,
+        goalsJsonPtr,
+        targetGoalsJsonPtr,
+      );
+    } finally {
+      calloc.free(nsPtr);
+      calloc.free(pathPtr);
+      calloc.free(breedingItemPtr);
+      calloc.free(modelTypePtr);
+      calloc.free(texturePathPtr);
+      calloc.free(goalsJsonPtr);
+      calloc.free(targetGoalsJsonPtr);
+    }
+  }
+
+  /// Signal to Java that all registrations have been queued.
+  ///
+  /// This must be called after all BlockRegistry.register(), ItemRegistry.register(),
+  /// and EntityRegistry.register() calls are complete. Java will then process the
+  /// queue on the Render thread.
+  static void signalRegistrationsQueued() {
+    if (isDatagenMode) return;
+
+    final fn = library.lookupFunction<SignalRegistrationsQueuedNative,
+        SignalRegistrationsQueuedDart>('signal_registrations_queued');
+    fn();
+    print('Bridge: Signaled registrations are queued');
+  }
+
+  /// Counter for datagen mode handler IDs
+  static int _datagenHandlerId = 1;
+
 }

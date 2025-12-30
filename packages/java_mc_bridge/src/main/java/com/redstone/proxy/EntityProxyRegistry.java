@@ -26,12 +26,13 @@ import java.util.Map;
  * This registry manages the lifecycle of proxy entities and provides
  * methods for registering new entities from Dart code.
  *
- * The registration process is two-phase:
- * 1. createEntity() - Called from Dart to reserve a handler ID and store entity settings
- * 2. registerEntity() - Called from Dart to register the entity with Minecraft's registry
+ * Entity registration uses a queue-based approach:
+ * 1. Dart calls Bridge.queueEntityRegistration() which queues the registration in native code
+ * 2. Java's DartModLoader.processQueuedRegistrations() pulls from the queue and calls
+ *    registerEntityWithHandlerId() on the main thread where Minecraft registries are safe to use
  *
- * This two-phase approach is needed because Minecraft requires a ResourceKey during
- * entity construction, but we don't know the entity's namespace:path until registration.
+ * This queue-based approach avoids "Game version not set" errors that occur when trying
+ * to access Minecraft registries from the Dart/Flutter thread (Thread-3).
  */
 public class EntityProxyRegistry {
     private static final Logger LOGGER = LoggerFactory.getLogger("EntityProxyRegistry");
@@ -115,7 +116,8 @@ public class EntityProxyRegistry {
     public static final int BASE_TYPE_PROJECTILE = 3;
 
     /**
-     * Holds entity settings between createEntity() and registerEntity() calls.
+     * Holds entity settings between registerEntityWithHandlerId() and registerEntity() calls.
+     * Used by the queue-based registration system.
      */
     private record EntitySettings(
         double width, double height, double maxHealth,
@@ -124,61 +126,13 @@ public class EntityProxyRegistry {
     ) {}
 
     /**
-     * Create a new entity slot with the given settings.
-     * Returns the handler ID that links to this entity.
-     *
-     * Called from Dart via JNI during the first phase of entity registration.
-     *
-     * @param width Entity collision box width.
-     * @param height Entity collision box height.
-     * @param maxHealth Maximum health points.
-     * @param movementSpeed Movement speed multiplier.
-     * @param attackDamage Base attack damage.
-     * @param spawnGroup Spawn group ordinal (0=monster, 1=creature, 2=ambient, 3=water_creature, 4=misc).
-     * @param baseType Entity base type (0=PathfinderMob, 1=Monster, 2=Animal, 3=Projectile).
-     * @return The handler ID to use when registering the entity.
-     */
-    public static long createEntity(double width, double height, double maxHealth,
-                                     double movementSpeed, double attackDamage, int spawnGroup, int baseType) {
-        return createEntityWithBreedingItem(width, height, maxHealth, movementSpeed, attackDamage, spawnGroup, baseType, null);
-    }
-
-    /**
-     * Create a new entity slot with the given settings, including breeding item for animals.
-     * Returns the handler ID that links to this entity.
-     *
-     * Called from Dart via JNI during the first phase of entity registration.
-     *
-     * @param width Entity collision box width.
-     * @param height Entity collision box height.
-     * @param maxHealth Maximum health points.
-     * @param movementSpeed Movement speed multiplier.
-     * @param attackDamage Base attack damage.
-     * @param spawnGroup Spawn group ordinal (0=monster, 1=creature, 2=ambient, 3=water_creature, 4=misc).
-     * @param baseType Entity base type (0=PathfinderMob, 1=Monster, 2=Animal, 3=Projectile).
-     * @param breedingItem The breeding item identifier (e.g., "minecraft:wheat"), or null if not applicable.
-     * @return The handler ID to use when registering the entity.
-     */
-    public static long createEntityWithBreedingItem(double width, double height, double maxHealth,
-                                     double movementSpeed, double attackDamage, int spawnGroup, int baseType,
-                                     String breedingItem) {
-        long handlerId = nextHandlerId++;
-
-        // Store settings for use during registerEntity()
-        pendingSettings.put(handlerId, new EntitySettings(
-            width, height, maxHealth, movementSpeed, attackDamage, spawnGroup, baseType, breedingItem));
-
-        LOGGER.info("Created entity slot with handler ID: {}, baseType: {}, breedingItem: {}", handlerId, baseType, breedingItem);
-        return handlerId;
-    }
-
-    /**
      * Register the entity with Minecraft's registry.
      * Must be called during mod initialization before registry freeze.
      *
-     * Called from Dart via JNI during the second phase of entity registration.
+     * This is called internally by registerEntityWithHandlerId() after storing
+     * settings in pendingSettings.
      *
-     * @param handlerId The handler ID returned by createEntity().
+     * @param handlerId The handler ID from the registration queue.
      * @param namespace The entity namespace (e.g., "dartmod").
      * @param path The entity path (e.g., "custom_zombie").
      * @return true if registration succeeded, false otherwise.
@@ -469,5 +423,62 @@ public class EntityProxyRegistry {
      */
     public static int getEntityCount() {
         return entityTypes.size();
+    }
+
+    /**
+     * Register an entity with a pre-allocated handler ID.
+     * This is the queue-based registration method used by the registration queue system.
+     *
+     * @param handlerId Pre-allocated handler ID from the native queue.
+     * @param namespace The entity namespace (e.g., "dartmod").
+     * @param path The entity path (e.g., "custom_zombie").
+     * @param width Entity collision box width.
+     * @param height Entity collision box height.
+     * @param maxHealth Maximum health points.
+     * @param movementSpeed Movement speed multiplier.
+     * @param attackDamage Base attack damage.
+     * @param spawnGroup Spawn group ordinal (0=monster, 1=creature, 2=ambient, 3=water_creature, 4=misc).
+     * @param baseType Entity base type (0=PathfinderMob, 1=Monster, 2=Animal, 3=Projectile).
+     * @param breedingItem The breeding item identifier (e.g., "minecraft:wheat"), or null/empty if not applicable.
+     * @param modelType The model type (e.g., "humanoid"), or null/empty if no model.
+     * @param texturePath The texture path, or null/empty if no model.
+     * @param modelScale The model scale factor.
+     * @param goalsJson JSON array of goal configurations, or null/empty if none.
+     * @param targetGoalsJson JSON array of target goal configurations, or null/empty if none.
+     * @return true if registration succeeded, false otherwise.
+     */
+    public static boolean registerEntityWithHandlerId(
+            long handlerId, String namespace, String path,
+            double width, double height, double maxHealth,
+            double movementSpeed, double attackDamage,
+            int spawnGroup, int baseType,
+            String breedingItem,
+            String modelType, String texturePath, double modelScale,
+            String goalsJson, String targetGoalsJson) {
+
+        // Store settings for use during registration
+        pendingSettings.put(handlerId, new EntitySettings(
+            width, height, maxHealth, movementSpeed, attackDamage, spawnGroup, baseType, breedingItem));
+
+        // Update the nextHandlerId to avoid conflicts (handler IDs are pre-allocated by native code)
+        if (handlerId >= nextHandlerId) {
+            nextHandlerId = handlerId + 1;
+        }
+
+        LOGGER.info("Registering entity with pre-allocated handler ID: {}, baseType: {}, breedingItem: {}",
+            handlerId, baseType, breedingItem);
+
+        // Register model config if provided
+        if (modelType != null && !modelType.isEmpty()) {
+            registerModelConfig(handlerId, modelType, texturePath, modelScale);
+        }
+
+        // Register goal configs if provided
+        if ((goalsJson != null && !goalsJson.isEmpty()) || (targetGoalsJson != null && !targetGoalsJson.isEmpty())) {
+            registerGoalConfig(handlerId, goalsJson, targetGoalsJson);
+        }
+
+        // Register the entity
+        return registerEntity(handlerId, namespace, path);
     }
 }

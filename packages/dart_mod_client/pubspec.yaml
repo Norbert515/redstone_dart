@@ -1,0 +1,14 @@
+name: dart_mod_client
+description: Client-side Dart Minecraft mod runtime with Flutter integration
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  dart_mod_common:
+    path: ../dart_mod_common
+  flutter:
+    sdk: flutter
+  ffi: ^2.0.0

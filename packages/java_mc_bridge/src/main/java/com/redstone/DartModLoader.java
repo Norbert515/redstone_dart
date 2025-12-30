@@ -1,5 +1,6 @@
 package com.redstone;
 
+import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -10,6 +11,7 @@ import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -30,12 +32,17 @@ import java.nio.file.Path;
 import net.minecraft.world.level.storage.LevelResource;
 
 /**
- * Fabric mod initializer that loads and manages the Dart VM.
+ * Fabric mod initializer that loads and manages the server-side Dart runtime.
  *
  * This class is responsible for:
- * - Initializing the Dart VM when the server starts
+ * - Initializing the server Dart runtime during mod initialization
+ * - Processing registration queues (blocks, items, entities)
  * - Forwarding Minecraft events to Dart handlers
- * - Shutting down the Dart VM when the server stops
+ * - Ticking the server runtime each game tick
+ * - Shutting down the server runtime when the server stops
+ *
+ * Note: The client runtime (Flutter) is initialized separately in DartModClientLoader.
+ * On dedicated servers, only this server runtime exists.
  */
 public class DartModLoader implements ModInitializer {
     public static final String MOD_ID = "dart_bridge";
@@ -44,64 +51,233 @@ public class DartModLoader implements ModInitializer {
     private static MinecraftServer serverInstance = null;
 
     /**
-     * Get the path to the Dart script file.
+     * Process all queued registrations from the native queue.
+     * This is called after Dart has finished queueing registrations and must run
+     * on the main/render thread where Minecraft registry operations are safe.
+     */
+    private static void processQueuedRegistrations() {
+        int blocksRegistered = 0;
+        int itemsRegistered = 0;
+        int entitiesRegistered = 0;
+
+        LOGGER.info("[{}] Processing queued registrations...", MOD_ID);
+
+        // Process all queued block registrations
+        while (DartBridge.hasPendingBlockRegistrations()) {
+            Object[] blockReg = DartBridge.getNextBlockRegistration();
+            if (blockReg == null) break;
+
+            // Extract registration data from the array
+            // Format: [handlerId, namespace, path, hardness, resistance, requiresTool,
+            //          luminance, slipperiness, velocityMult, jumpVelocityMult,
+            //          ticksRandomly, collidable, replaceable, burnable]
+            long handlerId = (Long) blockReg[0];
+            String namespace = (String) blockReg[1];
+            String path = (String) blockReg[2];
+            float hardness = (Float) blockReg[3];
+            float resistance = (Float) blockReg[4];
+            boolean requiresTool = (Boolean) blockReg[5];
+            int luminance = (Integer) blockReg[6];
+            double slipperiness = (Double) blockReg[7];
+            double velocityMult = (Double) blockReg[8];
+            double jumpVelocityMult = (Double) blockReg[9];
+            boolean ticksRandomly = (Boolean) blockReg[10];
+            boolean collidable = (Boolean) blockReg[11];
+            boolean replaceable = (Boolean) blockReg[12];
+            boolean burnable = (Boolean) blockReg[13];
+
+            boolean success = com.redstone.proxy.ProxyRegistry.registerBlockWithHandlerId(
+                handlerId, namespace, path, hardness, resistance, requiresTool,
+                luminance, slipperiness, velocityMult, jumpVelocityMult,
+                ticksRandomly, collidable, replaceable, burnable
+            );
+
+            if (success) {
+                blocksRegistered++;
+            } else {
+                LOGGER.error("[{}] Failed to register queued block: {}:{}", MOD_ID, namespace, path);
+            }
+        }
+
+        // Process all queued item registrations
+        while (DartBridge.hasPendingItemRegistrations()) {
+            Object[] itemReg = DartBridge.getNextItemRegistration();
+            if (itemReg == null) break;
+
+            // Extract registration data from the array
+            // Format: [handlerId, namespace, path, maxStackSize, maxDamage, fireResistant,
+            //          attackDamage, attackSpeed, attackKnockback]
+            long handlerId = (Long) itemReg[0];
+            String namespace = (String) itemReg[1];
+            String path = (String) itemReg[2];
+            int maxStackSize = (Integer) itemReg[3];
+            int maxDamage = (Integer) itemReg[4];
+            boolean fireResistant = (Boolean) itemReg[5];
+            double attackDamage = (Double) itemReg[6];
+            double attackSpeed = (Double) itemReg[7];
+            double attackKnockback = (Double) itemReg[8];
+
+            boolean success = com.redstone.proxy.ProxyRegistry.registerItemWithHandlerId(
+                handlerId, namespace, path, maxStackSize, maxDamage, fireResistant,
+                attackDamage, attackSpeed, attackKnockback
+            );
+
+            if (success) {
+                itemsRegistered++;
+            } else {
+                LOGGER.error("[{}] Failed to register queued item: {}:{}", MOD_ID, namespace, path);
+            }
+        }
+
+        // Process all queued entity registrations
+        while (DartBridge.hasPendingEntityRegistrations()) {
+            Object[] entityReg = DartBridge.getNextEntityRegistration();
+            if (entityReg == null) break;
+
+            // Extract registration data from the array
+            // Format: [handlerId, namespace, path, width, height, maxHealth,
+            //          movementSpeed, attackDamage, spawnGroup, baseType,
+            //          breedingItem, modelType, texturePath, modelScale, goalsJson, targetGoalsJson]
+            long handlerId = (Long) entityReg[0];
+            String namespace = (String) entityReg[1];
+            String path = (String) entityReg[2];
+            double width = (Double) entityReg[3];
+            double height = (Double) entityReg[4];
+            double maxHealth = (Double) entityReg[5];
+            double movementSpeed = (Double) entityReg[6];
+            double attackDamage = (Double) entityReg[7];
+            int spawnGroup = (Integer) entityReg[8];
+            int baseType = (Integer) entityReg[9];
+            String breedingItem = (String) entityReg[10];
+            String modelType = (String) entityReg[11];
+            String texturePath = (String) entityReg[12];
+            double modelScale = (Double) entityReg[13];
+            String goalsJson = (String) entityReg[14];
+            String targetGoalsJson = (String) entityReg[15];
+
+            boolean success = com.redstone.proxy.EntityProxyRegistry.registerEntityWithHandlerId(
+                handlerId, namespace, path, width, height, maxHealth,
+                movementSpeed, attackDamage, spawnGroup, baseType,
+                breedingItem, modelType, texturePath, modelScale,
+                goalsJson, targetGoalsJson
+            );
+
+            if (success) {
+                entitiesRegistered++;
+            } else {
+                LOGGER.error("[{}] Failed to register queued entity: {}:{}", MOD_ID, namespace, path);
+            }
+        }
+
+        LOGGER.info("[{}] Queued registrations complete: {} blocks, {} items, {} entities", MOD_ID, blocksRegistered, itemsRegistered, entitiesRegistered);
+    }
+
+    /**
+     * Get the path to the server Dart kernel snapshot or script.
      *
      * Checks in order:
-     * 1. DART_SCRIPT_PATH system property (set by Gradle JVM args)
-     * 2. DART_SCRIPT_PATH environment variable (set by CLI)
+     * 1. DART_SERVER_SCRIPT system property (set by Gradle JVM args)
+     * 2. DART_SERVER_SCRIPT environment variable (set by CLI)
      * 3. Standard search paths relative to run directory
+     *
+     * @return Path to the server Dart kernel blob or script
      */
-    private static String getScriptPath() {
+    private static String getServerScriptPath() {
         // First check for system property (used by redstone CLI via Gradle)
-        String propPath = System.getProperty("DART_SCRIPT_PATH");
+        String propPath = System.getProperty("DART_SERVER_SCRIPT");
         if (propPath != null && !propPath.isEmpty()) {
             File f = new File(propPath);
             if (f.exists()) {
-                LOGGER.info("[{}] Using script path from system property DART_SCRIPT_PATH: {}", MOD_ID, propPath);
+                LOGGER.info("[{}] Using server script from system property DART_SERVER_SCRIPT: {}", MOD_ID, propPath);
                 return f.getAbsolutePath();
             } else {
-                LOGGER.warn("[{}] DART_SCRIPT_PATH property set but file not found: {}", MOD_ID, propPath);
+                LOGGER.warn("[{}] DART_SERVER_SCRIPT property set but file not found: {}", MOD_ID, propPath);
             }
         }
 
         // Then check for environment variable (used by redstone CLI)
-        String envPath = System.getenv("DART_SCRIPT_PATH");
+        String envPath = System.getenv("DART_SERVER_SCRIPT");
         if (envPath != null && !envPath.isEmpty()) {
             File f = new File(envPath);
             if (f.exists()) {
-                LOGGER.info("[{}] Using script path from DART_SCRIPT_PATH env var: {}", MOD_ID, envPath);
+                LOGGER.info("[{}] Using server script from DART_SERVER_SCRIPT env var: {}", MOD_ID, envPath);
                 return f.getAbsolutePath();
             } else {
-                LOGGER.warn("[{}] DART_SCRIPT_PATH env var set but file not found: {}", MOD_ID, envPath);
+                LOGGER.warn("[{}] DART_SERVER_SCRIPT env var set but file not found: {}", MOD_ID, envPath);
             }
         }
 
-        // Look for dart_mc in several locations
-        // Prefer the package structure (dart_mc/lib/dart_mc.dart) over single file
+        // Look for server script in several locations
+        // dart_dll compiles source files at runtime, so prefer .dart files
         String[] searchPaths = {
-            "mods/dart_mc/lib/dart_mc.dart",  // Package structure
-            "mods/dart_mc.dart",               // Single file
-            "dart_mc/lib/dart_mc.dart",
-            "dart_mc.dart",
-            "config/dart_mc.dart"
+            "mods/dart_mc/lib/server/main.dart", // Server entry point (preferred)
+            "mods/dart_mc/lib/main.dart",        // Legacy single-file script
+            "lib/server/main.dart",              // Current directory
+            "lib/main.dart",                     // Current directory
         };
 
         String runDir = System.getProperty("user.dir");
         for (String path : searchPaths) {
             File f = new File(runDir, path);
             if (f.exists()) {
+                LOGGER.info("[{}] Found server script at: {}", MOD_ID, f.getAbsolutePath());
                 return f.getAbsolutePath();
             }
         }
 
-        // Default path
-        return Path.of(runDir, "mods", "dart_mc", "lib", "dart_mc.dart").toAbsolutePath().toString();
+        // Default path - source file that dart_dll will compile at runtime
+        return Path.of(runDir, "mods", "dart_mc", "lib", "server", "main.dart").toAbsolutePath().toString();
+    }
+
+    /**
+     * Get the path to the package config file for Dart.
+     *
+     * @return Path to package_config.json, or empty string if not found
+     */
+    private static String getPackageConfigPath() {
+        // First check for system property
+        String propPath = System.getProperty("DART_PACKAGE_CONFIG");
+        if (propPath != null && !propPath.isEmpty()) {
+            File f = new File(propPath);
+            if (f.exists()) {
+                LOGGER.info("[{}] Using package config from system property DART_PACKAGE_CONFIG: {}", MOD_ID, propPath);
+                return f.getAbsolutePath();
+            }
+        }
+
+        // Then check for environment variable
+        String envPath = System.getenv("DART_PACKAGE_CONFIG");
+        if (envPath != null && !envPath.isEmpty()) {
+            File f = new File(envPath);
+            if (f.exists()) {
+                LOGGER.info("[{}] Using package config from DART_PACKAGE_CONFIG env var: {}", MOD_ID, envPath);
+                return f.getAbsolutePath();
+            }
+        }
+
+        // Look for package config in several locations
+        String[] searchPaths = {
+            "mods/dart_mc/.dart_tool/package_config.json",
+            ".dart_tool/package_config.json"
+        };
+
+        String runDir = System.getProperty("user.dir");
+        for (String path : searchPaths) {
+            File f = new File(runDir, path);
+            if (f.exists()) {
+                LOGGER.info("[{}] Found package config at: {}", MOD_ID, f.getAbsolutePath());
+                return f.getAbsolutePath();
+            }
+        }
+
+        // Not found - return empty string (kernel snapshots don't need this)
+        return "";
     }
 
     @Override
     public void onInitialize() {
         System.out.println("===== DART BRIDGE INIT START =====");
-        LOGGER.info("[{}] Initializing Dart Bridge mod...", MOD_ID);
+        LOGGER.info("[{}] Initializing Dart Bridge mod (server runtime)...", MOD_ID);
 
         // Initialize Redstone menu types
         RedstoneMenuTypes.initialize();
@@ -115,33 +291,71 @@ public class DartModLoader implements ModInitializer {
             return;
         }
 
-        // Initialize Dart VM NOW during mod initialization (before registry freeze)
-        // This is critical - block registration must happen during onInitialize()
-        String scriptPath = getScriptPath();
-        System.out.println("===== Script path: " + scriptPath + " =====");
-        LOGGER.info("[{}] Script path: {}", MOD_ID, scriptPath);
+        // Get server script path (Dart kernel snapshot or script)
+        String serverScriptPath = getServerScriptPath();
+        String packageConfigPath = getPackageConfigPath();
 
-        File scriptFile = new File(scriptPath);
+        System.out.println("===== Server script path: " + serverScriptPath + " =====");
+        System.out.println("===== Package config path: " + (packageConfigPath.isEmpty() ? "(none)" : packageConfigPath) + " =====");
+        LOGGER.info("[{}] Server script path: {}", MOD_ID, serverScriptPath);
+        LOGGER.info("[{}] Package config path: {}", MOD_ID, packageConfigPath.isEmpty() ? "(none)" : packageConfigPath);
+
+        File scriptFile = new File(serverScriptPath);
         boolean scriptExists = scriptFile.exists();
-        System.out.println("===== Script exists: " + scriptExists + " =====");
-        LOGGER.info("[{}] Script exists: {}", MOD_ID, scriptExists);
+
+        System.out.println("===== Server script exists: " + scriptExists + " =====");
+        LOGGER.info("[{}] Server script exists: {}", MOD_ID, scriptExists);
 
         if (!scriptExists) {
-            LOGGER.error("[{}] Dart script not found at: {}", MOD_ID, scriptPath);
-            LOGGER.error("[{}] Please place your dart_mc.dart file in the mods folder", MOD_ID);
+            LOGGER.error("[{}] Server script not found at: {}", MOD_ID, serverScriptPath);
+            LOGGER.error("[{}] Server script not found. Make sure to run with --dual-runtime flag or ensure server_kernel.dill exists at: {}", MOD_ID, serverScriptPath);
+            System.exit(1);
         } else {
-            // Initialize Dart VM synchronously during mod init
-            // This allows Dart to register blocks before the registry freezes
-            System.out.println("===== Calling DartBridge.safeInit =====");
-            boolean initResult = DartBridge.safeInit(scriptPath);
+            // Initialize the server Dart runtime
+            boolean isClient = FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT;
+            System.out.println("===== Environment: " + (isClient ? "CLIENT" : "SERVER") + " =====");
+            LOGGER.info("[{}] Environment: {}", MOD_ID, isClient ? "CLIENT" : "SERVER");
+
+            System.out.println("===== Calling DartBridge.safeInitServerRuntime =====");
+            boolean initResult = DartBridge.safeInitServerRuntime(serverScriptPath, packageConfigPath);
             System.out.println("===== Init result: " + initResult + " =====");
             LOGGER.info("[{}] Init result: {}", MOD_ID, initResult);
+
             if (!initResult) {
-                LOGGER.error("[{}] Failed to initialize Dart VM!", MOD_ID);
-                LOGGER.error("[{}] Exiting due to Dart initialization failure.", MOD_ID);
+                LOGGER.error("[{}] Failed to initialize server Dart runtime!", MOD_ID);
+                LOGGER.error("[{}] Exiting due to server runtime initialization failure.", MOD_ID);
                 System.exit(1);
             } else {
-                LOGGER.info("[{}] Dart VM initialized successfully!", MOD_ID);
+                LOGGER.info("[{}] Server Dart runtime initialized successfully!", MOD_ID);
+
+                // Signal to Dart that it's safe to register items/blocks now
+                // This is critical - Dart's main() runs when the runtime starts,
+                // but we need to wait until this point to register items/blocks
+                // while registries are still open
+                LOGGER.info("[{}] Signaling registry ready to Dart...", MOD_ID);
+                DartBridge.signalRegistryReady();
+
+                // Wait for Dart to finish queueing registrations
+                LOGGER.info("[{}] Waiting for Dart to finish queueing registrations...", MOD_ID);
+                int waitMs = 0;
+                int maxWaitMs = 5000;  // 5 second timeout
+                while (!DartBridge.areRegistrationsQueued() && waitMs < maxWaitMs) {
+                    try {
+                        Thread.sleep(50);
+                        waitMs += 50;
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                }
+
+                if (!DartBridge.areRegistrationsQueued()) {
+                    LOGGER.warn("[{}] Dart did not signal registrations complete within timeout ({}ms)", MOD_ID, maxWaitMs);
+                } else {
+                    LOGGER.info("[{}] Dart finished queueing registrations after {}ms", MOD_ID, waitMs);
+                }
+
+                // Process all queued registrations ON THIS THREAD (main thread - safe!)
+                processQueuedRegistrations();
             }
         }
         System.out.println("===== DART BRIDGE INIT END =====");
@@ -169,10 +383,10 @@ public class DartModLoader implements ModInitializer {
             });
         });
 
-        // Shutdown Dart VM when server stops
+        // Shutdown server Dart runtime when server stops
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
-            LOGGER.info("[{}] Server stopped, shutting down Dart VM...", MOD_ID);
-            DartBridge.safeShutdown();
+            LOGGER.info("[{}] Server stopped, shutting down server Dart runtime...", MOD_ID);
+            DartBridge.safeShutdownServerRuntime();
             DartBridge.setServerInstance(null);
             serverInstance = null;
         });
@@ -234,11 +448,13 @@ public class DartModLoader implements ModInitializer {
             }
         });
 
-        // Register tick event - process Dart async tasks and dispatch tick
+        // Register tick event - process server Dart async tasks and dispatch tick
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             if (DartBridge.isInitialized()) {
+                // First tick the server runtime to process pending async tasks
+                DartBridge.safeTickServer();
+                // Then dispatch the tick event to Dart handlers
                 DartBridge.dispatchTick(tickCounter++);
-                DartBridge.safeTick();
             }
         });
 

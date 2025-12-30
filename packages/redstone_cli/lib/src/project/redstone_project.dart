@@ -42,6 +42,15 @@ class RedstoneProject {
   /// Path to generated asset manifest (written by Dart mod at runtime)
   String get manifestPath => p.join(minecraftDir, 'run', '.redstone', 'manifest.json');
 
+  /// Directory for Flutter assets (kernel_blob.bin, etc.)
+  String get flutterAssetsDir => p.join(redstoneDir, 'flutter_assets');
+
+  /// Path to the main Dart entry point
+  String get entryPoint => p.join(rootDir, 'lib', 'main.dart');
+
+  /// Path to .dart_tool/package_config.json
+  String get packagesConfigPath => p.join(rootDir, '.dart_tool', 'package_config.json');
+
   /// Get Minecraft assets directory for a namespace
   String minecraftAssetsDir(String namespace) =>
       p.join(minecraftDir, 'src', 'main', 'resources', 'assets', namespace);

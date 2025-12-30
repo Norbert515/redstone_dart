@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'custom_item.dart';
-import '../src/jni/generic_bridge.dart';
+import '../src/bridge.dart';
 
 /// Registry for Dart-defined items.
 ///
@@ -31,6 +31,10 @@ class ItemRegistry {
   /// Throws [StateError] if called after initialization.
   ///
   /// Returns the handler ID assigned to this item.
+  ///
+  /// With Flutter embedder, this queues the registration to be processed by Java
+  /// on the correct thread. The handler ID is pre-allocated so Dart can use it
+  /// immediately for callback handling.
   static int register(CustomItem item) {
     if (_frozen) {
       throw StateError(
@@ -59,45 +63,34 @@ class ItemRegistry {
     final attackSpeed = combat?.attackSpeed ?? double.nan;
     final attackKnockback = combat?.attackKnockback ?? double.nan;
 
-    // Create the proxy item in Java
-    final handlerId = GenericJniBridge.callStaticLongMethod(
-      'com/redstone/proxy/ProxyRegistry',
-      'createItem',
-      '(IIZDDD)J',
-      [
-        item.settings.maxStackSize,
-        item.settings.maxDamage,
-        item.settings.fireResistant,
-        attackDamage,
-        attackSpeed,
-        attackKnockback,
-      ],
+    // Queue the item registration via the native bridge.
+    // This is thread-safe and works from any thread (including Flutter's Thread-3).
+    // Java will process the queue on the main/render thread after we signal completion.
+    // The handler ID is pre-allocated in C++ so we can use it immediately.
+    final handlerId = Bridge.queueItemRegistration(
+      namespace: namespace,
+      path: path,
+      maxStackSize: item.settings.maxStackSize,
+      maxDamage: item.settings.maxDamage,
+      fireResistant: item.settings.fireResistant,
+      attackDamage: attackDamage,
+      attackSpeed: attackSpeed,
+      attackKnockback: attackKnockback,
     );
 
     if (handlerId == 0) {
-      throw StateError('Failed to create proxy item for: ${item.id}');
-    }
-
-    // Register with Minecraft's registry
-    final success = GenericJniBridge.callStaticBoolMethod(
-      'com/redstone/proxy/ProxyRegistry',
-      'registerItem',
-      '(JLjava/lang/String;Ljava/lang/String;)Z',
-      [handlerId, namespace, path],
-    );
-
-    if (!success) {
-      throw StateError('Failed to register item with Minecraft: ${item.id}');
+      throw StateError('Failed to queue item registration for: ${item.id}');
     }
 
     // Store the item and set its handler ID
+    // The handler ID is pre-allocated, so callbacks will work immediately
     item.setHandlerId(handlerId);
     _items[handlerId] = item;
 
     // Write manifest after each registration
     _writeManifest();
 
-    print('ItemRegistry: Registered ${item.id} with handler ID $handlerId');
+    print('ItemRegistry: Queued ${item.id} with handler ID $handlerId');
     return handlerId;
   }
 

@@ -6,7 +6,6 @@ import 'dart:io';
 
 import 'custom_block.dart';
 import '../src/bridge.dart';
-import '../src/jni/generic_bridge.dart';
 
 /// Registry for Dart-defined blocks.
 ///
@@ -33,6 +32,10 @@ class BlockRegistry {
   /// Throws [StateError] if called after initialization.
   ///
   /// Returns the handler ID assigned to this block.
+  ///
+  /// With Flutter embedder, this queues the registration to be processed by Java
+  /// on the correct thread. The handler ID is pre-allocated so Dart can use it
+  /// immediately for callback handling.
   static int register(CustomBlock block) {
     if (_frozen) {
       throw StateError(
@@ -55,55 +58,39 @@ class BlockRegistry {
     final namespace = parts[0];
     final path = parts[1];
 
-    // Create the proxy block in Java
-    // JNI signature: (FFZ I DDD ZZZ Z)J
-    // float hardness, float resistance, boolean requiresTool,
-    // int luminance, double slipperiness, double velocityMultiplier, double jumpVelocityMultiplier,
-    // boolean ticksRandomly, boolean collidable, boolean replaceable, boolean burnable
-    // returns long
-    final handlerId = GenericJniBridge.callStaticLongMethod(
-      'com/redstone/proxy/ProxyRegistry',
-      'createBlock',
-      '(FFZIDDDZZZ Z)J'.replaceAll(' ', ''),
-      [
-        block.settings.hardness,
-        block.settings.resistance,
-        block.settings.requiresTool,
-        block.settings.luminance,
-        block.settings.slipperiness,
-        block.settings.velocityMultiplier,
-        block.settings.jumpVelocityMultiplier,
-        block.settings.ticksRandomly,
-        block.settings.collidable,
-        block.settings.replaceable,
-        block.settings.burnable,
-      ],
+    // Queue the block registration via the native bridge.
+    // This is thread-safe and works from any thread (including Flutter's Thread-3).
+    // Java will process the queue on the main/render thread after we signal completion.
+    // The handler ID is pre-allocated in C++ so we can use it immediately.
+    final handlerId = Bridge.queueBlockRegistration(
+      namespace: namespace,
+      path: path,
+      hardness: block.settings.hardness,
+      resistance: block.settings.resistance,
+      requiresTool: block.settings.requiresTool,
+      luminance: block.settings.luminance,
+      slipperiness: block.settings.slipperiness,
+      velocityMultiplier: block.settings.velocityMultiplier,
+      jumpVelocityMultiplier: block.settings.jumpVelocityMultiplier,
+      ticksRandomly: block.settings.ticksRandomly,
+      collidable: block.settings.collidable,
+      replaceable: block.settings.replaceable,
+      burnable: block.settings.burnable,
     );
 
     if (handlerId == 0) {
-      throw StateError('Failed to create proxy block for: ${block.id}');
-    }
-
-    // Register with Minecraft's registry
-    final success = GenericJniBridge.callStaticBoolMethod(
-      'com/redstone/proxy/ProxyRegistry',
-      'registerBlock',
-      '(JLjava/lang/String;Ljava/lang/String;)Z',
-      [handlerId, namespace, path],
-    );
-
-    if (!success) {
-      throw StateError('Failed to register block with Minecraft: ${block.id}');
+      throw StateError('Failed to queue block registration for: ${block.id}');
     }
 
     // Store the block and set its handler ID
+    // The handler ID is pre-allocated, so callbacks will work immediately
     block.setHandlerId(handlerId);
     _blocks[handlerId] = block;
 
     // Write manifest after each registration
     _writeManifest();
 
-    print('BlockRegistry: Registered ${block.id} with handler ID $handlerId');
+    print('BlockRegistry: Queued ${block.id} with handler ID $handlerId');
     return handlerId;
   }
 

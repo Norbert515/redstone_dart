@@ -10,20 +10,278 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Client-side bridge for Dart test framework.
+ * Client-side bridge for Dart/Flutter integration.
  *
- * Provides methods for visual testing such as taking screenshots
- * and positioning the camera. All methods are client-only and must
- * be called from the render thread.
+ * This class manages the Flutter client runtime which runs on the render thread.
+ * It provides:
+ * - Flutter engine initialization and lifecycle
+ * - Flutter rendering for GUI screens
+ * - Input event forwarding to Flutter
+ * - Visual testing utilities (screenshots, camera positioning)
+ *
+ * The client runtime is separate from the server runtime (DartBridge).
+ * Server runtime handles game logic; client runtime handles Flutter UI.
  */
 @Environment(EnvType.CLIENT)
 public class DartBridgeClient {
     private static final Logger LOGGER = LoggerFactory.getLogger("DartBridgeClient");
+
+    // Flag indicating if the client runtime is initialized
+    private static boolean clientInitialized = false;
+
+    // ==========================================================================
+    // Client Runtime Native Methods (Flutter Engine)
+    // ==========================================================================
+
+    /**
+     * Initialize the Flutter client runtime.
+     *
+     * @param assetsPath Path to flutter_assets/ directory
+     * @param icuDataPath Path to icudtl.dat file
+     * @param aotLibraryPath Path to AOT library (can be empty for JIT mode)
+     * @param enableRendering true to enable Flutter rendering (always true for client)
+     * @return true if initialization succeeded
+     */
+    private static native boolean initClient(String assetsPath, String icuDataPath,
+                                             String aotLibraryPath, boolean enableRendering);
+
+    /**
+     * Shutdown the Flutter client runtime and clean up resources.
+     */
+    private static native void shutdownClient();
+
+    /**
+     * Process Flutter engine tasks - pumps the Flutter event loop.
+     * Must be called on the same thread that initialized the engine (render thread).
+     */
+    private static native void processClientTasks();
+
+    // ==========================================================================
+    // Flutter Rendering Native Methods
+    // ==========================================================================
+
+    /**
+     * Get the latest frame pixels from Flutter rendering.
+     * Returns a direct ByteBuffer with RGBA pixel data.
+     * The buffer is only valid until the next call to getFramePixels().
+     */
+    public static native ByteBuffer getFramePixels();
+
+    /**
+     * Get the width of the current Flutter frame.
+     */
+    public static native int getFrameWidth();
+
+    /**
+     * Get the height of the current Flutter frame.
+     */
+    public static native int getFrameHeight();
+
+    /**
+     * Check if Flutter has rendered a new frame since the last check.
+     */
+    public static native boolean hasNewFrame();
+
+    /**
+     * Send window metrics to Flutter (call when window/screen resizes).
+     * @param width Screen width in GUI coordinates
+     * @param height Screen height in GUI coordinates
+     * @param pixelRatio The GUI scale factor (e.g., 2.0 for Retina)
+     */
+    public static native void sendWindowMetrics(int width, int height, double pixelRatio);
+
+    /**
+     * Send a pointer/mouse event to Flutter.
+     * @param phase Pointer phase: 0=cancel, 1=up, 2=down, 3=move, 4=add, 5=remove, 6=hover
+     * @param x X coordinate in pixels
+     * @param y Y coordinate in pixels
+     * @param buttons Button state bitmask (1=primary, 2=secondary, 4=middle)
+     */
+    public static native void sendPointerEvent(int phase, double x, double y, long buttons);
+
+    /**
+     * Send a keyboard event to Flutter.
+     * @param type Event type: 0=down, 1=up, 2=repeat
+     * @param physicalKey Physical key code
+     * @param logicalKey Logical key code
+     * @param characters The character(s) produced by the key (can be null)
+     * @param modifiers Modifier key state bitmask
+     */
+    public static native void sendKeyEvent(int type, long physicalKey, long logicalKey, String characters, int modifiers);
+
+    // ==========================================================================
+    // Client Runtime Public Methods
+    // ==========================================================================
+
+    /**
+     * Safely initialize the Flutter client runtime.
+     *
+     * This should be called from DartModClientLoader.onInitializeClient(),
+     * AFTER the server runtime has been initialized.
+     *
+     * @param assetsPath Path to flutter_assets/ directory
+     * @param icuDataPath Path to icudtl.dat file
+     * @param aotLibraryPath Path to AOT library (can be empty/null for JIT mode)
+     * @return true if initialization succeeded
+     */
+    public static boolean safeInitClientRuntime(String assetsPath, String icuDataPath, String aotLibraryPath) {
+        if (clientInitialized) {
+            LOGGER.warn("Client runtime already initialized");
+            return true;
+        }
+
+        try {
+            LOGGER.info("Initializing Flutter client runtime with assets: {}", assetsPath);
+            LOGGER.info("ICU data path: {}", icuDataPath);
+            LOGGER.info("AOT library path: {}", aotLibraryPath != null && !aotLibraryPath.isEmpty() ? aotLibraryPath : "(JIT mode)");
+
+            clientInitialized = initClient(
+                assetsPath,
+                icuDataPath,
+                aotLibraryPath != null ? aotLibraryPath : "",
+                true  // Always enable rendering on client
+            );
+
+            if (clientInitialized) {
+                LOGGER.info("Flutter client runtime initialized successfully");
+            } else {
+                LOGGER.error("Flutter client runtime initialization returned false");
+            }
+            return clientInitialized;
+        } catch (Exception e) {
+            LOGGER.error("Exception during client runtime initialization: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Shutdown the Flutter client runtime and clean up resources.
+     */
+    public static void safeShutdownClientRuntime() {
+        if (!clientInitialized) return;
+
+        try {
+            shutdownClient();
+            clientInitialized = false;
+            LOGGER.info("Flutter client runtime shut down");
+        } catch (Exception e) {
+            LOGGER.error("Exception during client runtime shutdown: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Process Flutter client tasks - pumps the Flutter event loop.
+     * Should be called each client tick on the render thread.
+     */
+    public static void safeProcessClientTasks() {
+        if (!clientInitialized) return;
+        try {
+            processClientTasks();
+        } catch (Exception e) {
+            LOGGER.error("Exception during client task processing: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Check if the client runtime is initialized.
+     */
+    public static boolean isClientInitialized() {
+        return clientInitialized;
+    }
+
+    // ==========================================================================
+    // Network Packet Methods (Client-side)
+    // ==========================================================================
+
+    /**
+     * Dispatch a packet received from the server to the client Dart/Flutter runtime.
+     * Called by ClientPacketHandler when a packet is received from the server.
+     *
+     * @param packetType The packet type ID
+     * @param data The packet payload data
+     */
+    private static native void dispatchServerPacketNative(int packetType, byte[] data);
+
+    /**
+     * Register a callback for sending packets to the server.
+     * The callback signature is: void callback(int packetType, byte[] data)
+     */
+    private static native void registerClientSendPacketCallback();
+
+    // Packet send callback handler
+    private static ClientPacketSendHandler packetSendHandler = null;
+
+    @FunctionalInterface
+    public interface ClientPacketSendHandler {
+        void sendPacket(int packetType, byte[] data);
+    }
+
+    /**
+     * Set the handler for sending packets from Dart to the server.
+     */
+    public static void setPacketSendHandler(ClientPacketSendHandler handler) {
+        packetSendHandler = handler;
+        if (clientInitialized) {
+            registerClientSendPacketCallback();
+            LOGGER.info("Client packet send handler registered");
+        }
+    }
+
+    /**
+     * Called from native code when Dart wants to send a packet to the server.
+     */
+    @SuppressWarnings("unused") // Called from native code
+    private static void onSendPacketToServer(int packetType, byte[] data) {
+        if (packetSendHandler != null) {
+            packetSendHandler.sendPacket(packetType, data);
+        } else {
+            LOGGER.warn("Client packet send requested but no handler registered");
+        }
+    }
+
+    /**
+     * Public method to dispatch a packet from server to client Dart runtime.
+     *
+     * @param packetType The packet type ID
+     * @param data The packet payload data
+     */
+    public static void dispatchServerPacket(int packetType, byte[] data) {
+        if (!clientInitialized) {
+            LOGGER.warn("Cannot dispatch server packet: Client runtime not initialized");
+            return;
+        }
+        try {
+            dispatchServerPacketNative(packetType, data);
+        } catch (Exception e) {
+            LOGGER.error("Exception dispatching server packet: {}", e.getMessage());
+        }
+    }
+
+    // ==========================================================================
+    // Legacy Methods (deprecated - for backwards compatibility)
+    // ==========================================================================
+
+    /**
+     * Initialize the Flutter engine for client-side use (with rendering enabled).
+     *
+     * @deprecated Use safeInitClientRuntime() instead
+     * @param assetsPath Path to flutter_assets/ directory
+     * @param icuDataPath Path to icudtl.dat file
+     * @param aotLibraryPath Path to AOT library (can be empty/null for JIT mode)
+     * @return true if initialization succeeded
+     */
+    @Deprecated
+    public static boolean safeInitClient(String assetsPath, String icuDataPath, String aotLibraryPath) {
+        LOGGER.info("Initializing Flutter engine for client (rendering enabled)");
+        // Delegate to the new client runtime initialization
+        return safeInitClientRuntime(assetsPath, icuDataPath, aotLibraryPath);
+    }
 
     // Visual test mode flag - when true, client will auto-join test world
     private static boolean visualTestMode = false;
@@ -317,93 +575,4 @@ public class DartBridgeClient {
         hasAttemptedJoinTestWorld = true;
     }
 
-    // ============================================================
-    // Flutter Bridge Native Methods
-    // ============================================================
-
-    /**
-     * Set the path to the Flutter renderer executable (subprocess).
-     * This must be called before initFlutter.
-     *
-     * @param rendererPath Path to the flutter_renderer executable
-     */
-    public static native void setFlutterRendererPath(String rendererPath);
-
-    /**
-     * Initialize the Flutter engine with the given asset and ICU data paths.
-     *
-     * @param assetsPath Path to the Flutter assets directory
-     * @param icuPath Path to the ICU data file
-     * @return true if initialization succeeded, false otherwise
-     */
-    public static native boolean initFlutter(String assetsPath, String icuPath);
-
-    /**
-     * Shutdown the Flutter engine and release resources.
-     */
-    public static native void shutdownFlutter();
-
-    /**
-     * Notify Flutter of a window resize with pixel ratio for HiDPI support.
-     *
-     * @param width New width in pixels
-     * @param height New height in pixels
-     * @param pixelRatio The pixel ratio (e.g., 2.0 for Retina displays)
-     */
-    public static native void resizeFlutter(int width, int height, double pixelRatio);
-
-    /**
-     * Check if Flutter has rendered a new frame since the last call.
-     *
-     * @return true if a new frame is available
-     */
-    public static native boolean flutterHasNewFrame();
-
-    /**
-     * Get the Flutter pixel buffer (RGBA format).
-     *
-     * @return Direct ByteBuffer containing RGBA pixel data, or null if not available
-     */
-    public static native java.nio.ByteBuffer getFlutterPixels();
-
-    /**
-     * Get the width of the Flutter render surface.
-     *
-     * @return Width in pixels
-     */
-    public static native int getFlutterWidth();
-
-    /**
-     * Get the height of the Flutter render surface.
-     *
-     * @return Height in pixels
-     */
-    public static native int getFlutterHeight();
-
-    /**
-     * Send a pointer (mouse) event to Flutter.
-     *
-     * @param phase Pointer phase (0=down, 1=move, 2=add, 3=remove, 4=hover, 5=up)
-     * @param x X coordinate in pixels
-     * @param y Y coordinate in pixels
-     * @param buttons Button mask (1=primary, 2=secondary, 4=middle)
-     */
-    public static native void sendFlutterPointerEvent(int phase, double x, double y, long buttons);
-
-    /**
-     * Send a scroll event to Flutter.
-     *
-     * @param x X coordinate of the scroll
-     * @param y Y coordinate of the scroll
-     * @param scrollX Horizontal scroll amount
-     * @param scrollY Vertical scroll amount
-     */
-    public static native void sendFlutterScrollEvent(double x, double y, double scrollX, double scrollY);
-
-    /**
-     * Check if Flutter has been initialized.
-     *
-     * @return true if Flutter is initialized and ready
-     */
-    public static native boolean isFlutterInitialized();
 }

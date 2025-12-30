@@ -390,4 +390,227 @@ public class ProxyRegistry {
     public static int getItemCount() {
         return items.size();
     }
+
+    // ==================== QUEUE-BASED REGISTRATION (for Flutter threading) ====================
+
+    /**
+     * Register a block directly with a pre-allocated handler ID.
+     * This is used by the queue-based registration system where the handler ID
+     * is allocated in C++ (thread-safe) and the registration happens on the Java thread.
+     *
+     * @param handlerId Pre-allocated handler ID from C++ queue
+     * @param namespace Block namespace
+     * @param path Block path
+     * @param hardness Block hardness
+     * @param resistance Explosion resistance
+     * @param requiresTool Whether correct tool is required for drops
+     * @param luminance Light emission level (0-15)
+     * @param slipperiness Slipperiness factor
+     * @param velocityMultiplier Movement speed multiplier
+     * @param jumpVelocityMultiplier Jump height multiplier
+     * @param ticksRandomly Whether block receives random ticks
+     * @param collidable Whether entities collide with this block
+     * @param replaceable Whether block can be replaced
+     * @param burnable Whether block can catch fire
+     * @return true if registration succeeded
+     */
+    public static boolean registerBlockWithHandlerId(
+            long handlerId,
+            String namespace,
+            String path,
+            float hardness,
+            float resistance,
+            boolean requiresTool,
+            int luminance,
+            double slipperiness,
+            double velocityMultiplier,
+            double jumpVelocityMultiplier,
+            boolean ticksRandomly,
+            boolean collidable,
+            boolean replaceable,
+            boolean burnable) {
+
+        try {
+            // Create resource keys
+            ResourceKey<net.minecraft.world.level.block.Block> blockKey = ResourceKey.create(
+                Registries.BLOCK,
+                Identifier.fromNamespaceAndPath(namespace, path)
+            );
+            ResourceKey<Item> itemKey = ResourceKey.create(
+                Registries.ITEM,
+                Identifier.fromNamespaceAndPath(namespace, path)
+            );
+
+            // Create block properties
+            BlockBehaviour.Properties properties = BlockBehaviour.Properties.of()
+                .strength(hardness, resistance)
+                .setId(blockKey);
+
+            if (requiresTool) {
+                properties = properties.requiresCorrectToolForDrops();
+            }
+            if (luminance > 0) {
+                final int lightLevel = luminance;
+                properties = properties.lightLevel(state -> lightLevel);
+            }
+            if (slipperiness != 0.6) {
+                properties = properties.friction((float) slipperiness);
+            }
+            if (velocityMultiplier != 1.0) {
+                properties = properties.speedFactor((float) velocityMultiplier);
+            }
+            if (jumpVelocityMultiplier != 1.0) {
+                properties = properties.jumpFactor((float) jumpVelocityMultiplier);
+            }
+            if (ticksRandomly) {
+                properties = properties.randomTicks();
+            }
+            if (!collidable) {
+                properties = properties.noCollision();
+            }
+            if (replaceable) {
+                properties = properties.replaceable();
+            }
+            if (burnable) {
+                properties = properties.ignitedByLava();
+            }
+
+            // Create settings record for the proxy
+            BlockSettings settings = new BlockSettings(
+                hardness, resistance, requiresTool,
+                luminance, slipperiness, velocityMultiplier, jumpVelocityMultiplier,
+                ticksRandomly, collidable, replaceable, burnable
+            );
+
+            DartBlockProxy block = new DartBlockProxy(properties, handlerId, settings);
+            blocks.put(handlerId, block);
+
+            // Register the block
+            Registry.register(BuiltInRegistries.BLOCK, blockKey, block);
+
+            // Also register a BlockItem
+            BlockItem blockItem = new BlockItem(block,
+                new Item.Properties().setId(itemKey).useBlockDescriptionPrefix());
+            Registry.register(BuiltInRegistries.ITEM, itemKey, blockItem);
+
+            // Add to Building Blocks creative tab
+            ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.BUILDING_BLOCKS).register(entries -> {
+                entries.accept(blockItem);
+            });
+
+            LOGGER.info("Registered queued block: {}:{} with handler ID {}", namespace, path, handlerId);
+            return true;
+        } catch (Exception e) {
+            LOGGER.error("Failed to register queued block {}:{}: {}", namespace, path, e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Register an item directly with a pre-allocated handler ID.
+     * This is used by the queue-based registration system where the handler ID
+     * is allocated in C++ (thread-safe) and the registration happens on the Java thread.
+     *
+     * @param handlerId Pre-allocated handler ID from C++ queue
+     * @param namespace Item namespace
+     * @param path Item path
+     * @param maxStackSize Maximum stack size
+     * @param maxDamage Maximum durability (0 for non-damageable)
+     * @param fireResistant Whether item survives fire/lava
+     * @param attackDamage Attack damage bonus (NaN if not set)
+     * @param attackSpeed Attack speed modifier (NaN if not set)
+     * @param attackKnockback Attack knockback bonus (NaN if not set)
+     * @return true if registration succeeded
+     */
+    public static boolean registerItemWithHandlerId(
+            long handlerId,
+            String namespace,
+            String path,
+            int maxStackSize,
+            int maxDamage,
+            boolean fireResistant,
+            double attackDamage,
+            double attackSpeed,
+            double attackKnockback) {
+
+        try {
+            Identifier itemId = Identifier.fromNamespaceAndPath(namespace, path);
+            ResourceKey<Item> itemKey = ResourceKey.create(Registries.ITEM, itemId);
+
+            Item.Properties props = new Item.Properties()
+                .setId(itemKey)
+                .stacksTo(maxStackSize);
+
+            if (maxDamage > 0) {
+                props = props.durability(maxDamage);
+            }
+            if (fireResistant) {
+                props = props.fireResistant();
+            }
+
+            // Apply combat attributes if set (NaN means not set)
+            if (!Double.isNaN(attackDamage) ||
+                !Double.isNaN(attackSpeed) ||
+                !Double.isNaN(attackKnockback)) {
+
+                ItemAttributeModifiers.Builder attrBuilder = ItemAttributeModifiers.builder();
+
+                if (!Double.isNaN(attackDamage)) {
+                    attrBuilder.add(
+                        Attributes.ATTACK_DAMAGE,
+                        new AttributeModifier(
+                            Item.BASE_ATTACK_DAMAGE_ID,
+                            attackDamage,
+                            AttributeModifier.Operation.ADD_VALUE
+                        ),
+                        EquipmentSlotGroup.MAINHAND
+                    );
+                }
+
+                if (!Double.isNaN(attackSpeed)) {
+                    attrBuilder.add(
+                        Attributes.ATTACK_SPEED,
+                        new AttributeModifier(
+                            Item.BASE_ATTACK_SPEED_ID,
+                            attackSpeed,
+                            AttributeModifier.Operation.ADD_VALUE
+                        ),
+                        EquipmentSlotGroup.MAINHAND
+                    );
+                }
+
+                if (!Double.isNaN(attackKnockback)) {
+                    attrBuilder.add(
+                        Attributes.ATTACK_KNOCKBACK,
+                        new AttributeModifier(
+                            Identifier.fromNamespaceAndPath(namespace, path + "_knockback"),
+                            attackKnockback,
+                            AttributeModifier.Operation.ADD_VALUE
+                        ),
+                        EquipmentSlotGroup.MAINHAND
+                    );
+                }
+
+                props = props.attributes(attrBuilder.build());
+                props = props.component(DataComponents.WEAPON, new Weapon(1));
+                LOGGER.info("Added WEAPON component to queued item {}:{}", namespace, path);
+            }
+
+            // Create proxy item
+            DartItemProxy item = new DartItemProxy(props, handlerId);
+            Registry.register(BuiltInRegistries.ITEM, itemKey, item);
+            items.put(handlerId, item);
+
+            // Add to creative tab
+            ItemGroupEvents.modifyEntriesEvent(CreativeModeTabs.INGREDIENTS)
+                .register(entries -> entries.accept(item));
+
+            LOGGER.info("Registered queued item: {}:{} with handler ID: {}", namespace, path, handlerId);
+            return true;
+        } catch (Exception e) {
+            LOGGER.error("Failed to register queued item: {}:{}", namespace, path, e);
+            return false;
+        }
+    }
 }
