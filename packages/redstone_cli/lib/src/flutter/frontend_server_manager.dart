@@ -59,6 +59,9 @@ class FrontendServerManager {
   /// Completer for the current compilation
   Completer<IncrementalCompileResult>? _currentCompile;
 
+  /// Whether we're waiting for an initial compile (no boundary key)
+  bool _isInitialCompile = false;
+
   /// Whether the server is currently running
   bool get isRunning => _process != null;
 
@@ -186,6 +189,7 @@ class FrontendServerManager {
   /// Perform the initial compilation (compile command)
   Future<IncrementalCompileResult> _compileInitial() async {
     _currentCompile = Completer<IncrementalCompileResult>();
+    _isInitialCompile = true;
 
     // Send compile command with entry point
     Logger.debug('Sending initial compile command: compile $entryPoint');
@@ -204,6 +208,7 @@ class FrontendServerManager {
     }
 
     _currentCompile = Completer<IncrementalCompileResult>();
+    _isInitialCompile = false;
 
     // Send recompile command with boundary key
     Logger.debug('Sending recompile command for ${invalidatedFiles.length} files');
@@ -272,25 +277,75 @@ class FrontendServerManager {
     Logger.debug('[frontend_server stdout] $line');
 
     // Parse the output for compilation results
-    // The frontend_server protocol uses these response formats:
+    // The frontend_server protocol uses boundary-based responses for both initial compile and recompile:
     //
-    // Success: "result <boundary_key>\n<output_dill_path>\n<boundary_key>"
-    // Error: "result <boundary_key>\n<error_messages>\n<boundary_key>"
+    // Response format:
+    // result <boundary_key>
+    // <boundary_key>
+    // +file:///path/to/dependency1.dart
+    // +file:///path/to/dependency2.dart
+    // ...
+    // <boundary_key> /path/to/output.dill <error_count>
+    //
+    // The final line format: "<boundary_key> <output_path> <error_count>"
+    // Note: The boundary key from the server response may differ from our _boundaryKey
+    // because for initial compile, the server generates its own UUID boundary.
 
     if (line.startsWith('result ')) {
-      // Start of a result block
+      // Start of result block - the rest of the line contains a boundary key (not the .dill path!)
+      // The actual result comes later in the format: "<boundary> <path> <error_count>"
       _outputBuffer.clear();
       return;
     }
 
-    if (line == _boundaryKey || line.trim() == _boundaryKey) {
-      // End of result block - parse the collected output
-      _parseCompileResult(_outputBuffer.toString().trim());
-      _outputBuffer.clear();
+    // Check for the final result line: "<uuid> <output_path> <error_count>"
+    // This line contains a UUID boundary key followed by the output path and error count
+    if (line.contains('.dill') && _currentCompile != null && !_currentCompile!.isCompleted) {
+      final parts = line.split(' ');
+      if (parts.length >= 2) {
+        // Find the .dill path in the parts
+        final dillPath = parts.firstWhere(
+          (p) => p.endsWith('.dill'),
+          orElse: () => '',
+        );
+        if (dillPath.isNotEmpty) {
+          // Parse error count if present (last part should be the count)
+          final errorCount = parts.length >= 3 ? int.tryParse(parts.last) ?? 0 : 0;
+
+          if (errorCount == 0) {
+            _currentCompile!.complete(IncrementalCompileResult(
+              success: true,
+              outputPath: dillPath,
+            ));
+          } else {
+            // There were compilation errors
+            _currentCompile!.complete(IncrementalCompileResult(
+              success: false,
+              errorMessage: 'Compilation had $errorCount errors',
+              errors: _outputBuffer.toString().split('\n').where((l) =>
+                l.contains('Error:') || l.contains('error:')).toList(),
+            ));
+          }
+          _outputBuffer.clear();
+          _isInitialCompile = false;
+          return;
+        }
+      }
+    }
+
+    // Skip file dependency lines that start with +
+    if (line.startsWith('+')) {
       return;
     }
 
-    // Accumulate output between boundaries
+    // Skip standalone boundary/UUID lines (they look like UUIDs or our boundary key)
+    if (RegExp(r'^[a-f0-9\-]{36}$').hasMatch(line.trim()) ||
+        line.trim() == _boundaryKey ||
+        line.startsWith('boundary_')) {
+      return;
+    }
+
+    // Accumulate output for error messages
     if (_currentCompile != null && !_currentCompile!.isCompleted) {
       if (_outputBuffer.isNotEmpty) {
         _outputBuffer.writeln();
