@@ -17,7 +17,8 @@ set(SOURCES
     src/dart_bridge.cpp
     src/dart_bridge_server.cpp
     src/dart_bridge_client.cpp
-    src/jni_interface.cpp
+    src/jni_interface_server.cpp
+    src/jni_interface_client.cpp
     src/object_registry.cpp
     src/generic_jni.cpp
 )

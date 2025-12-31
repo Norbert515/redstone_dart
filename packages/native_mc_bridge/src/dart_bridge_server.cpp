@@ -535,6 +535,8 @@ void dart_server_tick() {
 
 void dart_server_set_jvm(JavaVM* jvm) {
     g_server_jvm_ref = jvm;
+    // Initialize generic_jni module so Dart can call back into Java
+    generic_jni_init(jvm);
 }
 
 const char* dart_server_get_service_url() {
@@ -888,6 +890,7 @@ void server_dispatch_server_started() {
     bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
     dart_mc_bridge::ServerCallbackRegistry::instance().dispatchServerStarted();
+    DartDll_DrainMicrotaskQueue();
     Dart_ExitScope();
     safe_exit_isolate(did_enter);
 }

@@ -797,21 +797,30 @@ bool dispatch_player_drop_item(int32_t player_id, const char* item_id, int32_t c
 }
 
 void dispatch_server_starting() {
-    if (!g_initialized || g_engine == nullptr) return;
-    // Direct callback - merged thread approach allows this
-    dart_mc_bridge::CallbackRegistry::instance().dispatchServerStarting();
+    // Dispatch to Flutter client runtime (if initialized)
+    if (g_initialized && g_engine != nullptr) {
+        dart_mc_bridge::CallbackRegistry::instance().dispatchServerStarting();
+    }
+    // Also dispatch to server runtime (for single-runtime mode / tests)
+    server_dispatch_server_starting();
 }
 
 void dispatch_server_started() {
-    if (!g_initialized || g_engine == nullptr) return;
-    // Direct callback - merged thread approach allows this
-    dart_mc_bridge::CallbackRegistry::instance().dispatchServerStarted();
+    // Dispatch to Flutter client runtime (if initialized)
+    if (g_initialized && g_engine != nullptr) {
+        dart_mc_bridge::CallbackRegistry::instance().dispatchServerStarted();
+    }
+    // Also dispatch to server runtime (for single-runtime mode / tests)
+    server_dispatch_server_started();
 }
 
 void dispatch_server_stopping() {
-    if (!g_initialized || g_engine == nullptr) return;
-    // Direct callback - merged thread approach allows this
-    dart_mc_bridge::CallbackRegistry::instance().dispatchServerStopping();
+    // Dispatch to Flutter client runtime (if initialized)
+    if (g_initialized && g_engine != nullptr) {
+        dart_mc_bridge::CallbackRegistry::instance().dispatchServerStopping();
+    }
+    // Also dispatch to server runtime (for single-runtime mode / tests)
+    server_dispatch_server_stopping();
 }
 
 // ==========================================================================
