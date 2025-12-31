@@ -13,6 +13,7 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -32,8 +33,8 @@ import java.util.concurrent.atomic.AtomicReference;
 public class DartBridgeClient {
     private static final Logger LOGGER = LoggerFactory.getLogger("DartBridgeClient");
 
-    // Flag indicating if the client runtime is initialized
-    private static boolean clientInitialized = false;
+    // Flag indicating if the client runtime is initialized (thread-safe)
+    private static final AtomicBoolean clientInitialized = new AtomicBoolean(false);
 
     // ==========================================================================
     // Client Runtime Native Methods (Flutter Engine)
@@ -131,7 +132,7 @@ public class DartBridgeClient {
      * @return true if initialization succeeded
      */
     public static boolean safeInitClientRuntime(String assetsPath, String icuDataPath, String aotLibraryPath) {
-        if (clientInitialized) {
+        if (clientInitialized.get()) {
             LOGGER.warn("Client runtime already initialized");
             return true;
         }
@@ -141,19 +142,20 @@ public class DartBridgeClient {
             LOGGER.info("ICU data path: {}", icuDataPath);
             LOGGER.info("AOT library path: {}", aotLibraryPath != null && !aotLibraryPath.isEmpty() ? aotLibraryPath : "(JIT mode)");
 
-            clientInitialized = initClient(
+            boolean success = initClient(
                 assetsPath,
                 icuDataPath,
                 aotLibraryPath != null ? aotLibraryPath : "",
                 true  // Always enable rendering on client
             );
+            clientInitialized.set(success);
 
-            if (clientInitialized) {
+            if (success) {
                 LOGGER.info("Flutter client runtime initialized successfully");
             } else {
                 LOGGER.error("Flutter client runtime initialization returned false");
             }
-            return clientInitialized;
+            return success;
         } catch (Exception e) {
             LOGGER.error("Exception during client runtime initialization: {}", e.getMessage(), e);
             return false;
@@ -164,11 +166,11 @@ public class DartBridgeClient {
      * Shutdown the Flutter client runtime and clean up resources.
      */
     public static void safeShutdownClientRuntime() {
-        if (!clientInitialized) return;
+        if (!clientInitialized.get()) return;
 
         try {
             shutdownClient();
-            clientInitialized = false;
+            clientInitialized.set(false);
             LOGGER.info("Flutter client runtime shut down");
         } catch (Exception e) {
             LOGGER.error("Exception during client runtime shutdown: {}", e.getMessage());
@@ -180,7 +182,7 @@ public class DartBridgeClient {
      * Should be called each client tick on the render thread.
      */
     public static void safeProcessClientTasks() {
-        if (!clientInitialized) return;
+        if (!clientInitialized.get()) return;
         try {
             processClientTasks();
         } catch (Exception e) {
@@ -192,7 +194,7 @@ public class DartBridgeClient {
      * Check if the client runtime is initialized.
      */
     public static boolean isClientInitialized() {
-        return clientInitialized;
+        return clientInitialized.get();
     }
 
     // ==========================================================================
@@ -227,7 +229,7 @@ public class DartBridgeClient {
      */
     public static void setPacketSendHandler(ClientPacketSendHandler handler) {
         packetSendHandler = handler;
-        if (clientInitialized) {
+        if (clientInitialized.get()) {
             registerClientSendPacketCallback();
             LOGGER.info("Client packet send handler registered");
         }
@@ -252,7 +254,7 @@ public class DartBridgeClient {
      * @param data The packet payload data
      */
     public static void dispatchServerPacket(int packetType, byte[] data) {
-        if (!clientInitialized) {
+        if (!clientInitialized.get()) {
             LOGGER.warn("Cannot dispatch server packet: Client runtime not initialized");
             return;
         }

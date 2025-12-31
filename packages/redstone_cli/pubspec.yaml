@@ -23,7 +23,6 @@ dependencies:
   collection: ^1.18.0
   http: ^1.2.0
   crypto: ^3.0.3
-  watcher: ^1.1.0
   redstone_test:
     path: ../redstone_test
   nocterm:

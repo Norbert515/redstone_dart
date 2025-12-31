@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:args/command_runner.dart';
 import 'package:path/path.dart' as p;
-import 'package:watcher/watcher.dart';
 
 import '../flutter/flutter.dart';
 import '../project/redstone_project.dart';
@@ -84,9 +83,6 @@ class RunCommand extends Command<int> {
   /// Current stdin subscription (can be recreated after restart)
   StreamSubscription<List<int>>? _stdinSubscription;
 
-  /// File watcher subscriptions for auto-reload
-  final List<StreamSubscription> _fileWatcherSubscriptions = [];
-
   /// Frontend server manager for incremental compilation
   FrontendServerManager? _frontendServer;
 
@@ -116,11 +112,6 @@ class RunCommand extends Command<int> {
       negatable: false,
     );
     argParser.addFlag(
-      'watch',
-      help: 'Watch for file changes and auto-reload.',
-      defaultsTo: true,
-    );
-    argParser.addFlag(
       'verbose',
       abbr: 'v',
       help: 'Show verbose output.',
@@ -145,7 +136,6 @@ class RunCommand extends Command<int> {
     final hotReloadEnabled = argResults!['hot-reload'] as bool;
     final flutterEnabled = argResults!['flutter'] as bool;
     final dualRuntimeFlagEnabled = argResults!['dual-runtime'] as bool;
-    final watchEnabled = argResults!['watch'] as bool;
 
     // Auto-detect dual-runtime mode if project has custom entry points configured
     // or if explicitly enabled via --dual-runtime flag
@@ -274,11 +264,6 @@ class RunCommand extends Command<int> {
             exitCompleter,
             dualRuntimeEnabled,
           );
-
-          // Start file watcher for auto-reload if enabled
-          if (watchEnabled) {
-            _startFileWatcher(project, hotReload, dualRuntimeEnabled);
-          }
 
           // Wait for exit (either from process dying or user pressing 'q')
           final exitCode = await exitCompleter.future;
@@ -627,134 +612,8 @@ class RunCommand extends Command<int> {
     }
   }
 
-  /// Start watching for file changes with intelligent reload targeting
-  void _startFileWatcher(
-    RedstoneProject project,
-    HotReloadClient hotReload,
-    bool dualRuntimeMode,
-  ) {
-    Logger.debug('Starting file watcher for ${project.libDir}');
-
-    if (dualRuntimeMode) {
-      _printWatchingInfo(project);
-    }
-
-    final watcher = DirectoryWatcher(project.libDir);
-
-    final subscription = watcher.events.listen((event) async {
-      // Only react to Dart file changes
-      if (!event.path.endsWith('.dart')) return;
-
-      // Debounce rapid changes
-      final changedFile = event.path;
-      final relativePath = p.relative(changedFile, from: project.rootDir);
-      Logger.info('File changed: $relativePath');
-
-      // Determine which runtime to reload based on file path
-      final target = _determineReloadTarget(project, relativePath, dualRuntimeMode);
-
-      // Trigger appropriate reload
-      bool success;
-      if (dualRuntimeMode) {
-        final targetName = _targetName(target);
-        Logger.info('Reloading $targetName...');
-        success = await hotReload.reloadTarget(
-          target,
-          changedFiles: [changedFile],
-        );
-      } else {
-        success = await hotReload.reload(changedFiles: [changedFile]);
-      }
-
-      if (success) {
-        Logger.success('Auto-reload completed');
-      } else {
-        Logger.error('Auto-reload failed');
-      }
-    });
-
-    _fileWatcherSubscriptions.add(subscription);
-    Logger.debug('File watcher started');
-  }
-
-  /// Print information about what's being watched
-  void _printWatchingInfo(RedstoneProject project) {
-    final serverDir = p.relative(project.serverPackageDir, from: project.rootDir);
-    final clientDir = p.relative(project.clientPackageDir, from: project.rootDir);
-    final commonDir = p.relative(project.commonPackageDir, from: project.rootDir);
-
-    Logger.newLine();
-    Logger.info('Watching for changes:');
-    Logger.step('  [server] $serverDir/*.dart → reload server');
-    Logger.step('  [client] $clientDir/*.dart → reload client');
-    Logger.step('  [common] $commonDir/*.dart, lib/*.dart → reload both');
-    Logger.newLine();
-  }
-
-  /// Determine which runtime to reload based on file path
-  RuntimeTarget _determineReloadTarget(RedstoneProject project, String relativePath, bool dualRuntimeMode) {
-    if (!dualRuntimeMode) {
-      return RuntimeTarget.all;
-    }
-
-    // Normalize path separators
-    final normalizedPath = relativePath.replaceAll('\\', '/');
-
-    // Get relative paths for package directories
-    final serverDir = p.relative(project.serverPackageDir, from: project.rootDir).replaceAll('\\', '/');
-    final clientDir = p.relative(project.clientPackageDir, from: project.rootDir).replaceAll('\\', '/');
-    final commonDir = p.relative(project.commonPackageDir, from: project.rootDir).replaceAll('\\', '/');
-
-    // Check for server-specific files
-    if (normalizedPath.startsWith('$serverDir/') ||
-        normalizedPath.contains('/server/') ||
-        normalizedPath.contains('_server.dart')) {
-      return RuntimeTarget.server;
-    }
-
-    // Check for client-specific files
-    if (normalizedPath.startsWith('$clientDir/') ||
-        normalizedPath.contains('/client/') ||
-        normalizedPath.contains('_client.dart') ||
-        normalizedPath.contains('/ui/') ||
-        normalizedPath.contains('/widgets/') ||
-        normalizedPath.contains('/screens/')) {
-      return RuntimeTarget.client;
-    }
-
-    // Check for common files (reload both)
-    if (normalizedPath.startsWith('$commonDir/') ||
-        normalizedPath.contains('/common/') ||
-        normalizedPath.contains('/shared/') ||
-        normalizedPath.contains('/models/') ||
-        normalizedPath.contains('/utils/')) {
-      return RuntimeTarget.all;
-    }
-
-    // Default: reload both for any other file in lib/
-    return RuntimeTarget.all;
-  }
-
-  /// Get human-readable name for reload target
-  String _targetName(RuntimeTarget target) {
-    switch (target) {
-      case RuntimeTarget.server:
-        return 'server';
-      case RuntimeTarget.client:
-        return 'client';
-      case RuntimeTarget.all:
-        return 'all runtimes';
-    }
-  }
-
   /// Cleanup resources
   Future<void> _cleanup() async {
-    // Stop file watchers
-    for (final subscription in _fileWatcherSubscriptions) {
-      await subscription.cancel();
-    }
-    _fileWatcherSubscriptions.clear();
-
     // Stop frontend server
     await _frontendServer?.stop();
     _frontendServer = null;
@@ -773,74 +632,7 @@ class RunCommand extends Command<int> {
         if (input.isEmpty) return;
         final char = String.fromCharCode(input.first);
         Logger.debug('Received input: "$char" (code: ${input.first})');
-
-        switch (char) {
-          case 'r':
-            Logger.info('Performing hot reload...');
-            hotReload.reload().then((success) {
-              if (success) {
-                Logger.success('Hot reload completed');
-              } else {
-                Logger.error('Hot reload failed');
-              }
-            });
-            break;
-          case 's':
-            if (dualRuntimeMode) {
-              Logger.info('Reloading server...');
-              hotReload.reloadServer().then((success) {
-                if (success) {
-                  Logger.success('Server reload completed');
-                } else {
-                  Logger.error('Server reload failed');
-                }
-              });
-            }
-            break;
-          case 'c':
-            if (dualRuntimeMode) {
-              Logger.info('Reloading client...');
-              hotReload.reloadClient().then((success) {
-                if (success) {
-                  Logger.success('Client reload completed');
-                } else {
-                  Logger.error('Client reload failed');
-                }
-              });
-            } else {
-              // Clear screen in single-runtime mode
-              stdout.write('\x1B[2J\x1B[H');
-              _printHelp(dualRuntimeMode);
-            }
-            break;
-          case 'C':
-            // Clear screen (capital C in dual-runtime mode)
-            stdout.write('\x1B[2J\x1B[H');
-            _printHelp(dualRuntimeMode);
-            break;
-          case 'R':
-            if (_isRestarting) {
-              Logger.warning('Hot restart already in progress...');
-              break;
-            }
-            Logger.info('Performing hot restart...');
-            _performHotRestart(runner, hotReload, exitCompleter, dualRuntimeMode)
-                .catchError((e) {
-              Logger.error('Hot restart error: $e');
-            });
-            break;
-          case 'q':
-            Logger.info('Quitting...');
-            runner.stop();
-            if (!exitCompleter.isCompleted) {
-              exitCompleter.complete(0);
-            }
-            break;
-          case 'h':
-            Logger.newLine();
-            _printHelp(dualRuntimeMode);
-            break;
-        }
+        _handleKeyInput(char, runner, hotReload, exitCompleter, dualRuntimeMode);
       },
       onError: (e) {
         Logger.error('stdin error: $e');
@@ -865,6 +657,83 @@ class RunCommand extends Command<int> {
     Logger.step('R  Hot restart');
     Logger.step('q  Quit');
     Logger.step('h  Show this help');
+  }
+
+  /// Handle keyboard input for hot reload commands
+  void _handleKeyInput(
+    String char,
+    MinecraftRunner runner,
+    HotReloadClient hotReload,
+    Completer<int> exitCompleter,
+    bool dualRuntimeMode,
+  ) {
+    switch (char) {
+      case 'r':
+        Logger.info('Performing hot reload...');
+        hotReload.reload().then((success) {
+          if (success) {
+            Logger.success('Hot reload completed');
+          } else {
+            Logger.error('Hot reload failed');
+          }
+        });
+        break;
+      case 's':
+        if (dualRuntimeMode) {
+          Logger.info('Reloading server...');
+          hotReload.reloadServer().then((success) {
+            if (success) {
+              Logger.success('Server reload completed');
+            } else {
+              Logger.error('Server reload failed');
+            }
+          });
+        }
+        break;
+      case 'c':
+        if (dualRuntimeMode) {
+          Logger.info('Reloading client...');
+          hotReload.reloadClient().then((success) {
+            if (success) {
+              Logger.success('Client reload completed');
+            } else {
+              Logger.error('Client reload failed');
+            }
+          });
+        } else {
+          // Clear screen in single-runtime mode
+          stdout.write('\x1B[2J\x1B[H');
+          _printHelp(dualRuntimeMode);
+        }
+        break;
+      case 'C':
+        // Clear screen (capital C in dual-runtime mode)
+        stdout.write('\x1B[2J\x1B[H');
+        _printHelp(dualRuntimeMode);
+        break;
+      case 'R':
+        if (_isRestarting) {
+          Logger.warning('Hot restart already in progress...');
+          break;
+        }
+        Logger.info('Performing hot restart...');
+        _performHotRestart(runner, hotReload, exitCompleter, dualRuntimeMode)
+            .catchError((e) {
+          Logger.error('Hot restart error: $e');
+        });
+        break;
+      case 'q':
+        Logger.info('Quitting...');
+        runner.stop();
+        if (!exitCompleter.isCompleted) {
+          exitCompleter.complete(0);
+        }
+        break;
+      case 'h':
+        Logger.newLine();
+        _printHelp(dualRuntimeMode);
+        break;
+    }
   }
 
   /// Perform a full hot restart: save world, stop, rebuild, restart
@@ -982,73 +851,7 @@ class RunCommand extends Command<int> {
             if (input.isEmpty) return;
             final char = String.fromCharCode(input.first);
             Logger.debug('Received input: "$char" (code: ${input.first})');
-
-            switch (char) {
-              case 'r':
-                Logger.info('Performing hot reload...');
-                hotReload.reload().then((success) {
-                  if (success) {
-                    Logger.success('Hot reload completed');
-                  } else {
-                    Logger.error('Hot reload failed');
-                  }
-                });
-                break;
-              case 's':
-                if (dualRuntimeMode) {
-                  Logger.info('Reloading server...');
-                  hotReload.reloadServer().then((success) {
-                    if (success) {
-                      Logger.success('Server reload completed');
-                    } else {
-                      Logger.error('Server reload failed');
-                    }
-                  });
-                }
-                break;
-              case 'c':
-                if (dualRuntimeMode) {
-                  Logger.info('Reloading client...');
-                  hotReload.reloadClient().then((success) {
-                    if (success) {
-                      Logger.success('Client reload completed');
-                    } else {
-                      Logger.error('Client reload failed');
-                    }
-                  });
-                } else {
-                  stdout.write('\x1B[2J\x1B[H');
-                  _printHelp(dualRuntimeMode);
-                }
-                break;
-              case 'C':
-                stdout.write('\x1B[2J\x1B[H');
-                _printHelp(dualRuntimeMode);
-                break;
-              case 'R':
-                if (_isRestarting) {
-                  Logger.warning('Hot restart already in progress...');
-                  break;
-                }
-                Logger.info('Performing hot restart...');
-                _performHotRestart(
-                        runner, hotReload, exitCompleter, dualRuntimeMode)
-                    .catchError((e) {
-                  Logger.error('Hot restart error: $e');
-                });
-                break;
-              case 'q':
-                Logger.info('Quitting...');
-                runner.stop();
-                if (!exitCompleter.isCompleted) {
-                  exitCompleter.complete(0);
-                }
-                break;
-              case 'h':
-                Logger.newLine();
-                _printHelp(dualRuntimeMode);
-                break;
-            }
+            _handleKeyInput(char, runner, hotReload, exitCompleter, dualRuntimeMode);
           },
           onError: (e) {
             Logger.error('stdin error: $e');

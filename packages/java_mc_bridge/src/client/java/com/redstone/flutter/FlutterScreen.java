@@ -1,7 +1,6 @@
 package com.redstone.flutter;
 
 import com.mojang.blaze3d.platform.NativeImage;
-import com.redstone.DartBridge;
 import com.redstone.DartBridgeClient;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -247,7 +246,7 @@ public class FlutterScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean bl) {
-        LOGGER.info("[FlutterScreen] mouseClicked: x={}, y={}, button={}, flutterInitialized={}", event.x(), event.y(), event.button(), flutterInitialized);
+        LOGGER.debug("[FlutterScreen] mouseClicked: x={}, y={}, button={}, flutterInitialized={}", event.x(), event.y(), event.button(), flutterInitialized);
         if (flutterInitialized) {
             // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
             double mouseX = event.x();
@@ -269,7 +268,7 @@ public class FlutterScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        LOGGER.info("[FlutterScreen] mouseReleased: x={}, y={}, button={}", event.x(), event.y(), event.button());
+        LOGGER.debug("[FlutterScreen] mouseReleased: x={}, y={}, button={}", event.x(), event.y(), event.button());
         if (flutterInitialized) {
             // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
             double mouseX = event.x();
@@ -288,7 +287,7 @@ public class FlutterScreen extends Screen {
         if (flutterInitialized) {
             // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
             if (!pointerAdded) {
-                LOGGER.info("[FlutterScreen] Pointer ADD: x={}, y={}", mouseX, mouseY);
+                LOGGER.debug("[FlutterScreen] Pointer ADD: x={}, y={}", mouseX, mouseY);
                 DartBridgeClient.sendPointerEvent(PHASE_ADD, mouseX, mouseY, 0);
                 pointerAdded = true;
                 // Don't send HOVER on the same frame as ADD - let Flutter process ADD first

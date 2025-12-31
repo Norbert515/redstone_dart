@@ -353,45 +353,4 @@ class FrontendServerManager {
       _outputBuffer.write(line);
     }
   }
-
-  /// Parse the compilation result from accumulated output
-  void _parseCompileResult(String output) {
-    if (_currentCompile == null || _currentCompile!.isCompleted) {
-      return;
-    }
-
-    final lines = output.split('\n').where((l) => l.trim().isNotEmpty).toList();
-
-    if (lines.isEmpty) {
-      _currentCompile!.complete(IncrementalCompileResult(
-        success: false,
-        errorMessage: 'Empty response from frontend_server',
-      ));
-      return;
-    }
-
-    // Check for success indicator
-    // The first line after "result" should be the output .dill path on success
-    final firstLine = lines.first.trim();
-
-    if (firstLine.endsWith('.dill')) {
-      // Successful compilation - first line is the output path
-      _currentCompile!.complete(IncrementalCompileResult(
-        success: true,
-        outputPath: firstLine,
-        warnings: lines.skip(1).where((l) => l.contains('warning:')).toList(),
-      ));
-    } else {
-      // Compilation failed - lines contain error messages
-      final errors = lines.where((l) => l.contains('Error:') || l.contains('error:')).toList();
-      final warnings = lines.where((l) => l.contains('Warning:') || l.contains('warning:')).toList();
-
-      _currentCompile!.complete(IncrementalCompileResult(
-        success: false,
-        errorMessage: lines.join('\n'),
-        errors: errors,
-        warnings: warnings,
-      ));
-    }
-  }
 }
