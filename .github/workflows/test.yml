@@ -36,49 +36,25 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Cache dart_dll
+        uses: actions/cache@v4
+        with:
+          path: packages/native_mc_bridge/deps/dart_dll/lib
+          key: dart-dll-0.2.0-${{ runner.os }}
+
       - name: Cache CMake build
         uses: actions/cache@v4
         with:
           path: packages/native_mc_bridge/build
-          key: ${{ runner.os }}-cmake-${{ hashFiles('packages/native_mc_bridge/**/*.cpp', 'packages/native_mc_bridge/**/*.h', 'packages/native_mc_bridge/CMakeLists.txt') }}
+          key: ${{ runner.os }}-cmake-server-only-${{ hashFiles('packages/native_mc_bridge/**/*.cpp', 'packages/native_mc_bridge/**/*.h', 'packages/native_mc_bridge/CMakeLists.txt') }}
           restore-keys: |
-            ${{ runner.os }}-cmake-
+            ${{ runner.os }}-cmake-server-only-
 
       - name: Install CMake
         run: sudo apt-get update && sudo apt-get install -y cmake
 
-      - name: Download dart_dll
-        working-directory: packages/native_mc_bridge/deps/dart_dll
-        run: |
-          if [ -f "lib/libdart_dll.so" ]; then
-            echo "dart_dll already exists, skipping download"
-            exit 0
-          fi
-
-          echo "Downloading dart_dll v0.2.0..."
-          curl -L -o lib-linux.zip https://github.com/fuzzybinary/dart_shared_library/releases/download/0.2.0/lib-linux.zip
-          unzip -o lib-linux.zip -d .
-          rm lib-linux.zip
-          mkdir -p lib
-          mv bin/libdart_dll.so lib/
-
-          if [ ! -f "lib/libdart_dll.so" ]; then
-            echo "ERROR: libdart_dll.so not found after extraction!"
-            exit 1
-          fi
-          echo "dart_dll downloaded successfully"
-
-      - name: Build native bridge (server-only)
-        working-directory: packages/native_mc_bridge
-        run: |
-          mkdir -p build
-          cd build
-          cmake -DSERVER_ONLY=ON ..
-          make -j$(nproc)
-
-      - name: Install CLI dependencies
-        working-directory: packages/redstone_cli
-        run: dart pub get
+      - name: Install CLI globally
+        run: dart pub global activate --source path packages/redstone_cli
 
       - name: Run project creation E2E test
         working-directory: packages/redstone_cli
@@ -122,6 +98,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Cache dart_dll
+        uses: actions/cache@v4
+        with:
+          path: packages/native_mc_bridge/deps/dart_dll/lib
+          key: dart-dll-0.2.0-${{ runner.os }}
+
       - name: Cache CMake build
         uses: actions/cache@v4
         with:
@@ -132,35 +114,6 @@ jobs:
 
       - name: Install CMake
         run: sudo apt-get update && sudo apt-get install -y cmake
-
-      - name: Download dart_dll
-        working-directory: packages/native_mc_bridge/deps/dart_dll
-        run: |
-          if [ -f "lib/libdart_dll.so" ]; then
-            echo "dart_dll already exists, skipping download"
-            exit 0
-          fi
-
-          echo "Downloading dart_dll v0.2.0..."
-          curl -L -o lib-linux.zip https://github.com/fuzzybinary/dart_shared_library/releases/download/0.2.0/lib-linux.zip
-          unzip -o lib-linux.zip -d .
-          rm lib-linux.zip
-          mkdir -p lib
-          mv bin/libdart_dll.so lib/
-
-          if [ ! -f "lib/libdart_dll.so" ]; then
-            echo "ERROR: libdart_dll.so not found after extraction!"
-            exit 1
-          fi
-          echo "dart_dll downloaded successfully"
-
-      - name: Build native bridge (server-only)
-        working-directory: packages/native_mc_bridge
-        run: |
-          mkdir -p build
-          cd build
-          cmake -DSERVER_ONLY=ON ..
-          make -j$(nproc)
 
       - name: Install CLI globally
         run: dart pub global activate --source path packages/redstone_cli
