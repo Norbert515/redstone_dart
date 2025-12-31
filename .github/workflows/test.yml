@@ -68,12 +68,12 @@ jobs:
           fi
           echo "dart_dll downloaded successfully"
 
-      - name: Build native bridge
+      - name: Build native bridge (server-only)
         working-directory: packages/native_mc_bridge
         run: |
           mkdir -p build
           cd build
-          cmake ..
+          cmake -DSERVER_ONLY=ON ..
           make -j$(nproc)
 
       - name: Install CLI dependencies
@@ -164,12 +164,12 @@ jobs:
           fi
           echo "dart_dll downloaded successfully"
 
-      - name: Build native bridge
+      - name: Build native bridge (server-only)
         working-directory: packages/native_mc_bridge
         run: |
           mkdir -p build
           cd build
-          cmake ..
+          cmake -DSERVER_ONLY=ON ..
           make -j$(nproc)
 
       - name: Copy native libraries to run directory

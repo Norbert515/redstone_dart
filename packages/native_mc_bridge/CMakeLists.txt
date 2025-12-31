@@ -5,52 +5,53 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Build options
+option(SERVER_ONLY "Build server-only library without Flutter dependencies" OFF)
+
 # Find JNI
 find_package(JNI REQUIRED)
 
 # Dependency paths
-set(FLUTTER_EMBEDDER_PATH "${CMAKE_SOURCE_DIR}/deps/flutter_embedder" CACHE PATH "Path to Flutter embedder")
 set(DART_DLL_PATH "${CMAKE_SOURCE_DIR}/deps/dart_dll" CACHE PATH "Path to dart_dll")
 
-# Source files
-set(SOURCES
-    src/dart_bridge.cpp
-    src/dart_bridge_server.cpp
-    src/dart_bridge_client.cpp
-    src/jni_interface_server.cpp
-    src/jni_interface_client.cpp
-    src/object_registry.cpp
-    src/generic_jni.cpp
-)
+# Source files - depends on build mode
+if(SERVER_ONLY)
+    set(SOURCES
+        src/dart_bridge_server.cpp
+        src/jni_interface_server.cpp
+        src/object_registry.cpp
+        src/generic_jni.cpp
+    )
+else()
+    set(FLUTTER_EMBEDDER_PATH "${CMAKE_SOURCE_DIR}/deps/flutter_embedder" CACHE PATH "Path to Flutter embedder")
+    set(SOURCES
+        src/dart_bridge.cpp
+        src/dart_bridge_server.cpp
+        src/dart_bridge_client.cpp
+        src/jni_interface_server.cpp
+        src/jni_interface_client.cpp
+        src/object_registry.cpp
+        src/generic_jni.cpp
+    )
+endif()
 
 # Create shared library
 add_library(dart_mc_bridge SHARED ${SOURCES})
 
 # Include directories
-target_include_directories(dart_mc_bridge PRIVATE
-    ${JNI_INCLUDE_DIRS}
-    ${FLUTTER_EMBEDDER_PATH}/include
-    ${DART_DLL_PATH}/include
-    src
-)
-
-# Find Flutter embedder library
-if(WIN32)
-    set(FLUTTER_EMBEDDER_LIB "${FLUTTER_EMBEDDER_PATH}/lib/flutter_engine.dll.lib")
-    set(FLUTTER_EMBEDDER_RUNTIME "${FLUTTER_EMBEDDER_PATH}/bin/flutter_engine.dll")
-elseif(APPLE)
-    # On macOS, Flutter uses a framework - check both locations
-    set(FLUTTER_FRAMEWORK_PATH "${FLUTTER_EMBEDDER_PATH}/lib/FlutterEmbedder.framework")
-    if(NOT EXISTS "${FLUTTER_FRAMEWORK_PATH}")
-        set(FLUTTER_FRAMEWORK_PATH "${FLUTTER_EMBEDDER_PATH}/FlutterEmbedder.framework")
-    endif()
-    if(EXISTS "${FLUTTER_FRAMEWORK_PATH}")
-        set(FLUTTER_EMBEDDER_LIB "${FLUTTER_FRAMEWORK_PATH}")
-    else()
-        set(FLUTTER_EMBEDDER_LIB "${FLUTTER_EMBEDDER_PATH}/lib/libflutter_engine.dylib")
-    endif()
+if(SERVER_ONLY)
+    target_include_directories(dart_mc_bridge PRIVATE
+        ${JNI_INCLUDE_DIRS}
+        ${DART_DLL_PATH}/include
+        src
+    )
 else()
-    set(FLUTTER_EMBEDDER_LIB "${FLUTTER_EMBEDDER_PATH}/lib/libflutter_engine.so")
+    target_include_directories(dart_mc_bridge PRIVATE
+        ${JNI_INCLUDE_DIRS}
+        ${FLUTTER_EMBEDDER_PATH}/include
+        ${DART_DLL_PATH}/include
+        src
+    )
 endif()
 
 # Find dart_dll library
@@ -62,22 +63,52 @@ else()
     set(DART_DLL_LIB "${DART_DLL_PATH}/lib/libdart_dll.so")
 endif()
 
+# Flutter embedder setup (only when not SERVER_ONLY)
+if(NOT SERVER_ONLY)
+    if(WIN32)
+        set(FLUTTER_EMBEDDER_LIB "${FLUTTER_EMBEDDER_PATH}/lib/flutter_engine.dll.lib")
+        set(FLUTTER_EMBEDDER_RUNTIME "${FLUTTER_EMBEDDER_PATH}/bin/flutter_engine.dll")
+    elseif(APPLE)
+        # On macOS, Flutter uses a framework - check both locations
+        set(FLUTTER_FRAMEWORK_PATH "${FLUTTER_EMBEDDER_PATH}/lib/FlutterEmbedder.framework")
+        if(NOT EXISTS "${FLUTTER_FRAMEWORK_PATH}")
+            set(FLUTTER_FRAMEWORK_PATH "${FLUTTER_EMBEDDER_PATH}/FlutterEmbedder.framework")
+        endif()
+        if(EXISTS "${FLUTTER_FRAMEWORK_PATH}")
+            set(FLUTTER_EMBEDDER_LIB "${FLUTTER_FRAMEWORK_PATH}")
+        else()
+            set(FLUTTER_EMBEDDER_LIB "${FLUTTER_EMBEDDER_PATH}/lib/libflutter_engine.dylib")
+        endif()
+    else()
+        set(FLUTTER_EMBEDDER_LIB "${FLUTTER_EMBEDDER_PATH}/lib/libflutter_engine.so")
+    endif()
+endif()
+
 # Link libraries
-if(APPLE AND EXISTS "${FLUTTER_FRAMEWORK_PATH}")
-    # Get the directory containing the framework
-    get_filename_component(FLUTTER_FRAMEWORK_DIR "${FLUTTER_FRAMEWORK_PATH}" DIRECTORY)
+if(SERVER_ONLY)
+    # Server-only: just JNI and dart_dll
     target_link_libraries(dart_mc_bridge PRIVATE
         ${JNI_LIBRARIES}
-        "-F${FLUTTER_FRAMEWORK_DIR}"
-        "-framework FlutterEmbedder"
         ${DART_DLL_LIB}
     )
 else()
-    target_link_libraries(dart_mc_bridge PRIVATE
-        ${JNI_LIBRARIES}
-        ${FLUTTER_EMBEDDER_LIB}
-        ${DART_DLL_LIB}
-    )
+    # Full build: JNI, Flutter embedder, and dart_dll
+    if(APPLE AND EXISTS "${FLUTTER_FRAMEWORK_PATH}")
+        # Get the directory containing the framework
+        get_filename_component(FLUTTER_FRAMEWORK_DIR "${FLUTTER_FRAMEWORK_PATH}" DIRECTORY)
+        target_link_libraries(dart_mc_bridge PRIVATE
+            ${JNI_LIBRARIES}
+            "-F${FLUTTER_FRAMEWORK_DIR}"
+            "-framework FlutterEmbedder"
+            ${DART_DLL_LIB}
+        )
+    else()
+        target_link_libraries(dart_mc_bridge PRIVATE
+            ${JNI_LIBRARIES}
+            ${FLUTTER_EMBEDDER_LIB}
+            ${DART_DLL_LIB}
+        )
+    endif()
 endif()
 
 # Platform-specific dependencies
@@ -97,11 +128,14 @@ endif()
 #   Windows: dart_mc_bridge.dll (no lib prefix)
 #   Linux: libdart_mc_bridge.so (with lib prefix)
 if(APPLE)
-    # Build rpath list - include directory containing the framework and dart_dll
-    set(RPATH_LIST "${FLUTTER_EMBEDDER_PATH}/lib" "${DART_DLL_PATH}/lib")
-    if(EXISTS "${FLUTTER_FRAMEWORK_PATH}")
-        get_filename_component(FLUTTER_FRAMEWORK_DIR "${FLUTTER_FRAMEWORK_PATH}" DIRECTORY)
-        list(APPEND RPATH_LIST "${FLUTTER_FRAMEWORK_DIR}")
+    # Build rpath list
+    set(RPATH_LIST "${DART_DLL_PATH}/lib")
+    if(NOT SERVER_ONLY)
+        list(APPEND RPATH_LIST "${FLUTTER_EMBEDDER_PATH}/lib")
+        if(EXISTS "${FLUTTER_FRAMEWORK_PATH}")
+            get_filename_component(FLUTTER_FRAMEWORK_DIR "${FLUTTER_FRAMEWORK_PATH}" DIRECTORY)
+            list(APPEND RPATH_LIST "${FLUTTER_FRAMEWORK_DIR}")
+        endif()
     endif()
 
     set_target_properties(dart_mc_bridge PROPERTIES
@@ -132,10 +166,18 @@ install(TARGETS dart_mc_bridge
     RUNTIME DESTINATION bin
 )
 
+# Status messages
 message(STATUS "")
 message(STATUS "=== dart_mc_bridge Configuration ===")
-message(STATUS "Flutter embedder path: ${FLUTTER_EMBEDDER_PATH}")
-message(STATUS "Flutter embedder library: ${FLUTTER_EMBEDDER_LIB}")
+if(SERVER_ONLY)
+    message(STATUS "Build mode: SERVER_ONLY (no Flutter dependencies)")
+    message(STATUS "Sources: dart_bridge_server.cpp, jni_interface_server.cpp, object_registry.cpp, generic_jni.cpp")
+else()
+    message(STATUS "Build mode: FULL (with Flutter embedder)")
+    message(STATUS "Sources: all (dart_bridge.cpp, dart_bridge_server.cpp, dart_bridge_client.cpp, jni_interface_*.cpp, etc.)")
+    message(STATUS "Flutter embedder path: ${FLUTTER_EMBEDDER_PATH}")
+    message(STATUS "Flutter embedder library: ${FLUTTER_EMBEDDER_LIB}")
+endif()
 message(STATUS "dart_dll path: ${DART_DLL_PATH}")
 message(STATUS "dart_dll library: ${DART_DLL_LIB}")
 message(STATUS "")
