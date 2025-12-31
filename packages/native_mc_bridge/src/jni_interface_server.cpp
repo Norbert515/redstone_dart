@@ -176,6 +176,24 @@ JNIEXPORT jstring JNICALL Java_com_redstone_DartBridge_getServerServiceUrl(
     return nullptr;
 }
 
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    getDartServiceUrl
+ * Signature: ()Ljava/lang/String;
+ *
+ * Get the Dart VM service URL (returns server URL in server-only mode).
+ * This is the legacy unified API that client code uses.
+ */
+JNIEXPORT jstring JNICALL Java_com_redstone_DartBridge_getDartServiceUrl(
+    JNIEnv* env, jclass /* cls */) {
+    // In server-only mode, return the server service URL
+    const char* url = dart_server_get_service_url();
+    if (url != nullptr) {
+        return env->NewStringUTF(url);
+    }
+    return nullptr;
+}
+
 // ==========================================================================
 // Chat Callback Setup
 // ==========================================================================
