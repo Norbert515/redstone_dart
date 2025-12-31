@@ -232,6 +232,23 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridge_setSendChatCallback(
 }
 
 // ==========================================================================
+// Flutter Stubs (no-op in server-only mode)
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    processFlutterTasks
+ * Signature: ()V
+ *
+ * In server-only mode, this is a no-op stub.
+ * The full build has the real implementation in jni_interface_client.cpp.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_processFlutterTasks(
+    JNIEnv* /* env */, jclass /* cls */) {
+    // No-op in server-only mode - Flutter is not available
+}
+
+// ==========================================================================
 // Server-side Event Dispatching (routes to server runtime)
 // ==========================================================================
 
