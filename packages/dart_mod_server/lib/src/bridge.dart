@@ -6,6 +6,7 @@ library;
 import 'dart:ffi';
 import 'dart:io';
 
+import 'package:dart_mod_common/dart_mod_common.dart' show GenericJniBridge;
 import 'package:ffi/ffi.dart';
 
 /// Type alias for backward compatibility with code using Bridge.
@@ -50,6 +51,8 @@ class ServerBridge {
     if (datagenEnv == 'true' || datagenEnv == '1') {
       isDatagenMode = true;
       _initialized = true;
+      // Initialize GenericJniBridge (will also be in datagen mode)
+      GenericJniBridge.init();
       print('ServerBridge: Running in DATAGEN mode (no native library)');
       return;
     }
@@ -57,6 +60,9 @@ class ServerBridge {
     _lib = _loadLibrary();
     _initialized = true;
     print('ServerBridge: Native library loaded');
+
+    // Initialize GenericJniBridge (uses process symbols for JNI calls)
+    GenericJniBridge.init();
 
     // Bind all functions
     _bindFunctions();

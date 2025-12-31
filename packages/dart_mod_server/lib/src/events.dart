@@ -57,6 +57,9 @@ void Function()? _serverStartingHandler;
 void Function()? _serverStartedHandler;
 void Function()? _serverStoppingHandler;
 
+/// Native callback type for server lifecycle events (void return, no params).
+typedef _ServerLifecycleCallbackNative = Void Function();
+
 /// Native callback trampolines - these are called from native code
 @pragma('vm:entry-point')
 int _onBlockBreak(int x, int y, int z, int playerId) {
@@ -429,7 +432,6 @@ typedef _BlockPlaceCallbackNative = Bool Function(
 typedef _PlayerPickupItemCallbackNative = Bool Function(Int32, Int32);
 typedef _PlayerDropItemCallbackNative = Bool Function(
     Int32, Pointer<Utf8>, Int32);
-typedef _ServerLifecycleCallbackNative = Void Function();
 typedef _ProxyEntitySpawnCallbackNative = Void Function(Int64, Int32, Int64);
 typedef _ProxyEntityTickCallbackNative = Void Function(Int64, Int32);
 typedef _ProxyEntityDeathCallbackNative = Void Function(
@@ -930,26 +932,35 @@ class Events {
   // ==========================================================================
 
   /// Register a handler for server starting event.
+  ///
+  /// Called synchronously when the server begins starting.
   static void onServerStarting(void Function() handler) {
     _serverStartingHandler = handler;
-    final callback =
-        Pointer.fromFunction<_ServerLifecycleCallbackNative>(_onServerStarting);
+    final callback = Pointer.fromFunction<_ServerLifecycleCallbackNative>(
+      _onServerStarting,
+    );
     ServerBridge.registerServerStartingHandler(callback);
   }
 
   /// Register a handler for server started event.
+  ///
+  /// Called synchronously when the server has finished starting.
   static void onServerStarted(void Function() handler) {
     _serverStartedHandler = handler;
-    final callback =
-        Pointer.fromFunction<_ServerLifecycleCallbackNative>(_onServerStarted);
+    final callback = Pointer.fromFunction<_ServerLifecycleCallbackNative>(
+      _onServerStarted,
+    );
     ServerBridge.registerServerStartedHandler(callback);
   }
 
   /// Register a handler for server stopping event.
+  ///
+  /// Called synchronously when the server begins stopping.
   static void onServerStopping(void Function() handler) {
     _serverStoppingHandler = handler;
-    final callback =
-        Pointer.fromFunction<_ServerLifecycleCallbackNative>(_onServerStopping);
+    final callback = Pointer.fromFunction<_ServerLifecycleCallbackNative>(
+      _onServerStopping,
+    );
     ServerBridge.registerServerStoppingHandler(callback);
   }
 }

@@ -208,6 +208,7 @@ dependencies:
     buffer.writeln();
 
     // Core imports
+    buffer.writeln("import 'dart:async';");
     buffer.writeln("import 'package:dart_mod_server/dart_mod_server.dart';");
     buffer.writeln("import 'package:redstone_test/redstone_test.dart';");
     buffer.writeln();
@@ -230,6 +231,56 @@ dependencies:
 
     buffer.writeln();
 
+    // State tracking for tick-based polling
+    // In an embedded Dart runtime, async code only progresses when the event loop
+    // is pumped. Using tick events ensures the async test execution can complete.
+    buffer.writeln('bool _serverReady = false;');
+    buffer.writeln('bool _testsRunning = false;');
+    buffer.writeln();
+
+    // Test runner function
+    buffer.writeln('Future<void> _runTests() async {');
+    buffer.writeln('  if (_testsRunning) return;');
+    buffer.writeln('  _testsRunning = true;');
+    buffer.writeln();
+    buffer.writeln('  print("Server started - running tests...");');
+    buffer.writeln();
+    buffer.writeln('  try {');
+
+    // Call each test file's main function with suite events
+    buffer.writeln('    // Run all test files');
+    for (var i = 0; i < testFiles.length; i++) {
+      final testFile = testFiles[i];
+      final fileName = testFile.split('/').last;
+      buffer.writeln("    emitEvent(SuiteStartEvent(name: '$fileName'));");
+      buffer.writeln("    print('Running: $fileName');");
+      buffer.writeln('    await test_$i.main();');
+      buffer.writeln("    emitEvent(SuiteEndEvent(name: '$fileName'));");
+      buffer.writeln("    print('Completed: $fileName');");
+    }
+
+    buffer.writeln('  } catch (e, st) {');
+    buffer.writeln('    print("Test harness error: \$e");');
+    buffer.writeln('    print(st);');
+    buffer.writeln('  }');
+    buffer.writeln();
+    buffer.writeln('  // Print summary');
+    buffer.writeln('  testResults.printSummary();');
+    buffer.writeln();
+    buffer.writeln('  // Emit done event with final counts');
+    buffer.writeln('  emitEvent(DoneEvent(');
+    buffer.writeln('    passed: testResults.passed,');
+    buffer.writeln('    failed: testResults.failed,');
+    buffer.writeln('    skipped: testResults.skipped,');
+    buffer.writeln('    exitCode: testResults.exitCode,');
+    buffer.writeln('  ));');
+    buffer.writeln();
+    buffer.writeln('  // Stop the server and exit');
+    buffer.writeln("  print('Tests complete, stopping server...');");
+    buffer.writeln('  ServerBridge.stopServer();');
+    buffer.writeln('}');
+    buffer.writeln();
+
     // Main function
     buffer.writeln('void main() async {');
     buffer.writeln('  // Initialize bridge');
@@ -238,44 +289,24 @@ dependencies:
     buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
     buffer.writeln('  mod_main.main();');
     buffer.writeln();
-    buffer.writeln('  // Wait for server to be ready');
-    buffer.writeln('  Events.onServerStarted(() async {');
-    buffer.writeln('    print("Server started - running tests...");');
-    buffer.writeln();
-    buffer.writeln('    try {');
-
-    // Call each test file's main function with suite events
-    buffer.writeln('      // Run all test files');
-    for (var i = 0; i < testFiles.length; i++) {
-      final testFile = testFiles[i];
-      final fileName = testFile.split('/').last;
-      buffer.writeln("      emitEvent(SuiteStartEvent(name: '$fileName'));");
-      buffer.writeln("      print('Running: $fileName');");
-      buffer.writeln('      await test_$i.main();');
-      buffer.writeln("      emitEvent(SuiteEndEvent(name: '$fileName'));");
-      buffer.writeln("      print('Completed: $fileName');");
-    }
-
-    buffer.writeln('    } catch (e, st) {');
-    buffer.writeln('      print("Test harness error: \$e");');
-    buffer.writeln('      print(st);');
-    buffer.writeln('    }');
-    buffer.writeln();
-    buffer.writeln('    // Print summary');
-    buffer.writeln('    testResults.printSummary();');
-    buffer.writeln();
-    buffer.writeln('    // Emit done event with final counts');
-    buffer.writeln('    emitEvent(DoneEvent(');
-    buffer.writeln('      passed: testResults.passed,');
-    buffer.writeln('      failed: testResults.failed,');
-    buffer.writeln('      skipped: testResults.skipped,');
-    buffer.writeln('      exitCode: testResults.exitCode,');
-    buffer.writeln('    ));');
-    buffer.writeln();
-    buffer.writeln('    // Stop the server and exit');
-    buffer.writeln("    print('Tests complete, stopping server...');");
-    buffer.writeln('    ServerBridge.stopServer();');
+    buffer.writeln('  // Mark server as ready when it starts');
+    buffer.writeln('  Events.onServerStarted(() {');
+    buffer.writeln('    _serverReady = true;');
+    buffer.writeln('    print("Server ready, will start tests on next tick...");');
     buffer.writeln('  });');
+    buffer.writeln();
+    buffer.writeln('  // Use tick events to poll for server readiness and trigger test execution.');
+    buffer.writeln('  // In an embedded Dart runtime, async code only progresses when the event');
+    buffer.writeln('  // loop is pumped. Tick events naturally pump the event loop, ensuring');
+    buffer.writeln('  // the async _runTests() function can execute to completion.');
+    buffer.writeln('  Events.addTickListener((tick) {');
+    buffer.writeln('    if (_serverReady && !_testsRunning) {');
+    buffer.writeln('      // Run tests asynchronously so we don\'t block the tick handler');
+    buffer.writeln('      Future(() => _runTests());');
+    buffer.writeln('    }');
+    buffer.writeln('  });');
+    buffer.writeln();
+    buffer.writeln('  print("Test harness initialized, waiting for server to be ready...");');
     buffer.writeln('}');
 
     return buffer.toString();
