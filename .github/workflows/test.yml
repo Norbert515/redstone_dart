@@ -162,15 +162,14 @@ jobs:
           cmake -DSERVER_ONLY=ON ..
           make -j$(nproc)
 
-      - name: Install CLI
-        working-directory: packages/redstone_cli
-        run: dart pub get
+      - name: Install CLI globally
+        run: dart pub global activate --source path packages/redstone_cli
 
       - name: Run framework tests
         working-directory: packages/framework_tests
         run: |
           dart pub get
-          dart run redstone_cli:redstone test --verbose
+          redstone test --verbose
 
       - name: Upload test artifacts on failure
         uses: actions/upload-artifact@v4
