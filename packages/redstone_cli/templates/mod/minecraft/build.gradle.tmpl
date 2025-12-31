@@ -93,4 +93,10 @@ tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
         def dartScriptPath = project.property('dartScriptPath')
         jvmArgs("-DDART_SCRIPT_PATH=${dartScriptPath}")
     }
+
+    // Pass server VM service port for hot reload support
+    if (project.hasProperty('serverVmServicePort')) {
+        def port = project.property('serverVmServicePort')
+        jvmArgs("-DDART_SERVER_VM_SERVICE_PORT=${port}")
+    }
 }

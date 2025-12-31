@@ -37,6 +37,9 @@ class MinecraftRunner {
   /// Enable dual-runtime mode (server dart_dll + client Flutter)
   final bool dualRuntimeMode;
 
+  /// Port for server Dart VM service (for hot reload). 0 means let the VM pick a free port.
+  final int serverVmServicePort;
+
   Process? _process;
   Completer<int> _exitCompleter = Completer<int>();
   StreamSubscription<String>? _stdoutSubscription;
@@ -67,6 +70,7 @@ class MinecraftRunner {
     this.clientTestMode = false,
     this.flutterMode = false,
     this.dualRuntimeMode = false,
+    this.serverVmServicePort = 5858, // Fixed port for server Dart VM service
   });
 
   /// Get the currently detected world name
@@ -129,6 +133,12 @@ class MinecraftRunner {
     if (dualRuntimeMode) {
       gradleArgs.add('-PdualRuntimeMode=true');
       Logger.debug('Dual runtime mode enabled');
+    }
+
+    // Pass server VM service port for hot reload support
+    if (serverVmServicePort > 0) {
+      gradleArgs.add('-PserverVmServicePort=$serverVmServicePort');
+      Logger.debug('Server VM service port: $serverVmServicePort');
     }
 
     Logger.debug('Gradle args: $gradleArgs');
@@ -237,7 +247,8 @@ class MinecraftRunner {
   /// Get the path to the Dart script that the Dart VM should load.
   ///
   /// In test mode (server or client), this is the generated test harness.
-  /// In normal mode, this is the project's lib/main.dart (renamed to dart_mc.dart).
+  /// In normal mode, this is the project's server entry point (for dual-runtime)
+  /// or main entry point (for single runtime).
   String _getDartScriptPath() {
     if (testMode || clientTestMode) {
       // Use the test harness as entry point
@@ -245,9 +256,12 @@ class MinecraftRunner {
       final harnessName =
           clientTestMode ? 'client_test_harness.dart' : 'test_harness.dart';
       return p.join(project.rootDir, '.redstone', 'test', harnessName);
+    } else if (dualRuntimeMode) {
+      // In dual-runtime mode, use the configured server entry point
+      return project.serverEntry;
     } else {
-      // Use the project's main.dart as entry point
-      return p.join(project.rootDir, 'lib', 'main.dart');
+      // Use the project's main entry point
+      return project.entryPoint;
     }
   }
 
@@ -297,13 +311,38 @@ class MinecraftRunner {
 
   Future<void> _generateAssets() async {
     // Step 1: Run the mod in datagen mode to generate manifest.json
-    // Use main_datagen.dart if it exists (for Flutter mods that can't use main.dart
-    // with standard Dart VM due to dart:ui dependency), otherwise fall back to main.dart
-    final datagenScript =
-        File(p.join(project.rootDir, 'lib', 'main_datagen.dart'));
-    final scriptPath = datagenScript.existsSync()
-        ? 'lib/main_datagen.dart'
-        : 'lib/main.dart';
+    // Priority order:
+    // 1. Configured datagen entry point from redstone.yaml
+    // 2. Server entry point (for dual-runtime packages structure)
+    // 3. main_datagen.dart (legacy Flutter mods)
+    // 4. main.dart (legacy single-file mods)
+    final datagenScript = File(project.datagenEntry);
+    final serverScript = File(project.serverEntry);
+    final mainDatagenScript = File(p.join(project.rootDir, 'lib', 'main_datagen.dart'));
+    final mainScript = File(p.join(project.rootDir, 'lib', 'main.dart'));
+
+    String scriptPath;
+    if (datagenScript.existsSync()) {
+      // Use configured datagen entry point
+      scriptPath = p.relative(project.datagenEntry, from: project.rootDir);
+    } else if (serverScript.existsSync()) {
+      // Use server entry point for dual-runtime mode
+      scriptPath = p.relative(project.serverEntry, from: project.rootDir);
+    } else if (mainDatagenScript.existsSync()) {
+      // Fall back to main_datagen.dart for legacy Flutter mods
+      scriptPath = 'lib/main_datagen.dart';
+    } else if (mainScript.existsSync()) {
+      // Fall back to main.dart for legacy single-file mods
+      scriptPath = 'lib/main.dart';
+    } else {
+      Logger.error('No entry point found for datagen.');
+      Logger.info('Expected one of:');
+      Logger.info('  - ${project.datagenEntry}');
+      Logger.info('  - ${project.serverEntry}');
+      Logger.info('  - lib/main_datagen.dart');
+      Logger.info('  - lib/main.dart');
+      throw Exception('No datagen entry point found');
+    }
 
     Logger.info('Running mod in datagen mode ($scriptPath)...');
     final result = await Process.run(

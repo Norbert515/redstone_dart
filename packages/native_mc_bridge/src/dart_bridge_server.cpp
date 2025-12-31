@@ -421,12 +421,13 @@ bool dart_server_init(const char* script_path, const char* package_config, int s
     std::cout << "Initializing Server Dart VM..." << std::endl;
     std::cout << "  Script path: " << (script_path ? script_path : "null") << std::endl;
     std::cout << "  Package config: " << (package_config ? package_config : "null") << std::endl;
-    std::cout << "  Service port: " << service_port << std::endl;
+    std::cout << "  Service port: " << service_port << " (0 = disabled)" << std::endl;
 
     // Configure dart_dll
     DartDllConfig config;
-    config.start_service_isolate = true;
-    config.service_port = service_port;
+    // Service port: 0 = disabled, >0 = enable on specific port
+    config.start_service_isolate = (service_port > 0);
+    config.service_port = (service_port > 0) ? service_port : 5858;
 
     // Initialize Dart VM
     if (!DartDll_Initialize(config)) {
@@ -473,11 +474,14 @@ bool dart_server_init(const char* script_path, const char* package_config, int s
 
     g_server_initialized = true;
 
-    // Build service URL
-    g_server_service_url = "http://127.0.0.1:" + std::to_string(service_port) + "/";
+    // Build and print service URL in the format expected by the CLI for hot reload detection
+    if (service_port > 0) {
+        g_server_service_url = "http://127.0.0.1:" + std::to_string(service_port) + "/";
+        // Print in the exact format the CLI expects for VM service detection
+        std::cout << "The Dart VM service is listening on " << g_server_service_url << std::endl;
+    }
 
     std::cout << "Server Dart VM initialized successfully" << std::endl;
-    std::cout << "  Service URL: " << g_server_service_url << std::endl;
 
     return true;
 }
@@ -1189,6 +1193,140 @@ void server_send_packet_to_client(int32_t player_id, int32_t packet_type, const 
     if (g_server_send_packet_callback) {
         g_server_send_packet_callback(player_id, packet_type, data, data_length);
     }
+}
+
+// ==========================================================================
+// Server-side Queue Access Functions (called from JNI)
+// ==========================================================================
+
+bool server_has_pending_block_registrations() {
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+    return !g_server_block_queue.empty();
+}
+
+bool server_has_pending_item_registrations() {
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+    return !g_server_item_queue.empty();
+}
+
+bool server_has_pending_entity_registrations() {
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+    return !g_server_entity_queue.empty();
+}
+
+bool server_get_next_block_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, size_t namespace_len,
+    char* out_path, size_t path_len,
+    float* out_hardness, float* out_resistance, bool* out_requires_tool,
+    int32_t* out_luminance, double* out_slipperiness,
+    double* out_velocity_mult, double* out_jump_velocity_mult,
+    bool* out_ticks_randomly, bool* out_collidable,
+    bool* out_replaceable, bool* out_burnable
+) {
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+
+    if (g_server_block_queue.empty()) return false;
+
+    const auto& reg = g_server_block_queue.front();
+
+    *out_handler_id = reg.handler_id;
+    strncpy(out_namespace, reg.namespace_id.c_str(), namespace_len - 1);
+    out_namespace[namespace_len - 1] = '\0';
+    strncpy(out_path, reg.path.c_str(), path_len - 1);
+    out_path[path_len - 1] = '\0';
+    *out_hardness = reg.hardness;
+    *out_resistance = reg.resistance;
+    *out_requires_tool = reg.requires_tool;
+    *out_luminance = reg.luminance;
+    *out_slipperiness = reg.slipperiness;
+    *out_velocity_mult = reg.velocity_multiplier;
+    *out_jump_velocity_mult = reg.jump_velocity_multiplier;
+    *out_ticks_randomly = reg.ticks_randomly;
+    *out_collidable = reg.collidable;
+    *out_replaceable = reg.replaceable;
+    *out_burnable = reg.burnable;
+
+    g_server_block_queue.pop();
+    return true;
+}
+
+bool server_get_next_item_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, size_t namespace_len,
+    char* out_path, size_t path_len,
+    int32_t* out_max_stack_size, int32_t* out_max_damage, bool* out_fire_resistant,
+    double* out_attack_damage, double* out_attack_speed, double* out_attack_knockback
+) {
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+
+    if (g_server_item_queue.empty()) return false;
+
+    const auto& reg = g_server_item_queue.front();
+
+    *out_handler_id = reg.handler_id;
+    strncpy(out_namespace, reg.namespace_id.c_str(), namespace_len - 1);
+    out_namespace[namespace_len - 1] = '\0';
+    strncpy(out_path, reg.path.c_str(), path_len - 1);
+    out_path[path_len - 1] = '\0';
+    *out_max_stack_size = reg.max_stack_size;
+    *out_max_damage = reg.max_damage;
+    *out_fire_resistant = reg.fire_resistant;
+    *out_attack_damage = reg.attack_damage;
+    *out_attack_speed = reg.attack_speed;
+    *out_attack_knockback = reg.attack_knockback;
+
+    g_server_item_queue.pop();
+    return true;
+}
+
+bool server_get_next_entity_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, size_t namespace_len,
+    char* out_path, size_t path_len,
+    double* out_width, double* out_height, double* out_max_health,
+    double* out_movement_speed, double* out_attack_damage,
+    int32_t* out_spawn_group, int32_t* out_base_type,
+    char* out_breeding_item, size_t breeding_item_len,
+    char* out_model_type, size_t model_type_len,
+    char* out_texture_path, size_t texture_path_len,
+    double* out_model_scale,
+    char* out_goals_json, size_t goals_json_len,
+    char* out_target_goals_json, size_t target_goals_json_len
+) {
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+
+    if (g_server_entity_queue.empty()) return false;
+
+    const auto& reg = g_server_entity_queue.front();
+
+    *out_handler_id = reg.handler_id;
+    strncpy(out_namespace, reg.namespace_id.c_str(), namespace_len - 1);
+    out_namespace[namespace_len - 1] = '\0';
+    strncpy(out_path, reg.path.c_str(), path_len - 1);
+    out_path[path_len - 1] = '\0';
+    *out_width = reg.width;
+    *out_height = reg.height;
+    *out_max_health = reg.max_health;
+    *out_movement_speed = reg.movement_speed;
+    *out_attack_damage = reg.attack_damage;
+    *out_spawn_group = reg.spawn_group;
+    *out_base_type = reg.base_type;
+
+    strncpy(out_breeding_item, reg.breeding_item.c_str(), breeding_item_len - 1);
+    out_breeding_item[breeding_item_len - 1] = '\0';
+    strncpy(out_model_type, reg.model_type.c_str(), model_type_len - 1);
+    out_model_type[model_type_len - 1] = '\0';
+    strncpy(out_texture_path, reg.texture_path.c_str(), texture_path_len - 1);
+    out_texture_path[texture_path_len - 1] = '\0';
+    *out_model_scale = reg.model_scale;
+    strncpy(out_goals_json, reg.goals_json.c_str(), goals_json_len - 1);
+    out_goals_json[goals_json_len - 1] = '\0';
+    strncpy(out_target_goals_json, reg.target_goals_json.c_str(), target_goals_json_len - 1);
+    out_target_goals_json[target_goals_json_len - 1] = '\0';
+
+    g_server_entity_queue.pop();
+    return true;
 }
 
 } // extern "C"

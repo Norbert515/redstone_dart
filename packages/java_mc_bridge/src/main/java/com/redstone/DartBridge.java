@@ -160,9 +160,10 @@ public class DartBridge {
      *
      * @param scriptPath Path to the Dart kernel snapshot or script
      * @param packageConfigPath Path to package_config.json (can be empty)
+     * @param servicePort Port for Dart VM service (hot reload/debugging), use 0 to disable
      * @return true if initialization succeeded
      */
-    private static native boolean initServer(String scriptPath, String packageConfigPath);
+    private static native boolean initServer(String scriptPath, String packageConfigPath, int servicePort);
 
     /**
      * Shutdown the server Dart VM and clean up resources.
@@ -419,7 +420,20 @@ public class DartBridge {
                 LOGGER.info("Package config path: {}", packageConfigPath);
             }
 
-            initialized = initServer(scriptPath, packageConfigPath != null ? packageConfigPath : "");
+            // Check for VM service port from system property (for hot reload support)
+            // Set DART_SERVER_VM_SERVICE_PORT to enable hot reload from CLI
+            int servicePort = 0;
+            String portProp = System.getProperty("DART_SERVER_VM_SERVICE_PORT");
+            if (portProp != null && !portProp.isEmpty()) {
+                try {
+                    servicePort = Integer.parseInt(portProp);
+                    LOGGER.info("VM service port from property: {}", servicePort);
+                } catch (NumberFormatException e) {
+                    LOGGER.warn("Invalid DART_SERVER_VM_SERVICE_PORT: {}", portProp);
+                }
+            }
+
+            initialized = initServer(scriptPath, packageConfigPath != null ? packageConfigPath : "", servicePort);
             if (initialized) {
                 LOGGER.info("Server Dart runtime initialized successfully");
             } else {
