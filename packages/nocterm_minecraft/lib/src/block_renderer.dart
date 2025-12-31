@@ -1,4 +1,4 @@
-import 'package:dart_mc/dart_mc.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 
 /// Represents a single block change to be rendered.
 class BlockChange {
@@ -21,22 +21,22 @@ class BlockChange {
 /// Renders blocks to the Minecraft world in batches.
 ///
 /// This class collects block changes and executes them efficiently
-/// using the World.setBlock() API.
+/// using the ServerWorld.setBlock() API.
 class BlockRenderer {
   /// The world to render blocks into.
-  final World world;
+  final ServerWorld world;
 
   /// Creates a BlockRenderer for the given world.
   ///
   /// Example:
   /// ```dart
-  /// final renderer = BlockRenderer(World.overworld);
+  /// final renderer = BlockRenderer(ServerWorld.overworld);
   /// ```
   BlockRenderer(this.world);
 
   /// Render all block changes to the world.
   ///
-  /// Each change is applied in order using [World.setBlock].
+  /// Each change is applied in order using [ServerWorld.setBlock].
   /// Returns the number of blocks successfully placed.
   ///
   /// Example:

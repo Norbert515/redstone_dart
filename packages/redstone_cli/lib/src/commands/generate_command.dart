@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
+import 'package:path/path.dart' as p;
 
 import '../assets/asset_generator.dart';
 import '../project/redstone_project.dart';
@@ -31,10 +32,24 @@ class GenerateCommand extends Command<int> {
 
     try {
       // Step 1: Run the mod in datagen mode to generate manifest.json
-      Logger.info('Running mod in datagen mode...');
+      // Use the configured datagen entry point, or fall back to main_datagen.dart
+      // for Flutter mods, or main.dart as the final fallback
+      final datagenScript = File(project.datagenEntry);
+      final mainDatagenScript = File(p.join(project.rootDir, 'lib', 'main_datagen.dart'));
+
+      String scriptPath;
+      if (datagenScript.existsSync()) {
+        scriptPath = p.relative(project.datagenEntry, from: project.rootDir);
+      } else if (mainDatagenScript.existsSync()) {
+        scriptPath = 'lib/main_datagen.dart';
+      } else {
+        scriptPath = 'lib/main.dart';
+      }
+
+      Logger.info('Running mod in datagen mode ($scriptPath)...');
       final result = await Process.run(
         'dart',
-        ['run', 'lib/main.dart'],
+        ['run', scriptPath],
         workingDirectory: project.rootDir,
         environment: {'REDSTONE_DATAGEN': 'true'},
       );

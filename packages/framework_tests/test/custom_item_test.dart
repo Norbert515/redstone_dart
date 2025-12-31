@@ -2,8 +2,7 @@
 ///
 /// Tests for CustomItem callbacks: onUse, onUseOnBlock, onUseOnEntity.
 /// These are unit tests that directly call the callback methods.
-import 'package:dart_mc/api/custom_item.dart';
-import 'package:dart_mc/api/item_model.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 import 'package:test/test.dart';
 
 /// Test item that tracks callback invocations.
@@ -348,7 +347,7 @@ Future<void> main() async {
       expect(settings.maxStackSize, equals(64));
       expect(settings.maxDamage, equals(0));
       expect(settings.fireResistant, isFalse);
-      expect(settings.combat, isNull);
+      // Note: combat is now on CustomItem, not ItemSettings
     });
 
     test('can customize maxStackSize', () {

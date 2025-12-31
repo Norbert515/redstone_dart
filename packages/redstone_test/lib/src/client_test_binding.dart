@@ -7,7 +7,7 @@ library;
 
 import 'dart:async';
 
-import 'package:dart_mc/dart_mc.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 
 /// Singleton binding that initializes the client test environment.
 ///

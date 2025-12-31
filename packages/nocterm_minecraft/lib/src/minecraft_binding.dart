@@ -1,6 +1,6 @@
 import 'package:nocterm/nocterm.dart';
 import 'package:nocterm/src/buffer.dart' as buf;
-import 'package:dart_mc/dart_mc.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 
 import 'minecraft_screen.dart';
 import 'color_mapper.dart';
@@ -20,7 +20,7 @@ import 'block_renderer.dart';
 /// );
 /// final binding = MinecraftBinding(
 ///   screen: screen,
-///   world: World.overworld,
+///   world: ServerWorld.overworld,
 /// );
 /// binding.attach(terminalBinding);
 /// ```
@@ -39,7 +39,7 @@ class MinecraftBinding {
   /// blocks will be placed. The [world] is the dimension to place blocks in.
   MinecraftBinding({
     required this.screen,
-    required World world,
+    required ServerWorld world,
   }) : renderer = BlockRenderer(world);
 
   /// Attach to a TerminalBinding to receive buffer updates.

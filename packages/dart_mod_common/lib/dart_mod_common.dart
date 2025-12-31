@@ -4,6 +4,14 @@
 /// It is used by both dart_mod_server and dart_mod_client.
 library;
 
+// JNI utilities
+export 'src/jni/generic_bridge.dart';
+export 'src/jni/jni.dart';
+export 'src/jni/java_object.dart';
+
+// Input
+export 'src/input/keys.dart';
+
 // Core types
 export 'src/types.dart';
 

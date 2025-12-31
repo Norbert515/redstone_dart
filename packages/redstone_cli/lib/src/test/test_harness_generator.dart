@@ -117,11 +117,11 @@ class TestHarnessGenerator {
     if (projectPubspecFile.existsSync()) {
       final content = projectPubspecFile.readAsStringSync();
       // Simple regex to find path dependencies - this is sufficient for our use case
-      final dartMcMatch = RegExp(r'dart_mc:\s*\n\s*path:\s*(.+)').firstMatch(content);
+      final dartModServerMatch = RegExp(r'dart_mod_server:\s*\n\s*path:\s*(.+)').firstMatch(content);
       final redstoneTestMatch = RegExp(r'redstone_test:\s*\n\s*path:\s*(.+)').firstMatch(content);
 
-      if (dartMcMatch != null) {
-        final relativePath = dartMcMatch.group(1)!.trim();
+      if (dartModServerMatch != null) {
+        final relativePath = dartModServerMatch.group(1)!.trim();
         dartMcPath = Uri.directory(project.rootDir).resolve(relativePath).toFilePath();
       }
       if (redstoneTestMatch != null) {
@@ -130,7 +130,7 @@ class TestHarnessGenerator {
       }
     }
 
-    // Create a minimal pubspec that includes dart_mc and redstone_test
+    // Create a minimal pubspec that includes dart_mod_server and redstone_test
     final harnessPubspec = '''
 name: test_harness
 description: Generated test harness for ${project.name}
@@ -140,9 +140,9 @@ environment:
   sdk: ^3.0.0
 
 dependencies:
-  # dart_mc package for Bridge and Events
-  dart_mc:
-    path: ${dartMcPath ?? '../dart_mc'}
+  # dart_mod_server package for ServerBridge and Events
+  dart_mod_server:
+    path: ${dartMcPath ?? '../dart_mod_server'}
   # redstone_test for test utilities
   redstone_test:
     path: ${redstoneTestPath ?? '../redstone_test'}
@@ -208,12 +208,15 @@ dependencies:
     buffer.writeln();
 
     // Core imports
-    buffer.writeln("import 'package:dart_mc/dart_mc.dart';");
+    buffer.writeln("import 'package:dart_mod_server/dart_mod_server.dart';");
     buffer.writeln("import 'package:redstone_test/redstone_test.dart';");
     buffer.writeln();
 
-    // Import the mod's main.dart to register blocks, items, and entities
-    final modMainPath = p.join(project.rootDir, 'lib', 'main.dart');
+    // Import the mod's server entry point to register blocks, items, and entities
+    // Use configured server entry point or fall back to main.dart
+    final modMainPath = File(project.serverEntry).existsSync()
+        ? project.serverEntry
+        : project.entryPoint;
     buffer.writeln("import 'file://$modMainPath' as mod_main;");
     buffer.writeln();
 
@@ -230,7 +233,7 @@ dependencies:
     // Main function
     buffer.writeln('void main() async {');
     buffer.writeln('  // Initialize bridge');
-    buffer.writeln('  Bridge.initialize();');
+    buffer.writeln('  ServerBridge.initialize();');
     buffer.writeln();
     buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
     buffer.writeln('  mod_main.main();');
@@ -271,7 +274,7 @@ dependencies:
     buffer.writeln();
     buffer.writeln('    // Stop the server and exit');
     buffer.writeln("    print('Tests complete, stopping server...');");
-    buffer.writeln('    Bridge.stopServer();');
+    buffer.writeln('    ServerBridge.stopServer();');
     buffer.writeln('  });');
     buffer.writeln('}');
 
@@ -292,12 +295,15 @@ dependencies:
 
     // Core imports
     buffer.writeln("import 'dart:async';");
-    buffer.writeln("import 'package:dart_mc/dart_mc.dart';");
+    buffer.writeln("import 'package:dart_mod_server/dart_mod_server.dart';");
     buffer.writeln("import 'package:redstone_test/redstone_test.dart';");
     buffer.writeln();
 
-    // Import the mod's main.dart to register blocks, items, and entities
-    final modMainPath = p.join(project.rootDir, 'lib', 'main.dart');
+    // Import the mod's client entry point to register blocks, items, and entities
+    // Use configured client entry point or fall back to main.dart
+    final modMainPath = File(project.clientEntry).existsSync()
+        ? project.clientEntry
+        : project.entryPoint;
     buffer.writeln("import 'file://$modMainPath' as mod_main;");
     buffer.writeln();
 
@@ -357,28 +363,30 @@ dependencies:
     buffer.writeln();
     buffer.writeln('  // Stop the server and exit');
     buffer.writeln("  print('Tests complete, stopping server...');");
-    buffer.writeln('  Bridge.stopServer();');
+    buffer.writeln('  ServerBridge.stopServer();');
     buffer.writeln('}');
     buffer.writeln();
 
     // Main function for client tests - uses polling via server tick events
     buffer.writeln('void main() async {');
     buffer.writeln('  // Initialize bridge');
-    buffer.writeln('  Bridge.initialize();');
+    buffer.writeln('  ServerBridge.initialize();');
     buffer.writeln();
     buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
     buffer.writeln('  // This is important for visual tests that need custom entities to be registered');
     buffer.writeln('  mod_main.main();');
     buffer.writeln();
     buffer.writeln('  // Enable visual test mode to auto-join test world');
-    buffer.writeln('  ClientBridge.setVisualTestMode(true);');
+    buffer.writeln('  // TODO: ClientBridge needs to be imported from dart_mod_client when available');
+    buffer.writeln('  // ClientBridge.setVisualTestMode(true);');
     buffer.writeln();
     buffer.writeln('  // Use server tick events to poll for client readiness.');
     buffer.writeln('  // In singleplayer mode, the integrated server runs alongside the client.');
     buffer.writeln('  // This avoids needing complex FFI callbacks for client events.');
     buffer.writeln('  Events.addTickListener((tick) {');
     buffer.writeln('    // Check if client is ready (has player and world)');
-    buffer.writeln('    if (!_clientReady && ClientBridge.isClientReady()) {');
+    buffer.writeln('    // TODO: ClientBridge needs to be imported from dart_mod_client when available');
+    buffer.writeln('    if (!_clientReady) { // && ClientBridge.isClientReady()');
     buffer.writeln('      _clientReady = true;');
     buffer.writeln('      print("Client ready detected at tick \$tick");');
     buffer.writeln('      // Run tests asynchronously so we don\'t block the tick handler');

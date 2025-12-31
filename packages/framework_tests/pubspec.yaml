@@ -8,8 +8,8 @@ environment:
 
 dependencies:
   ffi: ^2.1.0
-  dart_mc:
-    path: ../dart_mc
+  dart_mod_server:
+    path: ../dart_mod_server
 
 dev_dependencies:
   redstone_test:

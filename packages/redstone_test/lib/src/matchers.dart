@@ -4,7 +4,7 @@
 /// blocks, entities, positions, and other game state.
 library;
 
-import 'package:dart_mc/dart_mc.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 import 'package:matcher/matcher.dart';
 
 // =============================================================================

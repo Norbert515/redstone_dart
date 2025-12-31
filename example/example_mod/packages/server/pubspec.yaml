@@ -1,0 +1,20 @@
+name: example_mod_server
+description: Server-side logic for Example Mod
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  ffi: ^2.1.0
+  dart_mod_server:
+    path: ../../../../packages/dart_mod_server
+  dart_mod_common:
+    path: ../../../../packages/dart_mod_common
+  example_mod_common:
+    path: ../common
+
+dev_dependencies:
+  redstone_test:
+    path: ../../../../packages/redstone_test

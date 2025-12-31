@@ -1,10 +1,10 @@
 // {{project_name}} - A Minecraft mod built with Redstone
 //
-// This is your mod's entry point. Register your blocks, entities,
+// This is your mod's server entry point. Register your blocks, entities,
 // and other game objects here.
 
-// Dart MC API imports
-import 'package:dart_mc/dart_mc.dart';
+// Dart Mod Server API imports
+import 'package:dart_mod_server/dart_mod_server.dart';
 
 /// Example custom block that shows a message when right-clicked.
 ///
@@ -37,14 +37,14 @@ class HelloBlock extends CustomBlock {
   }
 }
 
-/// Main entry point for your mod.
+/// Main entry point for your mod's server side.
 ///
 /// This is called when the Dart VM is initialized by the native bridge.
 void main() {
   print('{{project_name_title}} mod initialized!');
 
   // Initialize the native bridge
-  Bridge.initialize();
+  ServerBridge.initialize();
 
   // Register proxy block handlers (required for custom blocks)
   Events.registerProxyBlockHandlers();
@@ -53,13 +53,13 @@ void main() {
   // Register your custom blocks here
   // This MUST happen before the registry freezes (during mod initialization)
   // =========================================================================
-  BlockRegistry.register(HelloBlock());
+  BlockRegistry.instance.register(HelloBlock());
 
   // Add more blocks here:
-  // BlockRegistry.register(MyOtherBlock());
+  // BlockRegistry.instance.register(MyOtherBlock());
 
   // Freeze the block registry (no more blocks can be registered after this)
-  BlockRegistry.freeze();
+  BlockRegistry.instance.freeze();
 
   // =========================================================================
   // Register event handlers (optional)
@@ -75,5 +75,5 @@ void main() {
     // Use for animations, timers, etc.
   });
 
-  print('{{project_name_title}} ready with ${BlockRegistry.blockCount} custom blocks!');
+  print('{{project_name_title}} ready with ${BlockRegistry.instance.blockCount} custom blocks!');
 }

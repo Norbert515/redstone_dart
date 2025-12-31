@@ -4,7 +4,12 @@ library;
 // ignore_for_file: unused_field
 
 import 'dart:ffi';
+import 'dart:io';
+
 import 'package:ffi/ffi.dart';
+
+/// Type alias for backward compatibility with code using Bridge.
+typedef Bridge = ServerBridge;
 
 /// FFI bindings to the server-side native bridge.
 ///
@@ -12,6 +17,13 @@ import 'package:ffi/ffi.dart';
 class ServerBridge {
   static DynamicLibrary? _lib;
   static bool _initialized = false;
+
+  /// Whether the mod is running in datagen mode (asset generation only).
+  /// When true, registries will exit after writing manifests instead of running the game.
+  static bool isDatagenMode = false;
+
+  /// Counter for datagen mode handler IDs.
+  static int _datagenHandlerId = 1;
 
   /// Initialize the server bridge with the native library.
   static void init(String libraryPath) {
@@ -24,8 +36,87 @@ class ServerBridge {
     _bindFunctions();
   }
 
+  /// Initialize the bridge by loading the native library from process symbols.
+  ///
+  /// This is the preferred initialization method when running embedded in the
+  /// Dart VM (via dart_dll), where symbols are already available in the current process.
+  ///
+  /// For datagen mode, set the REDSTONE_DATAGEN environment variable to 'true'.
+  static void initialize() {
+    if (_initialized) return;
+
+    // Check for datagen mode via environment variable
+    final datagenEnv = Platform.environment['REDSTONE_DATAGEN'];
+    if (datagenEnv == 'true' || datagenEnv == '1') {
+      isDatagenMode = true;
+      _initialized = true;
+      print('ServerBridge: Running in DATAGEN mode (no native library)');
+      return;
+    }
+
+    _lib = _loadLibrary();
+    _initialized = true;
+    print('ServerBridge: Native library loaded');
+
+    // Bind all functions
+    _bindFunctions();
+  }
+
+  static DynamicLibrary _loadLibrary() {
+    // When running embedded, try to use the current process first
+    // (symbols are exported by the host application)
+    try {
+      final lib = DynamicLibrary.process();
+      // Verify we can find our symbols
+      lib.lookup('server_register_block_break_handler');
+      print('ServerBridge: Using process symbols (embedded mode)');
+      return lib;
+    } catch (_) {
+      // Fall back to loading from file
+      print('ServerBridge: Falling back to file loading');
+    }
+
+    final String libraryName;
+    if (Platform.isWindows) {
+      libraryName = 'dart_bridge_server.dll';
+    } else if (Platform.isMacOS) {
+      libraryName = 'libdart_bridge_server.dylib';
+    } else {
+      libraryName = 'libdart_bridge_server.so';
+    }
+
+    // Try multiple paths to find the library
+    final paths = [
+      libraryName, // Current directory
+      'dart_bridge_server.dylib', // Without lib prefix (our build)
+      '../native/build/$libraryName', // Build output
+      '../native/build/dart_bridge_server.dylib', // Build output without prefix
+      'native/build/lib/$libraryName',
+      'native/build/dart_bridge_server.dylib',
+    ];
+
+    for (final path in paths) {
+      try {
+        return DynamicLibrary.open(path);
+      } catch (_) {
+        // Try next path
+      }
+    }
+
+    throw StateError(
+        'Failed to load native library. Tried paths: ${paths.join(", ")}');
+  }
+
   /// Check if the bridge is initialized.
   static bool get isInitialized => _initialized;
+
+  /// Get the native library instance.
+  static DynamicLibrary get library {
+    if (_lib == null) {
+      throw StateError('ServerBridge not initialized. Call ServerBridge.initialize() first.');
+    }
+    return _lib!;
+  }
 
   // ==========================================================================
   // Native Function Bindings
@@ -96,6 +187,23 @@ class ServerBridge {
   static late final _ServerRegisterCustomGoalStopHandler _serverRegisterCustomGoalStopHandler;
 
   static late final _ServerSetSendChatMessageCallback _serverSetSendChatMessageCallback;
+
+  // Registry ready handler
+  static late final _ServerRegisterRegistryReadyHandler _serverRegisterRegistryReadyHandler;
+
+  // Communication functions
+  static late final _ServerSendChatMessage _serverSendChatMessage;
+  // Note: server_stop_server is not implemented in native code yet
+  // static late final _ServerStopServer _serverStopServer;
+
+  // Note: Container item access functions are not implemented in native code yet
+  // These use JNI calls instead
+  // static late final _ServerGetContainerItem _serverGetContainerItem;
+  // static late final _ServerSetContainerItem _serverSetContainerItem;
+  // static late final _ServerGetContainerSlotCount _serverGetContainerSlotCount;
+  // static late final _ServerClearContainerSlot _serverClearContainerSlot;
+  // static late final _ServerOpenContainerForPlayer _serverOpenContainerForPlayer;
+  // static late final _ServerFreeString _serverFreeString;
 
   static void _bindFunctions() {
     final lib = _lib!;
@@ -356,6 +464,24 @@ class ServerBridge {
     _serverSetSendChatMessageCallback = lib.lookupFunction<
         Void Function(Pointer<NativeFunction<_SendChatMessageCallbackNative>>),
         void Function(Pointer<NativeFunction<_SendChatMessageCallbackNative>>)>('server_set_send_chat_message_callback');
+
+    // Registry ready handler
+    _serverRegisterRegistryReadyHandler = lib.lookupFunction<
+        Void Function(Pointer<NativeFunction<_RegistryReadyCallbackNative>>),
+        void Function(Pointer<NativeFunction<_RegistryReadyCallbackNative>>)>('server_register_registry_ready_handler');
+
+    // Communication functions
+    _serverSendChatMessage = lib.lookupFunction<
+        Void Function(Int64, Pointer<Utf8>),
+        void Function(int, Pointer<Utf8>)>('server_send_chat_message');
+
+    // Note: server_stop_server is not implemented in native code yet
+    // _serverStopServer = lib.lookupFunction<
+    //     Void Function(),
+    //     void Function()>('server_stop_server');
+
+    // Note: Container item access functions are not implemented in native code yet
+    // These should use JNI calls instead
   }
 
   // ==========================================================================
@@ -413,6 +539,11 @@ class ServerBridge {
     required bool replaceable,
     required bool burnable,
   }) {
+    // In datagen mode, return fake handler IDs (no FFI available)
+    if (isDatagenMode) {
+      return _datagenHandlerId++;
+    }
+
     final namespacePtr = namespace.toNativeUtf8();
     final pathPtr = path.toNativeUtf8();
 
@@ -440,6 +571,11 @@ class ServerBridge {
     required double attackSpeed,
     required double attackKnockback,
   }) {
+    // In datagen mode, return fake handler IDs (no FFI available)
+    if (isDatagenMode) {
+      return _datagenHandlerId++;
+    }
+
     final namespacePtr = namespace.toNativeUtf8();
     final pathPtr = path.toNativeUtf8();
 
@@ -473,6 +609,11 @@ class ServerBridge {
     String? goalsJson,
     String? targetGoalsJson,
   }) {
+    // In datagen mode, return fake handler IDs (no FFI available)
+    if (isDatagenMode) {
+      return _datagenHandlerId++;
+    }
+
     final namespacePtr = namespace.toNativeUtf8();
     final pathPtr = path.toNativeUtf8();
     final breedingItemPtr = breedingItem?.toNativeUtf8() ?? nullptr;
@@ -502,19 +643,348 @@ class ServerBridge {
 
   /// Signal that all registrations are queued.
   static void signalRegistrationsQueued() {
+    if (isDatagenMode) return;
     _serverSignalRegistrationsQueued();
+    print('ServerBridge: Signaled registrations are queued');
+  }
+
+  // ==========================================================================
+  // Registry Ready Callback (for Flutter embedder timing)
+  // ==========================================================================
+
+  /// User-provided callback to be invoked when registries are ready.
+  static void Function()? _onRegistryReadyCallback;
+
+  /// Native callback function pointer that bridges to Dart.
+  @pragma('vm:entry-point')
+  static void _nativeRegistryReadyCallback() {
+    print('ServerBridge: Registry ready callback received from Java');
+    _onRegistryReadyCallback?.call();
+  }
+
+  /// Register a callback to be invoked when Java signals that registries are ready.
+  ///
+  /// With the Flutter embedder, Dart's `main()` runs immediately when the engine starts,
+  /// but Minecraft's registries may not be ready yet. Use this method to defer registration
+  /// of blocks, items, and entities until it's safe.
+  ///
+  /// Example:
+  /// ```dart
+  /// void main() {
+  ///   ServerBridge.initialize();
+  ///   Events.registerProxyBlockHandlers(); // These don't use registries
+  ///
+  ///   ServerBridge.onRegistryReady(() {
+  ///     // Now safe to register items, blocks, entities
+  ///     registerItems();
+  ///     registerBlocks();
+  ///     registerEntities();
+  ///   });
+  /// }
+  /// ```
+  static void onRegistryReady(void Function() callback) {
+    if (isDatagenMode) {
+      // In datagen mode, call immediately since there's no Java to signal
+      callback();
+      // Exit after registrations complete - manifests have been written
+      print('ServerBridge: Datagen mode complete, exiting...');
+      exit(0);
+    }
+
+    _onRegistryReadyCallback = callback;
+
+    // Register the native callback with the C++ layer
+    final nativeCallback = Pointer.fromFunction<_RegistryReadyCallbackNative>(
+      _nativeRegistryReadyCallback,
+    );
+    _serverRegisterRegistryReadyHandler(nativeCallback);
+    print('ServerBridge: Registry ready callback registered');
+  }
+
+  // ==========================================================================
+  // Communication APIs
+  // ==========================================================================
+
+  /// Send a chat message to a player.
+  ///
+  /// [playerId] is the entity ID of the player (or 0 to broadcast to all).
+  /// [message] is the text to send.
+  static void sendChatMessage(int playerId, String message) {
+    if (isDatagenMode) return;
+    final messagePtr = message.toNativeUtf8();
+    try {
+      _serverSendChatMessage(playerId, messagePtr);
+    } finally {
+      calloc.free(messagePtr);
+    }
+  }
+
+  /// Stop the Minecraft server gracefully.
+  ///
+  /// This will cause the server to halt and exit. Use this when you need
+  /// to programmatically stop the server (e.g., after tests complete).
+  ///
+  /// NOTE: Not implemented in native code yet. Use JNI-based approach instead.
+  static void stopServer() {
+    if (isDatagenMode) return;
+    print('ServerBridge: stopServer() not implemented in native code');
+    // TODO: Implement via JNI call to MinecraftServer.halt()
+  }
+
+  // ==========================================================================
+  // Container Item Access APIs (Server-side)
+  // NOTE: These functions are not implemented in native code yet.
+  // Container access should use JNI calls directly.
+  // ==========================================================================
+
+  /// Get item from container slot.
+  /// Returns "itemId:count:damage:maxDamage" or empty string.
+  ///
+  /// NOTE: Not implemented in native code yet.
+  static String getContainerItem(int menuId, int slotIndex) {
+    if (isDatagenMode) return '';
+    print('ServerBridge: getContainerItem() not implemented in native code');
+    return '';
+  }
+
+  /// Set item in container slot.
+  ///
+  /// NOTE: Not implemented in native code yet.
+  static void setContainerItem(int menuId, int slotIndex, String itemId, int count) {
+    if (isDatagenMode) return;
+    print('ServerBridge: setContainerItem() not implemented in native code');
+  }
+
+  /// Get total slot count for a container menu.
+  ///
+  /// NOTE: Not implemented in native code yet.
+  static int getContainerSlotCount(int menuId) {
+    if (isDatagenMode) return 0;
+    print('ServerBridge: getContainerSlotCount() not implemented in native code');
+    return 0;
+  }
+
+  /// Clear a container slot.
+  ///
+  /// NOTE: Not implemented in native code yet.
+  static void clearContainerSlot(int menuId, int slotIndex) {
+    if (isDatagenMode) return;
+    print('ServerBridge: clearContainerSlot() not implemented in native code');
+  }
+
+  /// Open a container for a player.
+  ///
+  /// [playerId] is the entity ID of the player.
+  /// [containerId] is the registered container type ID (e.g., "mymod:diamond_chest").
+  ///
+  /// Returns true if the container was opened successfully.
+  ///
+  /// NOTE: Not implemented in native code yet.
+  static bool openContainerForPlayer(int playerId, String containerId) {
+    if (isDatagenMode) return false;
+    print('ServerBridge: openContainerForPlayer() not implemented in native code');
+    return false;
   }
 
   // ==========================================================================
   // Callback Registration
   // ==========================================================================
 
+  /// Register a block break handler callback.
+  static void registerBlockBreakHandler(Pointer<NativeFunction<_BlockBreakCallbackNative>> callback) {
+    _serverRegisterBlockBreakHandler(callback);
+  }
+
+  /// Register a block interact handler callback.
+  static void registerBlockInteractHandler(Pointer<NativeFunction<_BlockInteractCallbackNative>> callback) {
+    // Note: Block interact uses a different native signature - needs to be added if not present
+    // For now, we'll skip this as it may not be needed
+  }
+
   /// Register a tick handler callback.
   static void registerTickHandler(Pointer<NativeFunction<_TickCallbackNative>> callback) {
     _serverRegisterTickHandler(callback);
   }
 
-  // ... Additional callback registration methods follow the same pattern
+  // Proxy Block Handlers
+  static void registerProxyBlockBreakHandler(Pointer<NativeFunction<_ProxyBlockBreakCallbackNative>> callback) {
+    _serverRegisterProxyBlockBreakHandler(callback);
+  }
+
+  static void registerProxyBlockUseHandler(Pointer<NativeFunction<_ProxyBlockUseCallbackNative>> callback) {
+    _serverRegisterProxyBlockUseHandler(callback);
+  }
+
+  static void registerProxyBlockSteppedOnHandler(Pointer<NativeFunction<_ProxyBlockSteppedOnCallbackNative>> callback) {
+    _serverRegisterProxyBlockSteppedOnHandler(callback);
+  }
+
+  static void registerProxyBlockFallenUponHandler(Pointer<NativeFunction<_ProxyBlockFallenUponCallbackNative>> callback) {
+    _serverRegisterProxyBlockFallenUponHandler(callback);
+  }
+
+  static void registerProxyBlockRandomTickHandler(Pointer<NativeFunction<_ProxyBlockRandomTickCallbackNative>> callback) {
+    _serverRegisterProxyBlockRandomTickHandler(callback);
+  }
+
+  static void registerProxyBlockPlacedHandler(Pointer<NativeFunction<_ProxyBlockPlacedCallbackNative>> callback) {
+    _serverRegisterProxyBlockPlacedHandler(callback);
+  }
+
+  static void registerProxyBlockRemovedHandler(Pointer<NativeFunction<_ProxyBlockRemovedCallbackNative>> callback) {
+    _serverRegisterProxyBlockRemovedHandler(callback);
+  }
+
+  static void registerProxyBlockNeighborChangedHandler(Pointer<NativeFunction<_ProxyBlockNeighborChangedCallbackNative>> callback) {
+    _serverRegisterProxyBlockNeighborChangedHandler(callback);
+  }
+
+  static void registerProxyBlockEntityInsideHandler(Pointer<NativeFunction<_ProxyBlockEntityInsideCallbackNative>> callback) {
+    _serverRegisterProxyBlockEntityInsideHandler(callback);
+  }
+
+  // Player Event Handlers
+  static void registerPlayerJoinHandler(Pointer<NativeFunction<_PlayerJoinCallbackNative>> callback) {
+    _serverRegisterPlayerJoinHandler(callback);
+  }
+
+  static void registerPlayerLeaveHandler(Pointer<NativeFunction<_PlayerLeaveCallbackNative>> callback) {
+    _serverRegisterPlayerLeaveHandler(callback);
+  }
+
+  static void registerPlayerRespawnHandler(Pointer<NativeFunction<_PlayerRespawnCallbackNative>> callback) {
+    _serverRegisterPlayerRespawnHandler(callback);
+  }
+
+  static void registerPlayerDeathHandler(Pointer<NativeFunction<_PlayerDeathCallbackNative>> callback) {
+    _serverRegisterPlayerDeathHandler(callback);
+  }
+
+  static void registerEntityDamageHandler(Pointer<NativeFunction<_EntityDamageCallbackNative>> callback) {
+    _serverRegisterEntityDamageHandler(callback);
+  }
+
+  static void registerEntityDeathHandler(Pointer<NativeFunction<_EntityDeathCallbackNative>> callback) {
+    _serverRegisterEntityDeathHandler(callback);
+  }
+
+  static void registerPlayerAttackEntityHandler(Pointer<NativeFunction<_PlayerAttackEntityCallbackNative>> callback) {
+    _serverRegisterPlayerAttackEntityHandler(callback);
+  }
+
+  static void registerPlayerChatHandler(Pointer<NativeFunction<_PlayerChatCallbackNative>> callback) {
+    _serverRegisterPlayerChatHandler(callback);
+  }
+
+  static void registerPlayerCommandHandler(Pointer<NativeFunction<_PlayerCommandCallbackNative>> callback) {
+    _serverRegisterPlayerCommandHandler(callback);
+  }
+
+  // Item Event Handlers
+  static void registerItemUseHandler(Pointer<NativeFunction<_ItemUseCallbackNative>> callback) {
+    _serverRegisterItemUseHandler(callback);
+  }
+
+  static void registerItemUseOnBlockHandler(Pointer<NativeFunction<_ItemUseOnBlockCallbackNative>> callback) {
+    _serverRegisterItemUseOnBlockHandler(callback);
+  }
+
+  static void registerItemUseOnEntityHandler(Pointer<NativeFunction<_ItemUseOnEntityCallbackNative>> callback) {
+    _serverRegisterItemUseOnEntityHandler(callback);
+  }
+
+  static void registerBlockPlaceHandler(Pointer<NativeFunction<_BlockPlaceCallbackNative>> callback) {
+    _serverRegisterBlockPlaceHandler(callback);
+  }
+
+  static void registerPlayerPickupItemHandler(Pointer<NativeFunction<_PlayerPickupItemCallbackNative>> callback) {
+    _serverRegisterPlayerPickupItemHandler(callback);
+  }
+
+  static void registerPlayerDropItemHandler(Pointer<NativeFunction<_PlayerDropItemCallbackNative>> callback) {
+    _serverRegisterPlayerDropItemHandler(callback);
+  }
+
+  // Server Lifecycle Handlers
+  static void registerServerStartingHandler(Pointer<NativeFunction<_ServerLifecycleCallbackNative>> callback) {
+    _serverRegisterServerStartingHandler(callback);
+  }
+
+  static void registerServerStartedHandler(Pointer<NativeFunction<_ServerLifecycleCallbackNative>> callback) {
+    _serverRegisterServerStartedHandler(callback);
+  }
+
+  static void registerServerStoppingHandler(Pointer<NativeFunction<_ServerLifecycleCallbackNative>> callback) {
+    _serverRegisterServerStoppingHandler(callback);
+  }
+
+  // Proxy Entity Handlers
+  static void registerProxyEntitySpawnHandler(Pointer<NativeFunction<_ProxyEntitySpawnCallbackNative>> callback) {
+    _serverRegisterProxyEntitySpawnHandler(callback);
+  }
+
+  static void registerProxyEntityTickHandler(Pointer<NativeFunction<_ProxyEntityTickCallbackNative>> callback) {
+    _serverRegisterProxyEntityTickHandler(callback);
+  }
+
+  static void registerProxyEntityDeathHandler(Pointer<NativeFunction<_ProxyEntityDeathCallbackNative>> callback) {
+    _serverRegisterProxyEntityDeathHandler(callback);
+  }
+
+  static void registerProxyEntityDamageHandler(Pointer<NativeFunction<_ProxyEntityDamageCallbackNative>> callback) {
+    _serverRegisterProxyEntityDamageHandler(callback);
+  }
+
+  static void registerProxyEntityAttackHandler(Pointer<NativeFunction<_ProxyEntityAttackCallbackNative>> callback) {
+    _serverRegisterProxyEntityAttackHandler(callback);
+  }
+
+  static void registerProxyEntityTargetHandler(Pointer<NativeFunction<_ProxyEntityTargetCallbackNative>> callback) {
+    _serverRegisterProxyEntityTargetHandler(callback);
+  }
+
+  // Proxy Item Handlers
+  static void registerProxyItemAttackEntityHandler(Pointer<NativeFunction<_ProxyItemAttackEntityCallbackNative>> callback) {
+    _serverRegisterProxyItemAttackEntityHandler(callback);
+  }
+
+  static void registerProxyItemUseHandler(Pointer<NativeFunction<_ProxyItemUseCallbackNative>> callback) {
+    _serverRegisterProxyItemUseHandler(callback);
+  }
+
+  static void registerProxyItemUseOnBlockHandler(Pointer<NativeFunction<_ProxyItemUseOnBlockCallbackNative>> callback) {
+    _serverRegisterProxyItemUseOnBlockHandler(callback);
+  }
+
+  static void registerProxyItemUseOnEntityHandler(Pointer<NativeFunction<_ProxyItemUseOnEntityCallbackNative>> callback) {
+    _serverRegisterProxyItemUseOnEntityHandler(callback);
+  }
+
+  // Command Handler
+  static void registerCommandExecuteHandler(Pointer<NativeFunction<_CommandExecuteCallbackNative>> callback) {
+    _serverRegisterCommandExecuteHandler(callback);
+  }
+
+  // Custom Goal Handlers
+  static void registerCustomGoalCanUseHandler(Pointer<NativeFunction<_CustomGoalCanUseCallbackNative>> callback) {
+    _serverRegisterCustomGoalCanUseHandler(callback);
+  }
+
+  static void registerCustomGoalCanContinueToUseHandler(Pointer<NativeFunction<_CustomGoalCanContinueToUseCallbackNative>> callback) {
+    _serverRegisterCustomGoalCanContinueToUseHandler(callback);
+  }
+
+  static void registerCustomGoalStartHandler(Pointer<NativeFunction<_CustomGoalStartCallbackNative>> callback) {
+    _serverRegisterCustomGoalStartHandler(callback);
+  }
+
+  static void registerCustomGoalTickHandler(Pointer<NativeFunction<_CustomGoalTickCallbackNative>> callback) {
+    _serverRegisterCustomGoalTickHandler(callback);
+  }
+
+  static void registerCustomGoalStopHandler(Pointer<NativeFunction<_CustomGoalStopCallbackNative>> callback) {
+    _serverRegisterCustomGoalStopHandler(callback);
+  }
 }
 
 // ==========================================================================
@@ -594,9 +1064,24 @@ typedef _ServerRegisterCustomGoalStartHandler = void Function(Pointer<NativeFunc
 typedef _ServerRegisterCustomGoalTickHandler = void Function(Pointer<NativeFunction<_CustomGoalTickCallbackNative>>);
 typedef _ServerRegisterCustomGoalStopHandler = void Function(Pointer<NativeFunction<_CustomGoalStopCallbackNative>>);
 typedef _ServerSetSendChatMessageCallback = void Function(Pointer<NativeFunction<_SendChatMessageCallbackNative>>);
+typedef _ServerRegisterRegistryReadyHandler = void Function(Pointer<NativeFunction<_RegistryReadyCallbackNative>>);
+
+// Communication function typedefs
+typedef _ServerSendChatMessage = void Function(int, Pointer<Utf8>);
+// Note: Not implemented in native code yet
+// typedef _ServerStopServer = void Function();
+
+// Note: Container item access functions not implemented in native code yet
+// typedef _ServerGetContainerItem = Pointer<Utf8> Function(int, int);
+// typedef _ServerSetContainerItem = void Function(int, int, Pointer<Utf8>, int);
+// typedef _ServerGetContainerSlotCount = int Function(int);
+// typedef _ServerClearContainerSlot = void Function(int, int);
+// typedef _ServerOpenContainerForPlayer = bool Function(int, Pointer<Utf8>);
+// typedef _ServerFreeString = void Function(Pointer<Utf8>);
 
 // Native callback signatures
 typedef _BlockBreakCallbackNative = Int32 Function(Int32, Int32, Int32, Int64);
+typedef _BlockInteractCallbackNative = Int32 Function(Int32, Int32, Int32, Int64, Int32);
 typedef _TickCallbackNative = Void Function(Int64);
 typedef _ProxyBlockBreakCallbackNative = Bool Function(Int64, Int64, Int32, Int32, Int32, Int64);
 typedef _ProxyBlockUseCallbackNative = Int32 Function(Int64, Int64, Int32, Int32, Int32, Int64, Int32);
@@ -640,3 +1125,4 @@ typedef _CustomGoalStartCallbackNative = Void Function(Pointer<Utf8>, Int32);
 typedef _CustomGoalTickCallbackNative = Void Function(Pointer<Utf8>, Int32);
 typedef _CustomGoalStopCallbackNative = Void Function(Pointer<Utf8>, Int32);
 typedef _SendChatMessageCallbackNative = Void Function(Int64, Pointer<Utf8>);
+typedef _RegistryReadyCallbackNative = Void Function();

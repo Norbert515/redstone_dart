@@ -1,0 +1,11 @@
+name: example_mod_common
+description: Shared types for Example Mod (client/server agnostic)
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  dart_mod_common:
+    path: ../../../../packages/dart_mod_common

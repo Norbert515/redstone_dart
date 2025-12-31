@@ -36,10 +36,24 @@ class BuildCommand extends Command<int> {
 
     try {
       // Step 1: Run the mod in datagen mode to generate manifest.json
+      // Use the configured datagen entry point, or fall back to main_datagen.dart
+      // for Flutter mods, or main.dart as the final fallback
+      final datagenScript = File(project.datagenEntry);
+      final mainDatagenScript = File(p.join(project.rootDir, 'lib', 'main_datagen.dart'));
+
+      String scriptPath;
+      if (datagenScript.existsSync()) {
+        scriptPath = p.relative(project.datagenEntry, from: project.rootDir);
+      } else if (mainDatagenScript.existsSync()) {
+        scriptPath = 'lib/main_datagen.dart';
+      } else {
+        scriptPath = 'lib/main.dart';
+      }
+
       Logger.progress('Running datagen');
       final datagenResult = await Process.run(
         'dart',
-        ['run', 'lib/main.dart'],
+        ['run', scriptPath],
         workingDirectory: project.rootDir,
         environment: {'REDSTONE_DATAGEN': 'true'},
       );

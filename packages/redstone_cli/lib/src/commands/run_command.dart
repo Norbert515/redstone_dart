@@ -144,8 +144,16 @@ class RunCommand extends Command<int> {
 
     final hotReloadEnabled = argResults!['hot-reload'] as bool;
     final flutterEnabled = argResults!['flutter'] as bool;
-    final dualRuntimeEnabled = argResults!['dual-runtime'] as bool;
+    final dualRuntimeFlagEnabled = argResults!['dual-runtime'] as bool;
     final watchEnabled = argResults!['watch'] as bool;
+
+    // Auto-detect dual-runtime mode if project has custom entry points configured
+    // or if explicitly enabled via --dual-runtime flag
+    final dualRuntimeEnabled = dualRuntimeFlagEnabled || project.hasDualRuntime;
+
+    if (project.hasDualRuntime && !dualRuntimeFlagEnabled) {
+      Logger.info('Auto-detected dual-runtime mode from redstone.yaml');
+    }
 
     // Dual runtime implies Flutter mode
     final effectiveFlutterEnabled = flutterEnabled || dualRuntimeEnabled;
@@ -380,9 +388,9 @@ class RunCommand extends Command<int> {
     }
 
     // 4. Build Flutter assets (compile mod to kernel_blob.bin)
-    // In dual-runtime mode, the client entry point is lib/client/main.dart
+    // In dual-runtime mode, use the configured client entry point
     final clientEntryPoint = dualRuntime
-        ? p.join(project.rootDir, 'lib', 'client', 'main.dart')
+        ? project.clientEntry
         : project.entryPoint;
 
     Logger.step('Compiling Dart code to Flutter kernel...');
@@ -445,14 +453,14 @@ class RunCommand extends Command<int> {
   /// The dart_dll runtime compiles Dart sources at runtime, so we need to
   /// copy the source files and package config to the mod directory.
   Future<bool> _compileServerKernel(RedstoneProject project) async {
-    final serverEntryPoint = p.join(project.rootDir, 'lib', 'server', 'main.dart');
+    final serverEntryPoint = project.serverEntry;
     final serverEntryFile = File(serverEntryPoint);
 
     // Check if server entry point exists
     if (!serverEntryFile.existsSync()) {
       Logger.warning('Server entry point not found: $serverEntryPoint');
       Logger.info('Skipping server source copy.');
-      Logger.info('Create lib/server/main.dart to enable dual-runtime mode.');
+      Logger.info('Create the server entry point or configure it in redstone.yaml to enable dual-runtime mode.');
       return true; // Not an error, just skip
     }
 
@@ -472,8 +480,10 @@ class RunCommand extends Command<int> {
     }
 
     try {
-      // 1. Copy entire lib/ directory to mods/dart_mc/lib/
-      final sourceLibDir = Directory(p.join(project.rootDir, 'lib'));
+      // 1. Copy server package's lib/ directory to mods/dart_mc/lib/
+      // Use the configured server package directory (e.g., packages/server/lib)
+      final serverPackageLibDir = p.join(project.serverPackageDir, 'lib');
+      final sourceLibDir = Directory(serverPackageLibDir);
       final targetLibDir = Directory(p.join(targetModDir, 'lib'));
 
       // Delete existing lib dir to ensure clean copy
@@ -482,13 +492,22 @@ class RunCommand extends Command<int> {
       }
 
       await _copyDirectory(sourceLibDir, targetLibDir);
-      Logger.success('Server sources copied to ${targetLibDir.path}');
+      Logger.success('Server sources copied from ${p.relative(serverPackageLibDir, from: project.rootDir)}');
 
       // 2. Copy .dart_tool/package_config.json with absolutized paths
-      final sourcePackageConfig = File(p.join(project.rootDir, '.dart_tool', 'package_config.json'));
+      // Try server package's .dart_tool first, then fall back to root project's
+      var sourcePackageConfig = File(p.join(project.serverPackageDir, '.dart_tool', 'package_config.json'));
+      var pubGetDir = project.serverPackageDir;
+
+      if (!sourcePackageConfig.existsSync()) {
+        // Fall back to root project's package config (for workspace setups)
+        sourcePackageConfig = File(p.join(project.rootDir, '.dart_tool', 'package_config.json'));
+        pubGetDir = project.rootDir;
+      }
+
       if (!sourcePackageConfig.existsSync()) {
         Logger.warning('Package config not found, running dart pub get...');
-        await Process.run('dart', ['pub', 'get'], workingDirectory: project.rootDir);
+        await Process.run('dart', ['pub', 'get'], workingDirectory: pubGetDir);
       }
 
       if (sourcePackageConfig.existsSync()) {
@@ -632,7 +651,7 @@ class RunCommand extends Command<int> {
       Logger.info('File changed: $relativePath');
 
       // Determine which runtime to reload based on file path
-      final target = _determineReloadTarget(relativePath, dualRuntimeMode);
+      final target = _determineReloadTarget(project, relativePath, dualRuntimeMode);
 
       // Trigger appropriate reload
       bool success;
@@ -660,16 +679,20 @@ class RunCommand extends Command<int> {
 
   /// Print information about what's being watched
   void _printWatchingInfo(RedstoneProject project) {
+    final serverDir = p.relative(project.serverPackageDir, from: project.rootDir);
+    final clientDir = p.relative(project.clientPackageDir, from: project.rootDir);
+    final commonDir = p.relative(project.commonPackageDir, from: project.rootDir);
+
     Logger.newLine();
     Logger.info('Watching for changes:');
-    Logger.step('  [server] lib/server/*.dart → reload server');
-    Logger.step('  [client] lib/client/*.dart → reload client');
-    Logger.step('  [common] lib/common/*.dart, lib/*.dart → reload both');
+    Logger.step('  [server] $serverDir/*.dart → reload server');
+    Logger.step('  [client] $clientDir/*.dart → reload client');
+    Logger.step('  [common] $commonDir/*.dart, lib/*.dart → reload both');
     Logger.newLine();
   }
 
   /// Determine which runtime to reload based on file path
-  RuntimeTarget _determineReloadTarget(String relativePath, bool dualRuntimeMode) {
+  RuntimeTarget _determineReloadTarget(RedstoneProject project, String relativePath, bool dualRuntimeMode) {
     if (!dualRuntimeMode) {
       return RuntimeTarget.all;
     }
@@ -677,15 +700,20 @@ class RunCommand extends Command<int> {
     // Normalize path separators
     final normalizedPath = relativePath.replaceAll('\\', '/');
 
+    // Get relative paths for package directories
+    final serverDir = p.relative(project.serverPackageDir, from: project.rootDir).replaceAll('\\', '/');
+    final clientDir = p.relative(project.clientPackageDir, from: project.rootDir).replaceAll('\\', '/');
+    final commonDir = p.relative(project.commonPackageDir, from: project.rootDir).replaceAll('\\', '/');
+
     // Check for server-specific files
-    if (normalizedPath.startsWith('lib/server/') ||
+    if (normalizedPath.startsWith('$serverDir/') ||
         normalizedPath.contains('/server/') ||
         normalizedPath.contains('_server.dart')) {
       return RuntimeTarget.server;
     }
 
     // Check for client-specific files
-    if (normalizedPath.startsWith('lib/client/') ||
+    if (normalizedPath.startsWith('$clientDir/') ||
         normalizedPath.contains('/client/') ||
         normalizedPath.contains('_client.dart') ||
         normalizedPath.contains('/ui/') ||
@@ -695,7 +723,7 @@ class RunCommand extends Command<int> {
     }
 
     // Check for common files (reload both)
-    if (normalizedPath.startsWith('lib/common/') ||
+    if (normalizedPath.startsWith('$commonDir/') ||
         normalizedPath.contains('/common/') ||
         normalizedPath.contains('/shared/') ||
         normalizedPath.contains('/models/') ||

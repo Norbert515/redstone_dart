@@ -1440,7 +1440,8 @@ JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_areRegistrationsQueued(
  */
 JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingBlockRegistrations(
     JNIEnv* /* env */, jclass /* cls */) {
-    return has_pending_block_registrations() ? JNI_TRUE : JNI_FALSE;
+    // Use server-side queue (items registered via dart_mod_server FFI)
+    return server_has_pending_block_registrations() ? JNI_TRUE : JNI_FALSE;
 }
 
 /*
@@ -1452,7 +1453,8 @@ JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingBlockRegistrat
  */
 JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingItemRegistrations(
     JNIEnv* /* env */, jclass /* cls */) {
-    return has_pending_item_registrations() ? JNI_TRUE : JNI_FALSE;
+    // Use server-side queue (items registered via dart_mod_server FFI)
+    return server_has_pending_item_registrations() ? JNI_TRUE : JNI_FALSE;
 }
 
 /*
@@ -1480,7 +1482,8 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockRegistra
     double slipperiness, velocity_mult, jump_velocity_mult;
     bool ticks_randomly, collidable, replaceable, burnable;
 
-    if (!get_next_block_registration(
+    // Use server-side queue (items registered via dart_mod_server FFI)
+    if (!server_get_next_block_registration(
             &handler_id,
             namespace_buf, sizeof(namespace_buf),
             path_buf, sizeof(path_buf),
@@ -1568,7 +1571,8 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextItemRegistrat
     bool fire_resistant;
     double attack_damage, attack_speed, attack_knockback;
 
-    if (!get_next_item_registration(
+    // Use server-side queue (items registered via dart_mod_server FFI)
+    if (!server_get_next_item_registration(
             &handler_id,
             namespace_buf, sizeof(namespace_buf),
             path_buf, sizeof(path_buf),
@@ -1629,7 +1633,8 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextItemRegistrat
  */
 JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingEntityRegistrations(
     JNIEnv* /* env */, jclass /* cls */) {
-    return has_pending_entity_registrations() ? JNI_TRUE : JNI_FALSE;
+    // Use server-side queue (entities registered via dart_mod_server FFI)
+    return server_has_pending_entity_registrations() ? JNI_TRUE : JNI_FALSE;
 }
 
 /*
@@ -1661,7 +1666,8 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextEntityRegistr
     char goals_json_buf[4096];
     char target_goals_json_buf[4096];
 
-    if (!get_next_entity_registration(
+    // Use server-side queue (entities registered via dart_mod_server FFI)
+    if (!server_get_next_entity_registration(
             &handler_id,
             namespace_buf, sizeof(namespace_buf),
             path_buf, sizeof(path_buf),

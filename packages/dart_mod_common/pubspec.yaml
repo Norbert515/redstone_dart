@@ -6,4 +6,5 @@ publish_to: none
 environment:
   sdk: ^3.0.0
 
-# NO dependencies - this package must be pure Dart with no platform-specific code
+dependencies:
+  ffi: ^2.0.0

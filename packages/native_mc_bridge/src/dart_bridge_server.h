@@ -313,4 +313,43 @@ int64_t server_queue_entity_registration(
 
 void server_signal_registrations_queued();
 
+// ==========================================================================
+// Registration Queue Access Functions (called from JNI)
+// ==========================================================================
+
+bool server_has_pending_block_registrations();
+bool server_has_pending_item_registrations();
+bool server_has_pending_entity_registrations();
+
+bool server_get_next_block_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, size_t namespace_len,
+    char* out_path, size_t path_len,
+    float* out_hardness, float* out_resistance, bool* out_requires_tool,
+    int32_t* out_luminance, double* out_slipperiness,
+    double* out_velocity_mult, double* out_jump_velocity_mult,
+    bool* out_ticks_randomly, bool* out_collidable,
+    bool* out_replaceable, bool* out_burnable);
+
+bool server_get_next_item_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, size_t namespace_len,
+    char* out_path, size_t path_len,
+    int32_t* out_max_stack_size, int32_t* out_max_damage, bool* out_fire_resistant,
+    double* out_attack_damage, double* out_attack_speed, double* out_attack_knockback);
+
+bool server_get_next_entity_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, size_t namespace_len,
+    char* out_path, size_t path_len,
+    double* out_width, double* out_height, double* out_max_health,
+    double* out_movement_speed, double* out_attack_damage,
+    int32_t* out_spawn_group, int32_t* out_base_type,
+    char* out_breeding_item, size_t breeding_item_len,
+    char* out_model_type, size_t model_type_len,
+    char* out_texture_path, size_t texture_path_len,
+    double* out_model_scale,
+    char* out_goals_json, size_t goals_json_len,
+    char* out_target_goals_json, size_t target_goals_json_len);
+
 } // extern "C"

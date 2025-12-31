@@ -5,7 +5,6 @@
 import 'dart:async';
 
 import 'package:redstone_test/redstone_test.dart';
-import 'package:test/test.dart' as dart_test;
 
 Future<void> main() async {
   await group('Bridge initialization', () async {
