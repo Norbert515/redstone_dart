@@ -9,10 +9,13 @@
 // ==========================================================================
 
 #include "dart_bridge_server.h"  // Server functions ONLY - no dart_bridge.h!
+#include "jni_helpers.h"         // Shared JNI boxing helpers
 
 #include <jni.h>
 #include <iostream>
 #include <cstring>
+
+using namespace jni_helpers;
 
 // JNI function naming convention:
 // Java_<package>_<class>_<method>
@@ -235,18 +238,22 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridge_setSendChatCallback(
 // Flutter Stubs (no-op in server-only mode)
 // ==========================================================================
 
+// Only compile the stub in server-only builds. In full builds, the real
+// implementation exists in dart_bridge.cpp and we'd get duplicate symbols.
+#ifdef SERVER_ONLY_BUILD
 /*
  * Class:     com_redstone_DartBridge
  * Method:    processFlutterTasks
  * Signature: ()V
  *
  * In server-only mode, this is a no-op stub.
- * The full build has the real implementation in jni_interface_client.cpp.
+ * The full build has the real implementation in dart_bridge.cpp.
  */
 JNIEXPORT void JNICALL Java_com_redstone_DartBridge_processFlutterTasks(
     JNIEnv* /* env */, jclass /* cls */) {
     // No-op in server-only mode - Flutter is not available
 }
+#endif
 
 // ==========================================================================
 // Server-side Event Dispatching (routes to server runtime)
@@ -263,6 +270,32 @@ JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onServerBlockBreak(
     JNIEnv* /* env */, jclass /* cls */,
     jint x, jint y, jint z, jlong player_id) {
     return server_dispatch_block_break(x, y, z, player_id);
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onBlockBreak
+ * Signature: (IIIJ)I
+ *
+ * Server-side block break event (alias for Java compatibility).
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onBlockBreak(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint x, jint y, jint z, jlong player_id) {
+    return server_dispatch_block_break(x, y, z, player_id);
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onBlockInteract
+ * Signature: (IIIJI)I
+ *
+ * Server-side block interact event.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onBlockInteract(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint x, jint y, jint z, jlong player_id, jint hand) {
+    return server_dispatch_block_interact(x, y, z, player_id, hand);
 }
 
 /*
@@ -841,6 +874,71 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyEntityTarget(
 }
 
 // ==========================================================================
+// Projectile Proxy JNI Entry Points (server-side)
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyProjectileHitEntity
+ * Signature: (JII)V
+ *
+ * Called when a Dart-defined projectile hits an entity.
+ * Routes to Dart's EntityRegistry.dispatchProjectileHitEntity().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyProjectileHitEntity(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handlerId, jint projectileId, jint targetId) {
+    server_dispatch_proxy_projectile_hit_entity(
+        static_cast<int64_t>(handlerId),
+        static_cast<int32_t>(projectileId),
+        static_cast<int32_t>(targetId));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyProjectileHitBlock
+ * Signature: (JIIIILjava/lang/String;)V
+ *
+ * Called when a Dart-defined projectile hits a block.
+ * Routes to Dart's EntityRegistry.dispatchProjectileHitBlock().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyProjectileHitBlock(
+    JNIEnv* env, jclass /* cls */,
+    jlong handlerId, jint projectileId, jint x, jint y, jint z, jstring side) {
+    const char* side_str = env->GetStringUTFChars(side, nullptr);
+    server_dispatch_proxy_projectile_hit_block(
+        static_cast<int64_t>(handlerId),
+        static_cast<int32_t>(projectileId),
+        static_cast<int32_t>(x),
+        static_cast<int32_t>(y),
+        static_cast<int32_t>(z),
+        side_str);
+    env->ReleaseStringUTFChars(side, side_str);
+}
+
+// ==========================================================================
+// Animal Proxy JNI Entry Points (server-side)
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyAnimalBreed
+ * Signature: (JIII)V
+ *
+ * Called when a Dart-defined animal breeds.
+ * Routes to Dart's EntityRegistry.dispatchAnimalBreed().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyAnimalBreed(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handlerId, jint entityId, jint partnerId, jint babyId) {
+    server_dispatch_proxy_animal_breed(
+        static_cast<int64_t>(handlerId),
+        static_cast<int32_t>(entityId),
+        static_cast<int32_t>(partnerId),
+        static_cast<int32_t>(babyId));
+}
+
+// ==========================================================================
 // Item Proxy JNI Entry Points (server-side)
 // ==========================================================================
 
@@ -1141,47 +1239,21 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockRegistra
     jclass objectClass = env->FindClass("java/lang/Object");
     jobjectArray result = env->NewObjectArray(14, objectClass, nullptr);
 
-    // Helper lambda for boxing
-    auto boxLong = [env](jlong val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Long");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(J)V");
-        return env->NewObject(cls, ctor, val);
-    };
-    auto boxFloat = [env](jfloat val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Float");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(F)V");
-        return env->NewObject(cls, ctor, val);
-    };
-    auto boxDouble = [env](jdouble val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Double");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(D)V");
-        return env->NewObject(cls, ctor, val);
-    };
-    auto boxInt = [env](jint val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Integer");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(I)V");
-        return env->NewObject(cls, ctor, val);
-    };
-    auto boxBool = [env](jboolean val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Boolean");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(Z)V");
-        return env->NewObject(cls, ctor, val);
-    };
-
-    env->SetObjectArrayElement(result, 0, boxLong(static_cast<jlong>(handler_id)));
+    // Use shared boxing helpers from jni_helpers.h
+    env->SetObjectArrayElement(result, 0, boxLong(env, static_cast<jlong>(handler_id)));
     env->SetObjectArrayElement(result, 1, env->NewStringUTF(namespace_buf));
     env->SetObjectArrayElement(result, 2, env->NewStringUTF(path_buf));
-    env->SetObjectArrayElement(result, 3, boxFloat(hardness));
-    env->SetObjectArrayElement(result, 4, boxFloat(resistance));
-    env->SetObjectArrayElement(result, 5, boxBool(requires_tool ? JNI_TRUE : JNI_FALSE));
-    env->SetObjectArrayElement(result, 6, boxInt(luminance));
-    env->SetObjectArrayElement(result, 7, boxDouble(slipperiness));
-    env->SetObjectArrayElement(result, 8, boxDouble(velocity_mult));
-    env->SetObjectArrayElement(result, 9, boxDouble(jump_velocity_mult));
-    env->SetObjectArrayElement(result, 10, boxBool(ticks_randomly ? JNI_TRUE : JNI_FALSE));
-    env->SetObjectArrayElement(result, 11, boxBool(collidable ? JNI_TRUE : JNI_FALSE));
-    env->SetObjectArrayElement(result, 12, boxBool(replaceable ? JNI_TRUE : JNI_FALSE));
-    env->SetObjectArrayElement(result, 13, boxBool(burnable ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 3, boxFloat(env, hardness));
+    env->SetObjectArrayElement(result, 4, boxFloat(env, resistance));
+    env->SetObjectArrayElement(result, 5, boxBool(env, requires_tool ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 6, boxInt(env, luminance));
+    env->SetObjectArrayElement(result, 7, boxDouble(env, slipperiness));
+    env->SetObjectArrayElement(result, 8, boxDouble(env, velocity_mult));
+    env->SetObjectArrayElement(result, 9, boxDouble(env, jump_velocity_mult));
+    env->SetObjectArrayElement(result, 10, boxBool(env, ticks_randomly ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 11, boxBool(env, collidable ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 12, boxBool(env, replaceable ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 13, boxBool(env, burnable ? JNI_TRUE : JNI_FALSE));
 
     return result;
 }
@@ -1224,37 +1296,16 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextItemRegistrat
     jclass objectClass = env->FindClass("java/lang/Object");
     jobjectArray result = env->NewObjectArray(9, objectClass, nullptr);
 
-    // Helper lambda for boxing
-    auto boxLong = [env](jlong val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Long");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(J)V");
-        return env->NewObject(cls, ctor, val);
-    };
-    auto boxDouble = [env](jdouble val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Double");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(D)V");
-        return env->NewObject(cls, ctor, val);
-    };
-    auto boxInt = [env](jint val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Integer");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(I)V");
-        return env->NewObject(cls, ctor, val);
-    };
-    auto boxBool = [env](jboolean val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Boolean");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(Z)V");
-        return env->NewObject(cls, ctor, val);
-    };
-
-    env->SetObjectArrayElement(result, 0, boxLong(static_cast<jlong>(handler_id)));
+    // Use shared boxing helpers from jni_helpers.h
+    env->SetObjectArrayElement(result, 0, boxLong(env, static_cast<jlong>(handler_id)));
     env->SetObjectArrayElement(result, 1, env->NewStringUTF(namespace_buf));
     env->SetObjectArrayElement(result, 2, env->NewStringUTF(path_buf));
-    env->SetObjectArrayElement(result, 3, boxInt(max_stack_size));
-    env->SetObjectArrayElement(result, 4, boxInt(max_damage));
-    env->SetObjectArrayElement(result, 5, boxBool(fire_resistant ? JNI_TRUE : JNI_FALSE));
-    env->SetObjectArrayElement(result, 6, boxDouble(attack_damage));
-    env->SetObjectArrayElement(result, 7, boxDouble(attack_speed));
-    env->SetObjectArrayElement(result, 8, boxDouble(attack_knockback));
+    env->SetObjectArrayElement(result, 3, boxInt(env, max_stack_size));
+    env->SetObjectArrayElement(result, 4, boxInt(env, max_damage));
+    env->SetObjectArrayElement(result, 5, boxBool(env, fire_resistant ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 6, boxDouble(env, attack_damage));
+    env->SetObjectArrayElement(result, 7, boxDouble(env, attack_speed));
+    env->SetObjectArrayElement(result, 8, boxDouble(env, attack_knockback));
 
     return result;
 }
@@ -1312,37 +1363,21 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextEntityRegistr
     jclass objectClass = env->FindClass("java/lang/Object");
     jobjectArray result = env->NewObjectArray(16, objectClass, nullptr);
 
-    // Helper lambda for boxing
-    auto boxLong = [env](jlong val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Long");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(J)V");
-        return env->NewObject(cls, ctor, val);
-    };
-    auto boxDouble = [env](jdouble val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Double");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(D)V");
-        return env->NewObject(cls, ctor, val);
-    };
-    auto boxInt = [env](jint val) -> jobject {
-        jclass cls = env->FindClass("java/lang/Integer");
-        jmethodID ctor = env->GetMethodID(cls, "<init>", "(I)V");
-        return env->NewObject(cls, ctor, val);
-    };
-
-    env->SetObjectArrayElement(result, 0, boxLong(static_cast<jlong>(handler_id)));
+    // Use shared boxing helpers from jni_helpers.h
+    env->SetObjectArrayElement(result, 0, boxLong(env, static_cast<jlong>(handler_id)));
     env->SetObjectArrayElement(result, 1, env->NewStringUTF(namespace_buf));
     env->SetObjectArrayElement(result, 2, env->NewStringUTF(path_buf));
-    env->SetObjectArrayElement(result, 3, boxDouble(width));
-    env->SetObjectArrayElement(result, 4, boxDouble(height));
-    env->SetObjectArrayElement(result, 5, boxDouble(max_health));
-    env->SetObjectArrayElement(result, 6, boxDouble(movement_speed));
-    env->SetObjectArrayElement(result, 7, boxDouble(attack_damage));
-    env->SetObjectArrayElement(result, 8, boxInt(spawn_group));
-    env->SetObjectArrayElement(result, 9, boxInt(base_type));
+    env->SetObjectArrayElement(result, 3, boxDouble(env, width));
+    env->SetObjectArrayElement(result, 4, boxDouble(env, height));
+    env->SetObjectArrayElement(result, 5, boxDouble(env, max_health));
+    env->SetObjectArrayElement(result, 6, boxDouble(env, movement_speed));
+    env->SetObjectArrayElement(result, 7, boxDouble(env, attack_damage));
+    env->SetObjectArrayElement(result, 8, boxInt(env, spawn_group));
+    env->SetObjectArrayElement(result, 9, boxInt(env, base_type));
     env->SetObjectArrayElement(result, 10, env->NewStringUTF(breeding_item_buf));
     env->SetObjectArrayElement(result, 11, env->NewStringUTF(model_type_buf));
     env->SetObjectArrayElement(result, 12, env->NewStringUTF(texture_path_buf));
-    env->SetObjectArrayElement(result, 13, boxDouble(model_scale));
+    env->SetObjectArrayElement(result, 13, boxDouble(env, model_scale));
     env->SetObjectArrayElement(result, 14, env->NewStringUTF(goals_json_buf));
     env->SetObjectArrayElement(result, 15, env->NewStringUTF(target_goals_json_buf));
 

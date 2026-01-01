@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "example_mod:block/test_chest_block"
+    }
+  }
+}

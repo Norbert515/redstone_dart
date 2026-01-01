@@ -49,6 +49,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.redstone.util.ItemStackSerializer;
+
 /**
  * JNI interface to the native Dart bridge.
  *
@@ -3030,14 +3032,12 @@ public class DartBridge {
 
     /**
      * Serialize an ItemStack to a string format.
+     *
      * @return "itemId:count:damage:maxDamage" or empty string if empty
+     * @see ItemStackSerializer#serialize(ItemStack)
      */
     public static String serializeItemStack(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return "";
-        String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-        int damage = stack.isDamageableItem() ? stack.getDamageValue() : 0;
-        int maxDamage = stack.getMaxDamage();
-        return itemId + ":" + stack.getCount() + ":" + damage + ":" + maxDamage;
+        return ItemStackSerializer.serialize(stack);
     }
 
     // ==========================================================================

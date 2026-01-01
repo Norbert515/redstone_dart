@@ -219,9 +219,35 @@ public class DartBridgeClient {
     // Packet send callback handler
     private static ClientPacketSendHandler packetSendHandler = null;
 
+    // Slot positions update handler (Flutter -> Java)
+    private static SlotPositionsUpdateHandler slotPositionsHandler = null;
+
     @FunctionalInterface
     public interface ClientPacketSendHandler {
         void sendPacket(int packetType, byte[] data);
+    }
+
+    @FunctionalInterface
+    public interface SlotPositionsUpdateHandler {
+        void onUpdate(int menuId, int[] data);
+    }
+
+    /**
+     * Set the handler for slot position updates from Flutter.
+     */
+    public static void setSlotPositionsHandler(SlotPositionsUpdateHandler handler) {
+        slotPositionsHandler = handler;
+    }
+
+    /**
+     * Called from native code when Flutter reports slot positions.
+     * Data format: [slotIndex, x, y, width, height, slotIndex, x, y, width, height, ...]
+     */
+    @SuppressWarnings("unused") // Called from native code via JNI
+    public static void onSlotPositionsUpdate(int menuId, int[] data) {
+        if (slotPositionsHandler != null) {
+            slotPositionsHandler.onUpdate(menuId, data);
+        }
     }
 
     /**
@@ -575,6 +601,56 @@ public class DartBridgeClient {
      */
     public static void markJoinTestWorldAttempted() {
         hasAttemptedJoinTestWorld = true;
+    }
+
+    // ==========================================================================
+    // Client-side Container Menu Query Methods
+    // ==========================================================================
+
+    /**
+     * Get a serialized item from the current container menu.
+     * Called from native code via JNI.
+     *
+     * @param slotIndex The slot index in the container menu
+     * @return Serialized item stack string, or empty string if not available
+     */
+    public static String getContainerSlotItem(int slotIndex) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.player.containerMenu == null) {
+            return "";
+        }
+        var menu = mc.player.containerMenu;
+        if (slotIndex < 0 || slotIndex >= menu.slots.size()) {
+            return "";
+        }
+        net.minecraft.world.item.ItemStack stack = menu.slots.get(slotIndex).getItem();
+        return com.redstone.util.ItemStackSerializer.serialize(stack);
+    }
+
+    /**
+     * Get the current container menu's ID.
+     *
+     * @return The container ID, or -1 if no container is open
+     */
+    public static int getContainerMenuId() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.player.containerMenu == null) {
+            return -1;
+        }
+        return mc.player.containerMenu.containerId;
+    }
+
+    /**
+     * Get the number of slots in the current container.
+     *
+     * @return The slot count, or 0 if no container is open
+     */
+    public static int getContainerSlotCount() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.player.containerMenu == null) {
+            return 0;
+        }
+        return mc.player.containerMenu.slots.size();
     }
 
 }

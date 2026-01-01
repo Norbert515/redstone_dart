@@ -13,3 +13,5 @@ export 'src/bridge.dart' show ClientBridge;
 export 'src/screens.dart';
 export 'src/widgets.dart';
 export 'src/network.dart';
+export 'src/gui/gui.dart';
+export 'src/inventory/client_container_view.dart';

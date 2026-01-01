@@ -133,6 +133,13 @@ public:
     void setProxyEntityAttackHandler(ProxyEntityAttackCallback cb) { proxy_entity_attack_handler_ = cb; }
     void setProxyEntityTargetHandler(ProxyEntityTargetCallback cb) { proxy_entity_target_handler_ = cb; }
 
+    // Projectile proxy handlers
+    void setProxyProjectileHitEntityHandler(ProxyProjectileHitEntityCallback cb) { proxy_projectile_hit_entity_handler_ = cb; }
+    void setProxyProjectileHitBlockHandler(ProxyProjectileHitBlockCallback cb) { proxy_projectile_hit_block_handler_ = cb; }
+
+    // Animal proxy handlers
+    void setProxyAnimalBreedHandler(ProxyAnimalBreedCallback cb) { proxy_animal_breed_handler_ = cb; }
+
     // Item proxy handlers
     void setProxyItemAttackEntityHandler(ProxyItemAttackEntityCallback cb) { proxy_item_attack_entity_handler_ = cb; }
     void setProxyItemUseHandler(ProxyItemUseCallback cb) { proxy_item_use_handler_ = cb; }
@@ -231,6 +238,11 @@ public:
     void dispatchProxyEntityAttack(int64_t handler_id, int32_t entity_id, int32_t target_id) { if (proxy_entity_attack_handler_) proxy_entity_attack_handler_(handler_id, entity_id, target_id); }
     void dispatchProxyEntityTarget(int64_t handler_id, int32_t entity_id, int32_t target_id) { if (proxy_entity_target_handler_) proxy_entity_target_handler_(handler_id, entity_id, target_id); }
 
+    void dispatchProxyProjectileHitEntity(int64_t handler_id, int32_t projectile_id, int32_t target_id) { if (proxy_projectile_hit_entity_handler_) proxy_projectile_hit_entity_handler_(handler_id, projectile_id, target_id); }
+    void dispatchProxyProjectileHitBlock(int64_t handler_id, int32_t projectile_id, int32_t x, int32_t y, int32_t z, const char* side) { if (proxy_projectile_hit_block_handler_) proxy_projectile_hit_block_handler_(handler_id, projectile_id, x, y, z, side); }
+
+    void dispatchProxyAnimalBreed(int64_t handler_id, int32_t entity_id, int32_t partner_id, int32_t baby_id) { if (proxy_animal_breed_handler_) proxy_animal_breed_handler_(handler_id, entity_id, partner_id, baby_id); }
+
     bool dispatchProxyItemAttackEntity(int64_t handler_id, int32_t world_id, int32_t attacker_id, int32_t target_id) { if (proxy_item_attack_entity_handler_) return proxy_item_attack_entity_handler_(handler_id, world_id, attacker_id, target_id); return true; }
     int32_t dispatchProxyItemUse(int64_t handler_id, int64_t world_id, int32_t player_id, int32_t hand) { if (proxy_item_use_handler_) return proxy_item_use_handler_(handler_id, world_id, player_id, hand); return 4; }
     int32_t dispatchProxyItemUseOnBlock(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t player_id, int32_t hand) { if (proxy_item_use_on_block_handler_) return proxy_item_use_on_block_handler_(handler_id, world_id, x, y, z, player_id, hand); return 4; }
@@ -286,6 +298,9 @@ public:
         proxy_entity_damage_handler_ = nullptr;
         proxy_entity_attack_handler_ = nullptr;
         proxy_entity_target_handler_ = nullptr;
+        proxy_projectile_hit_entity_handler_ = nullptr;
+        proxy_projectile_hit_block_handler_ = nullptr;
+        proxy_animal_breed_handler_ = nullptr;
         proxy_item_attack_entity_handler_ = nullptr;
         proxy_item_use_handler_ = nullptr;
         proxy_item_use_on_block_handler_ = nullptr;
@@ -339,6 +354,9 @@ private:
     ProxyEntityDamageCallback proxy_entity_damage_handler_ = nullptr;
     ProxyEntityAttackCallback proxy_entity_attack_handler_ = nullptr;
     ProxyEntityTargetCallback proxy_entity_target_handler_ = nullptr;
+    ProxyProjectileHitEntityCallback proxy_projectile_hit_entity_handler_ = nullptr;
+    ProxyProjectileHitBlockCallback proxy_projectile_hit_block_handler_ = nullptr;
+    ProxyAnimalBreedCallback proxy_animal_breed_handler_ = nullptr;
     ProxyItemAttackEntityCallback proxy_item_attack_entity_handler_ = nullptr;
     ProxyItemUseCallback proxy_item_use_handler_ = nullptr;
     ProxyItemUseOnBlockCallback proxy_item_use_on_block_handler_ = nullptr;
@@ -972,6 +990,33 @@ void server_dispatch_proxy_entity_target(int64_t handler_id, int32_t entity_id, 
     bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
     dart_mc_bridge::ServerCallbackRegistry::instance().dispatchProxyEntityTarget(handler_id, entity_id, target_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void server_dispatch_proxy_projectile_hit_entity(int64_t handler_id, int32_t projectile_id, int32_t target_id) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::ServerCallbackRegistry::instance().dispatchProxyProjectileHitEntity(handler_id, projectile_id, target_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void server_dispatch_proxy_projectile_hit_block(int64_t handler_id, int32_t projectile_id, int32_t x, int32_t y, int32_t z, const char* side) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::ServerCallbackRegistry::instance().dispatchProxyProjectileHitBlock(handler_id, projectile_id, x, y, z, side);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void server_dispatch_proxy_animal_breed(int64_t handler_id, int32_t entity_id, int32_t partner_id, int32_t baby_id) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::ServerCallbackRegistry::instance().dispatchProxyAnimalBreed(handler_id, entity_id, partner_id, baby_id);
     Dart_ExitScope();
     safe_exit_isolate(did_enter);
 }

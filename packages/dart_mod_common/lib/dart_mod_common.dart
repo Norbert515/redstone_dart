@@ -48,3 +48,6 @@ export 'src/protocol/packet.dart';
 export 'src/protocol/packet_types.dart';
 export 'src/protocol/server_packets.dart';
 export 'src/protocol/client_packets.dart';
+
+// Inventory interfaces
+export 'src/inventory/inventory.dart';

@@ -16,6 +16,7 @@ import 'package:dart_mod_server/dart_mod_server.dart';
 // Feature modules
 import 'blocks/blocks.dart';
 import 'commands/commands.dart';
+import 'containers/containers.dart';
 import 'entities/entities.dart';
 import 'events/events.dart';
 import 'items/items.dart';
@@ -46,6 +47,12 @@ void main() {
   // but Minecraft's registries may not be ready yet
   Bridge.onRegistryReady(() {
     print('Registry ready - registering items, blocks, entities...');
+
+    // =========================================================================
+    // Register container types first
+    // Containers must be registered BEFORE blocks that use them
+    // =========================================================================
+    registerContainers();
 
     // =========================================================================
     // Register your custom items here
@@ -94,7 +101,8 @@ void main() {
     print('  Commands: /heal, /feed, /fly, /spawn, /dtime, /spawnzombie, /spawncow, /fireball, /spawncustomzombie');
     print('  Items: DartItem, EffectWand, LightningWand, HealingOrb, TeleportStaff');
     print('  Blocks: HelloBlock, TerraformerBlock, MidasBlock, LightningRodBlock,');
-    print('          MobSpawnerBlock, PartyBlock, WeatherControlBlock, EntityRadarBlock');
+    print('          MobSpawnerBlock, PartyBlock, WeatherControlBlock, EntityRadarBlock, TestChestBlock');
     print('  Entities: DartZombie, DartCow, DartFireball, CustomGoalZombie (with Dart AI!)');
+    print('  Containers: TestChest (Flutter slot integration demo)');
   });
 }

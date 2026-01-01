@@ -38,13 +38,15 @@ endif()
 # Create shared library
 add_library(dart_mc_bridge SHARED ${SOURCES})
 
-# Include directories
+# Include directories and compile definitions
 if(SERVER_ONLY)
     target_include_directories(dart_mc_bridge PRIVATE
         ${JNI_INCLUDE_DIRS}
         ${DART_DLL_PATH}/include
         src
     )
+    # Define SERVER_ONLY_BUILD for preprocessor guards
+    target_compile_definitions(dart_mc_bridge PRIVATE SERVER_ONLY_BUILD)
 else()
     target_include_directories(dart_mc_bridge PRIVATE
         ${JNI_INCLUDE_DIRS}

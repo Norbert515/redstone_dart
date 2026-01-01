@@ -38,6 +38,31 @@ class ItemStack {
     return ItemStack(Item(itemId), count);
   }
 
+  /// Parse an ItemStack from a serialized string.
+  ///
+  /// Supports formats:
+  /// - "minecraft:item_name:count" (basic format)
+  /// - "minecraft:item_name:count:damage:maxDamage" (with durability)
+  /// - Empty or null string returns [ItemStack.empty]
+  ///
+  /// This is the inverse of the Java `ItemStackSerializer.serialize()` method.
+  factory ItemStack.parse(String? data) {
+    if (data == null || data.isEmpty) {
+      return ItemStack.empty;
+    }
+
+    final parts = data.split(':');
+    if (parts.length < 3) {
+      return ItemStack.empty;
+    }
+
+    // Format: "namespace:item_name:count" or "namespace:item_name:count:damage:maxDamage"
+    final itemId = '${parts[0]}:${parts[1]}';
+    final count = int.tryParse(parts[2]) ?? 1;
+
+    return ItemStack(Item(itemId), count);
+  }
+
   @override
   String toString() => isEmpty ? 'ItemStack.empty' : 'ItemStack(${item.id} x$count)';
 

@@ -699,4 +699,55 @@ void client_send_packet_to_server(int32_t packet_type, const uint8_t* data, int3
     }
 }
 
+// ==========================================================================
+// Slot Position Reporting (Flutter -> Java)
+// ==========================================================================
+
+void client_update_slot_positions(int32_t menu_id, const int32_t* data, int32_t data_length) {
+    if (!g_client_initialized || g_client_jvm_ref == nullptr) return;
+
+    JNIEnv* env = nullptr;
+    bool needs_detach = false;
+
+    int status = g_client_jvm_ref->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_8);
+    if (status == JNI_EDETACHED) {
+        if (g_client_jvm_ref->AttachCurrentThread(reinterpret_cast<void**>(&env), nullptr) != JNI_OK) {
+            return;
+        }
+        needs_detach = true;
+    }
+
+    if (env == nullptr) {
+        if (needs_detach) g_client_jvm_ref->DetachCurrentThread();
+        return;
+    }
+
+    // Find the DartBridgeClient class and method
+    jclass bridgeClass = env->FindClass("com/redstone/DartBridgeClient");
+    if (bridgeClass == nullptr) {
+        env->ExceptionClear();
+        if (needs_detach) g_client_jvm_ref->DetachCurrentThread();
+        return;
+    }
+
+    jmethodID method = env->GetStaticMethodID(bridgeClass, "onSlotPositionsUpdate", "(I[I)V");
+    if (method == nullptr) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(bridgeClass);
+        if (needs_detach) g_client_jvm_ref->DetachCurrentThread();
+        return;
+    }
+
+    // Create Java int array from data
+    jintArray jdata = env->NewIntArray(data_length);
+    if (jdata != nullptr) {
+        env->SetIntArrayRegion(jdata, 0, data_length, reinterpret_cast<const jint*>(data));
+        env->CallStaticVoidMethod(bridgeClass, method, menu_id, jdata);
+        env->DeleteLocalRef(jdata);
+    }
+
+    env->DeleteLocalRef(bridgeClass);
+    if (needs_detach) g_client_jvm_ref->DetachCurrentThread();
+}
+
 } // extern "C"

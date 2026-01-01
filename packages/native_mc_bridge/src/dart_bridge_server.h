@@ -110,6 +110,13 @@ typedef bool (*ProxyEntityDamageCallback)(int64_t handler_id, int32_t entity_id,
 typedef void (*ProxyEntityAttackCallback)(int64_t handler_id, int32_t entity_id, int32_t target_id);
 typedef void (*ProxyEntityTargetCallback)(int64_t handler_id, int32_t entity_id, int32_t target_id);
 
+// Projectile proxy callbacks
+typedef void (*ProxyProjectileHitEntityCallback)(int64_t handler_id, int32_t projectile_id, int32_t target_id);
+typedef void (*ProxyProjectileHitBlockCallback)(int64_t handler_id, int32_t projectile_id, int32_t x, int32_t y, int32_t z, const char* side);
+
+// Animal proxy callbacks
+typedef void (*ProxyAnimalBreedCallback)(int64_t handler_id, int32_t entity_id, int32_t partner_id, int32_t baby_id);
+
 // Item proxy callbacks
 typedef bool (*ProxyItemAttackEntityCallback)(int64_t handler_id, int32_t world_id, int32_t attacker_id, int32_t target_id);
 typedef int32_t (*ProxyItemUseCallback)(int64_t handler_id, int64_t world_id, int32_t player_id, int32_t hand);
@@ -251,6 +258,13 @@ void server_dispatch_proxy_entity_death(int64_t handler_id, int32_t entity_id, c
 bool server_dispatch_proxy_entity_damage(int64_t handler_id, int32_t entity_id, const char* damage_source, double amount);
 void server_dispatch_proxy_entity_attack(int64_t handler_id, int32_t entity_id, int32_t target_id);
 void server_dispatch_proxy_entity_target(int64_t handler_id, int32_t entity_id, int32_t target_id);
+
+// Projectile proxy dispatch
+void server_dispatch_proxy_projectile_hit_entity(int64_t handler_id, int32_t projectile_id, int32_t target_id);
+void server_dispatch_proxy_projectile_hit_block(int64_t handler_id, int32_t projectile_id, int32_t x, int32_t y, int32_t z, const char* side);
+
+// Animal proxy dispatch
+void server_dispatch_proxy_animal_breed(int64_t handler_id, int32_t entity_id, int32_t partner_id, int32_t baby_id);
 
 bool server_dispatch_proxy_item_attack_entity(int64_t handler_id, int32_t world_id, int32_t attacker_id, int32_t target_id);
 int32_t server_dispatch_proxy_item_use(int64_t handler_id, int64_t world_id, int32_t player_id, int32_t hand);

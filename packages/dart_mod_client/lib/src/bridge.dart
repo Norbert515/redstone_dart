@@ -4,6 +4,9 @@ library;
 // ignore_for_file: unused_field
 
 import 'dart:ffi';
+import 'dart:typed_data';
+import 'dart:ui' show Rect;
+
 import 'package:ffi/ffi.dart';
 
 /// FFI bindings to the client-side native bridge.
@@ -68,6 +71,9 @@ class ClientBridge {
   static late final _ClientRegisterContainerQuickMoveHandler _clientRegisterContainerQuickMoveHandler;
   static late final _ClientRegisterContainerMayPlaceHandler _clientRegisterContainerMayPlaceHandler;
   static late final _ClientRegisterContainerMayPickupHandler _clientRegisterContainerMayPickupHandler;
+
+  // Slot position update function
+  static late final _ClientUpdateSlotPositions _clientUpdateSlotPositions;
 
   static void _bindFunctions() {
     final lib = _lib!;
@@ -191,6 +197,11 @@ class ClientBridge {
     _clientRegisterContainerMayPickupHandler = lib.lookupFunction<
         Void Function(Pointer<NativeFunction<_ContainerMayPickupCallbackNative>>),
         void Function(Pointer<NativeFunction<_ContainerMayPickupCallbackNative>>)>('client_register_container_may_pickup_handler');
+
+    // Slot position update function
+    _clientUpdateSlotPositions = lib.lookupFunction<
+        Void Function(Int32, Pointer<Int32>, Int32),
+        void Function(int, Pointer<Int32>, int)>('client_update_slot_positions');
   }
 
   // ==========================================================================
@@ -258,6 +269,52 @@ class ClientBridge {
       if (characters != null) calloc.free(charactersPtr);
     }
   }
+
+  /// Update slot positions for a container menu.
+  ///
+  /// Sends the positions of inventory slots to the native side so Java can
+  /// render Minecraft items on top of Flutter UI.
+  ///
+  /// [menuId] is the container menu identifier.
+  /// [positions] maps slot indices to their screen-space rectangles (in physical pixels).
+  static void updateSlotPositions(int menuId, Map<int, Rect> positions) {
+    if (positions.isEmpty) {
+      // Send empty array to clear positions
+      final emptyPtr = calloc<Int32>(0);
+      try {
+        _clientUpdateSlotPositions(menuId, emptyPtr, 0);
+      } finally {
+        calloc.free(emptyPtr);
+      }
+      return;
+    }
+
+    // Format: [slotIndex, x, y, width, height, ...]
+    // Each slot takes 5 integers
+    final dataLength = positions.length * 5;
+    final data = Int32List(dataLength);
+
+    var i = 0;
+    for (final entry in positions.entries) {
+      data[i] = entry.key; // slotIndex
+      data[i + 1] = entry.value.left.round(); // x
+      data[i + 2] = entry.value.top.round(); // y
+      data[i + 3] = entry.value.width.round(); // width
+      data[i + 4] = entry.value.height.round(); // height
+      i += 5;
+    }
+
+    // Allocate native memory and copy data
+    final dataPtr = calloc<Int32>(dataLength);
+    try {
+      for (var j = 0; j < dataLength; j++) {
+        dataPtr[j] = data[j];
+      }
+      _clientUpdateSlotPositions(menuId, dataPtr, dataLength);
+    } finally {
+      calloc.free(dataPtr);
+    }
+  }
 }
 
 // ==========================================================================
@@ -295,6 +352,7 @@ typedef _ClientRegisterContainerSlotClickHandler = void Function(Pointer<NativeF
 typedef _ClientRegisterContainerQuickMoveHandler = void Function(Pointer<NativeFunction<_ContainerQuickMoveCallbackNative>>);
 typedef _ClientRegisterContainerMayPlaceHandler = void Function(Pointer<NativeFunction<_ContainerMayPlaceCallbackNative>>);
 typedef _ClientRegisterContainerMayPickupHandler = void Function(Pointer<NativeFunction<_ContainerMayPickupCallbackNative>>);
+typedef _ClientUpdateSlotPositions = void Function(int, Pointer<Int32>, int);
 
 // Native callback signatures
 typedef _FrameCallbackNative = Void Function(Pointer<Void>, Size, Size, Size);

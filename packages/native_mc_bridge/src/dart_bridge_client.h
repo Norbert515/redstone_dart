@@ -172,4 +172,13 @@ void client_dispatch_server_packet(int32_t packet_type, const uint8_t* data, int
 // Send a packet from client to server - invokes the Java callback (called from Dart via FFI)
 void client_send_packet_to_server(int32_t packet_type, const uint8_t* data, int32_t data_length);
 
+// ==========================================================================
+// Slot Position Reporting (Flutter -> Java)
+// ==========================================================================
+
+// Update slot positions for a container menu
+// data format: [slotIndex, x, y, width, height, slotIndex, x, y, width, height, ...]
+// All values are int32, positions in physical pixels
+void client_update_slot_positions(int32_t menu_id, const int32_t* data, int32_t data_length);
+
 } // extern "C"
