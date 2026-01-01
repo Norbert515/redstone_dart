@@ -20,9 +20,11 @@ class SlotReporter extends SingleChildRenderObjectWidget {
 
   @override
   RenderObject createRenderObject(BuildContext context) {
+    final registry = SlotPositionScope.maybeOf(context);
+    print('[SlotReporter] createRenderObject slot=$slotIndex, registry=${registry != null ? "found" : "null"}');
     return RenderSlotReporter(
       slotIndex: slotIndex,
-      registry: SlotPositionScope.maybeOf(context),
+      registry: registry,
     );
   }
 

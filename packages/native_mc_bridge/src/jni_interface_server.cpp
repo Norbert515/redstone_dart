@@ -1384,4 +1384,172 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextEntityRegistr
     return result;
 }
 
+// ==========================================================================
+// Block Entity JNI Entry Points (server-side)
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onBlockEntityLoad
+ * Signature: (IJLjava/lang/String;)V
+ *
+ * Called when a block entity is loaded from NBT.
+ * Routes to Dart's BlockEntityRegistry for state restoration.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onBlockEntityLoad(
+    JNIEnv* env, jclass /* cls */,
+    jint handler_id, jlong block_pos_hash, jstring nbt_json) {
+    const char* nbt_str = nbt_json ? env->GetStringUTFChars(nbt_json, nullptr) : "{}";
+    server_dispatch_block_entity_load(
+        static_cast<int32_t>(handler_id),
+        static_cast<int64_t>(block_pos_hash),
+        nbt_str);
+    if (nbt_json) {
+        env->ReleaseStringUTFChars(nbt_json, nbt_str);
+    }
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onBlockEntitySave
+ * Signature: (IJ)Ljava/lang/String;
+ *
+ * Called when a block entity needs to save its state to NBT.
+ * Returns JSON string of NBT data to save.
+ */
+JNIEXPORT jstring JNICALL Java_com_redstone_DartBridge_onBlockEntitySave(
+    JNIEnv* env, jclass /* cls */,
+    jint handler_id, jlong block_pos_hash) {
+    const char* result = server_dispatch_block_entity_save(
+        static_cast<int32_t>(handler_id),
+        static_cast<int64_t>(block_pos_hash));
+    return env->NewStringUTF(result ? result : "{}");
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onBlockEntityTick
+ * Signature: (IJ)V
+ *
+ * Called every tick for a block entity.
+ * Routes to Dart's BlockEntityRegistry for tick processing.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onBlockEntityTick(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint handler_id, jlong block_pos_hash) {
+    server_dispatch_block_entity_tick(
+        static_cast<int32_t>(handler_id),
+        static_cast<int64_t>(block_pos_hash));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    getBlockEntityDataSlot
+ * Signature: (IJI)I
+ *
+ * Gets a data slot value from a block entity (for container data sync).
+ * Used for furnace progress bars, etc.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_getBlockEntityDataSlot(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint handler_id, jlong block_pos_hash, jint index) {
+    return static_cast<jint>(server_dispatch_block_entity_get_data_slot(
+        static_cast<int32_t>(handler_id),
+        static_cast<int64_t>(block_pos_hash),
+        static_cast<int32_t>(index)));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    setBlockEntityDataSlot
+ * Signature: (IJII)V
+ *
+ * Sets a data slot value on a block entity (for container data sync).
+ * Called from client-side when data is synced.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_setBlockEntityDataSlot(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint handler_id, jlong block_pos_hash, jint index, jint value) {
+    server_dispatch_block_entity_set_data_slot(
+        static_cast<int32_t>(handler_id),
+        static_cast<int64_t>(block_pos_hash),
+        static_cast<int32_t>(index),
+        static_cast<int32_t>(value));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onBlockEntityRemoved
+ * Signature: (IJ)V
+ *
+ * Called when a block entity is removed from the world.
+ * Routes to Dart for cleanup.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onBlockEntityRemoved(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint handler_id, jlong block_pos_hash) {
+    server_dispatch_block_entity_removed(
+        static_cast<int32_t>(handler_id),
+        static_cast<int64_t>(block_pos_hash));
+}
+
+// ==========================================================================
+// Block Entity Registration Queue JNI Methods
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    hasPendingBlockEntityRegistrations
+ * Signature: ()Z
+ *
+ * Check if there are pending block entity registrations in the queue.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingBlockEntityRegistrations(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return server_has_pending_block_entity_registrations() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    getNextBlockEntityRegistration
+ * Signature: ()[Ljava/lang/Object;
+ *
+ * Get the next block entity registration from the queue.
+ * Returns an Object array: [handlerId(Integer), blockId(String),
+ *                           inventorySize(Integer), containerTitle(String),
+ *                           ticks(Boolean)]
+ * Returns null if the queue is empty.
+ */
+JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockEntityRegistration(
+    JNIEnv* env, jclass /* cls */) {
+
+    int32_t handler_id;
+    char block_id_buf[256];
+    int32_t inventory_size;
+    char container_title_buf[256];
+    bool ticks;
+
+    if (!server_get_next_block_entity_registration(
+            &handler_id,
+            block_id_buf, sizeof(block_id_buf),
+            &inventory_size,
+            container_title_buf, sizeof(container_title_buf),
+            &ticks)) {
+        return nullptr;
+    }
+
+    // Create Object array with 5 elements
+    jclass objectClass = env->FindClass("java/lang/Object");
+    jobjectArray result = env->NewObjectArray(5, objectClass, nullptr);
+
+    // Use shared boxing helpers from jni_helpers.h
+    env->SetObjectArrayElement(result, 0, boxInt(env, handler_id));
+    env->SetObjectArrayElement(result, 1, env->NewStringUTF(block_id_buf));
+    env->SetObjectArrayElement(result, 2, boxInt(env, inventory_size));
+    env->SetObjectArrayElement(result, 3, env->NewStringUTF(container_title_buf));
+    env->SetObjectArrayElement(result, 4, boxBool(env, ticks ? JNI_TRUE : JNI_FALSE));
+
+    return result;
+}
+
 } // extern "C"

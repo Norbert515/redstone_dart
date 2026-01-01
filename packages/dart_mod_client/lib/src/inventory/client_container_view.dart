@@ -84,4 +84,47 @@ class ClientContainerView implements ContainerView {
       }
     }
   }
+
+  // ==========================================================================
+  // Block Entity Progress (for furnace-like containers)
+  // ==========================================================================
+
+  /// Get the lit progress (fuel remaining) as a normalized value (0.0-1.0).
+  ///
+  /// Only returns meaningful values when the current container is a furnace-like
+  /// block entity menu. Otherwise returns 0.0.
+  double get litProgress {
+    return GenericJniBridge.callStaticDoubleMethod(
+      _dartBridgeClient,
+      'getContainerLitProgress',
+      '()F',
+      [],
+    );
+  }
+
+  /// Get the burn/cooking progress as a normalized value (0.0-1.0).
+  ///
+  /// Only returns meaningful values when the current container is a furnace-like
+  /// block entity menu. Otherwise returns 0.0.
+  double get burnProgress {
+    return GenericJniBridge.callStaticDoubleMethod(
+      _dartBridgeClient,
+      'getContainerBurnProgress',
+      '()F',
+      [],
+    );
+  }
+
+  /// Check if the furnace is currently lit (burning fuel).
+  ///
+  /// Only returns meaningful values when the current container is a furnace-like
+  /// block entity menu. Otherwise returns false.
+  bool get isLit {
+    return GenericJniBridge.callStaticBoolMethod(
+      _dartBridgeClient,
+      'isContainerLit',
+      '()Z',
+      [],
+    );
+  }
 }

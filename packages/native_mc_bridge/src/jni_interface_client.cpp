@@ -9,6 +9,7 @@
 // ==========================================================================
 
 #include "dart_bridge_client.h"  // Client functions ONLY - no dart_bridge.h!
+#include "generic_jni.h"          // For generic_jni_capture_classloader
 
 #include <jni.h>
 #include <iostream>
@@ -330,6 +331,51 @@ JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_onClientScreenKeyP
                                                       static_cast<int32_t>(scanCode),
                                                       static_cast<int32_t>(modifiers));
     return result ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    captureClassloader
+ * Signature: ()Z
+ *
+ * Capture the classloader from the current thread (render thread).
+ * This allows JNI calls from other threads (like Flutter) to load classes
+ * from the correct classloader (Fabric's KnotClassLoader).
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_captureClassloader(
+    JNIEnv* /* env */, jclass /* cls */) {
+    int32_t result = generic_jni_capture_classloader();
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// ==========================================================================
+// Container Lifecycle Event Dispatching (for event-driven container open/close)
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    dispatchContainerScreenOpen
+ * Signature: (II)V
+ *
+ * Dispatch container open event to Dart.
+ * Called from FlutterContainerScreen.init().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_dispatchContainerScreenOpen(
+    JNIEnv* /* env */, jclass /* cls */, jint menuId, jint slotCount) {
+    client_dispatch_container_open(static_cast<int32_t>(menuId), static_cast<int32_t>(slotCount));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    dispatchContainerScreenClose
+ * Signature: (I)V
+ *
+ * Dispatch container close event to Dart.
+ * Called from FlutterContainerScreen.removed().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_dispatchContainerScreenClose(
+    JNIEnv* /* env */, jclass /* cls */, jint menuId) {
+    client_dispatch_container_close(static_cast<int32_t>(menuId));
 }
 
 } // extern "C"

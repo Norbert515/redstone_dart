@@ -14,6 +14,7 @@
 import 'package:dart_mod_server/dart_mod_server.dart';
 
 // Feature modules
+import 'block_entities/block_entities.dart';
 import 'blocks/blocks.dart';
 import 'commands/commands.dart';
 import 'containers/containers.dart';
@@ -42,6 +43,9 @@ void main() {
   Events.registerProxyItemHandlers();
   Events.registerCustomGoalHandlers(); // Required for custom Dart-defined AI goals
 
+  // Initialize block entity callbacks (tick, load, save handlers)
+  initBlockEntityCallbacks();
+
   // Defer registration until Java signals that registries are ready
   // This is critical for timing - Dart's main() runs immediately
   // but Minecraft's registries may not be ready yet
@@ -59,6 +63,12 @@ void main() {
     // Items must be registered BEFORE blocks that reference them as drops
     // =========================================================================
     registerItems();
+
+    // =========================================================================
+    // Register block entity types
+    // Block entities must be registered BEFORE blocks that use them
+    // =========================================================================
+    registerBlockEntities();
 
     // =========================================================================
     // Register your custom blocks here
@@ -101,7 +111,8 @@ void main() {
     print('  Commands: /heal, /feed, /fly, /spawn, /dtime, /spawnzombie, /spawncow, /fireball, /spawncustomzombie');
     print('  Items: DartItem, EffectWand, LightningWand, HealingOrb, TeleportStaff');
     print('  Blocks: HelloBlock, TerraformerBlock, MidasBlock, LightningRodBlock,');
-    print('          MobSpawnerBlock, PartyBlock, WeatherControlBlock, EntityRadarBlock, TestChestBlock');
+    print('          MobSpawnerBlock, PartyBlock, WeatherControlBlock, EntityRadarBlock, TestChestBlock,');
+    print('          ExampleFurnace (block entity demo with smelting!)');
     print('  Entities: DartZombie, DartCow, DartFireball, CustomGoalZombie (with Dart AI!)');
     print('  Containers: TestChest (Flutter slot integration demo)');
   });

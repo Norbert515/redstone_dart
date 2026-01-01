@@ -51,3 +51,6 @@ export 'src/protocol/client_packets.dart';
 
 // Inventory interfaces
 export 'src/inventory/inventory.dart';
+
+// Block Entity API
+export 'src/block_entity/block_entity_exports.dart';

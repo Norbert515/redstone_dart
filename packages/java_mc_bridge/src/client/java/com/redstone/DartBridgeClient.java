@@ -6,6 +6,7 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.network.chat.Component;
+import com.redstone.blockentity.DartBlockEntityMenu;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +37,12 @@ public class DartBridgeClient {
     // Flag indicating if the client runtime is initialized (thread-safe)
     private static final AtomicBoolean clientInitialized = new AtomicBoolean(false);
 
+    // Cached container progress values (updated on render thread, read from any thread)
+    private static volatile float cachedLitProgress = 0.0f;
+    private static volatile float cachedBurnProgress = 0.0f;
+    private static volatile boolean cachedIsLit = false;
+    private static volatile int cachedContainerMenuId = -1;
+
     // ==========================================================================
     // Client Runtime Native Methods (Flutter Engine)
     // ==========================================================================
@@ -56,6 +63,15 @@ public class DartBridgeClient {
      * Shutdown the Flutter client runtime and clean up resources.
      */
     private static native void shutdownClient();
+
+    /**
+     * Capture the classloader from the current thread.
+     * This MUST be called from the render thread (which uses KnotClassLoader)
+     * so that subsequent JNI calls from other threads can load classes correctly.
+     *
+     * @return true if successfully captured, false on failure
+     */
+    private static native boolean captureClassloader();
 
     /**
      * Process Flutter engine tasks - pumps the Flutter event loop.
@@ -152,6 +168,15 @@ public class DartBridgeClient {
 
             if (success) {
                 LOGGER.info("Flutter client runtime initialized successfully");
+
+                // Capture the classloader from this thread (render thread)
+                // This is critical so that JNI calls from Flutter thread can find our classes
+                boolean classloaderCaptured = captureClassloader();
+                if (classloaderCaptured) {
+                    LOGGER.info("Classloader captured successfully for cross-thread JNI access");
+                } else {
+                    LOGGER.warn("Failed to capture classloader - JNI calls from Flutter thread may fail");
+                }
             } else {
                 LOGGER.error("Flutter client runtime initialization returned false");
             }
@@ -251,6 +276,29 @@ public class DartBridgeClient {
     }
 
     /**
+     * Called from Dart via JNI when Flutter reports slot positions.
+     * Data format: comma-separated "slotIndex,x,y,width,height,slotIndex,x,y,width,height,..."
+     */
+    @SuppressWarnings("unused") // Called from Dart via JNI
+    public static void onSlotPositionsUpdateFromString(int menuId, String dataStr) {
+        LOGGER.info("[DartBridgeClient] onSlotPositionsUpdateFromString called: menuId={}, dataStr length={}",
+            menuId, dataStr != null ? dataStr.length() : "null");
+
+        if (dataStr == null || dataStr.isEmpty()) {
+            onSlotPositionsUpdate(menuId, new int[0]);
+            return;
+        }
+
+        String[] parts = dataStr.split(",");
+        int[] data = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            data[i] = Integer.parseInt(parts[i].trim());
+        }
+        LOGGER.info("[DartBridgeClient] Parsed {} slot position values for menu {}", data.length, menuId);
+        onSlotPositionsUpdate(menuId, data);
+    }
+
+    /**
      * Set the handler for sending packets from Dart to the server.
      */
     public static void setPacketSendHandler(ClientPacketSendHandler handler) {
@@ -340,6 +388,10 @@ public class DartBridgeClient {
      */
     public static void onClientTick() {
         clientTick++;
+
+        // Update cached container values on every tick (thread-safe for Flutter)
+        updateCachedContainerProgress();
+
         if (clientTickCallback != null) {
             clientTickCallback.onTick(clientTick);
         }
@@ -604,6 +656,27 @@ public class DartBridgeClient {
     }
 
     // ==========================================================================
+    // Container Screen Event Dispatch (native methods)
+    // ==========================================================================
+
+    /**
+     * Dispatch container screen open event to Dart.
+     * Called from FlutterContainerScreen.init().
+     *
+     * @param menuId The container menu ID
+     * @param slotCount The number of slots in the container
+     */
+    public static native void dispatchContainerScreenOpen(int menuId, int slotCount);
+
+    /**
+     * Dispatch container screen close event to Dart.
+     * Called from FlutterContainerScreen.removed().
+     *
+     * @param menuId The container menu ID
+     */
+    public static native void dispatchContainerScreenClose(int menuId);
+
+    // ==========================================================================
     // Client-side Container Menu Query Methods
     // ==========================================================================
 
@@ -629,15 +702,19 @@ public class DartBridgeClient {
 
     /**
      * Get the current container menu's ID.
+     * Returns the cached value that is updated on the render thread,
+     * making it safe to call from any thread (including Flutter).
      *
      * @return The container ID, or -1 if no container is open
      */
+    private static int menuIdCallCount = 0;
     public static int getContainerMenuId() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.player.containerMenu == null) {
-            return -1;
+        menuIdCallCount++;
+        if (menuIdCallCount % 100 == 1) {  // Log every 100th call
+            LOGGER.info("[DartBridgeClient] getContainerMenuId (call #{}) returning: {}, classLoader: {}",
+                menuIdCallCount, cachedContainerMenuId, DartBridgeClient.class.getClassLoader());
         }
-        return mc.player.containerMenu.containerId;
+        return cachedContainerMenuId;
     }
 
     /**
@@ -651,6 +728,79 @@ public class DartBridgeClient {
             return 0;
         }
         return mc.player.containerMenu.slots.size();
+    }
+
+    // ==========================================================================
+    // Block Entity Container Progress Methods (for furnace-like UIs)
+    // ==========================================================================
+
+    /**
+     * Get the lit progress (fuel remaining) as a normalized value (0.0-1.0).
+     * Only works when the current container is a DartBlockEntityMenu.
+     *
+     * @return Lit progress 0.0-1.0, or 0.0 if not a block entity menu
+     */
+    public static float getContainerLitProgress() {
+        return cachedLitProgress;
+    }
+
+    /**
+     * Get the burn/cooking progress as a normalized value (0.0-1.0).
+     * Only works when the current container is a DartBlockEntityMenu.
+     *
+     * @return Burn progress 0.0-1.0, or 0.0 if not a block entity menu
+     */
+    public static float getContainerBurnProgress() {
+        return cachedBurnProgress;
+    }
+
+    /**
+     * Check if the furnace is currently lit (burning fuel).
+     * Only works when the current container is a DartBlockEntityMenu.
+     *
+     * @return true if lit, false otherwise
+     */
+    public static boolean isContainerLit() {
+        return cachedIsLit;
+    }
+
+    /**
+     * Update cached container progress values.
+     * MUST be called from the render thread (e.g., during screen tick or render).
+     * This allows Dart/Flutter to safely read progress values from any thread.
+     */
+    public static void updateCachedContainerProgress() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && mc.player != null) {
+            // Update cached menu ID
+            int oldMenuId = cachedContainerMenuId;
+            if (mc.player.containerMenu != null) {
+                cachedContainerMenuId = mc.player.containerMenu.containerId;
+            } else {
+                cachedContainerMenuId = -1;
+            }
+            // Log when menu ID changes
+            if (oldMenuId != cachedContainerMenuId) {
+                LOGGER.info("[DartBridgeClient] cachedContainerMenuId changed: {} -> {}, classLoader: {}",
+                    oldMenuId, cachedContainerMenuId, DartBridgeClient.class.getClassLoader());
+            }
+
+            // Update progress values
+            if (mc.player.containerMenu instanceof DartBlockEntityMenu menu) {
+                cachedLitProgress = menu.getLitProgress();
+                cachedBurnProgress = menu.getBurnProgress();
+                cachedIsLit = menu.isLit();
+            } else {
+                cachedLitProgress = 0.0f;
+                cachedBurnProgress = 0.0f;
+                cachedIsLit = false;
+            }
+        } else {
+            cachedContainerMenuId = -1;
+            cachedLitProgress = 0.0f;
+            cachedBurnProgress = 0.0f;
+            cachedIsLit = false;
+        }
     }
 
 }

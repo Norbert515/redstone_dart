@@ -13,6 +13,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.MenuAccess;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +29,7 @@ import java.util.Map;
  * Minecraft items on top at the positions reported by Flutter.
  */
 @Environment(EnvType.CLIENT)
-public class FlutterContainerScreen<T extends AbstractContainerMenu> extends FlutterScreen {
+public class FlutterContainerScreen<T extends AbstractContainerMenu> extends FlutterScreen implements MenuAccess<T> {
     private static final Logger LOGGER = LoggerFactory.getLogger("FlutterContainerScreen");
 
     // Slot highlight sprites (same as vanilla AbstractContainerScreen)
@@ -46,9 +47,10 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
         }
     }
 
-    public FlutterContainerScreen(T menu, Component title) {
+    public FlutterContainerScreen(T menu, net.minecraft.world.entity.player.Inventory playerInventory, Component title) {
         super(title);
         this.menu = menu;
+        // playerInventory is available via menu.slots but we don't need it directly
     }
 
     @Override
@@ -66,6 +68,9 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
         });
 
         LOGGER.info("[FlutterContainerScreen] Initialized with menu containerId={}", menu.containerId);
+
+        // Notify Dart that container is opening
+        DartBridgeClient.dispatchContainerScreenOpen(menu.containerId, menu.slots.size());
     }
 
     private void updateSlotPositions(int menuId, int[] data) {
@@ -75,24 +80,28 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
         slotPositions.clear();
 
         // Parse data: [slotIndex, x, y, width, height, ...]
-        // Positions are in physical pixels, need to convert to GUI coordinates
-        int guiScale = minecraft.getWindow().getGuiScale();
+        // Flutter reports positions in logical pixels (= GUI coordinates)
+        // because we send window metrics with pixel_ratio = guiScale
+        // So Flutter's logical coordinate system matches Minecraft's GUI coordinates
 
         for (int i = 0; i + 4 < data.length; i += 5) {
             int slotIndex = data[i];
-            int x = data[i + 1] / guiScale;
-            int y = data[i + 2] / guiScale;
-            int width = data[i + 3] / guiScale;
-            int height = data[i + 4] / guiScale;
+            int x = data[i + 1];  // Already in GUI coordinates
+            int y = data[i + 2];  // Already in GUI coordinates
+            int width = data[i + 3];
+            int height = data[i + 4];
 
             slotPositions.put(slotIndex, new SlotRect(x, y, width, height));
         }
 
-        LOGGER.debug("[FlutterContainerScreen] Updated {} slot positions", slotPositions.size());
+        LOGGER.info("[FlutterContainerScreen] Updated {} slot positions for menu {}", slotPositions.size(), menuId);
     }
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        // 0. Update cached progress values for Flutter to read (thread-safe)
+        DartBridgeClient.updateCachedContainerProgress();
+
         // 1. Render Flutter content (slot backgrounds, UI chrome)
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
@@ -119,11 +128,8 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
                 Slot slot = menu.slots.get(slotIndex);
                 ItemStack item = slot.getItem();
 
-                // Render hover highlight back (before item)
-                if (slotIndex == hoveredSlotIndex && slot.isHighlightable()) {
-                    guiGraphics.blitSprite(RenderPipelines.GUI_TEXTURED, SLOT_HIGHLIGHT_BACK_SPRITE,
-                            rect.x - 4, rect.y - 4, 24, 24);
-                }
+                // Note: Hover highlights disabled - Flutter handles hover states via its own UI
+                // The hoveredSlotIndex is still tracked for click handling and tooltips
 
                 // Render item (centered in slot - slots are 18x18, items are 16x16)
                 int itemX = rect.x + 1;
@@ -132,12 +138,6 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
                 if (!item.isEmpty()) {
                     guiGraphics.renderItem(item, itemX, itemY);
                     guiGraphics.renderItemDecorations(font, item, itemX, itemY);
-                }
-
-                // Render hover highlight front (after item)
-                if (slotIndex == hoveredSlotIndex && slot.isHighlightable()) {
-                    guiGraphics.blitSprite(RenderPipelines.GUI_TEXTURED, SLOT_HIGHLIGHT_FRONT_SPRITE,
-                            rect.x - 4, rect.y - 4, 24, 24);
                 }
             }
         }
@@ -207,6 +207,9 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
     @Override
     public void removed() {
         super.removed();
+
+        // Notify Dart that container is closing
+        DartBridgeClient.dispatchContainerScreenClose(menu.containerId);
 
         // Clear slot positions handler when screen closes
         DartBridgeClient.setSlotPositionsHandler(null);

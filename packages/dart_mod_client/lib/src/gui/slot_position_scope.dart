@@ -1,6 +1,6 @@
+import 'package:dart_mod_common/dart_mod_common.dart';
 import 'package:flutter/widgets.dart';
 
-import '../bridge.dart';
 import 'slot_position_registry.dart';
 
 /// InheritedWidget that provides SlotPositionRegistry to descendants.
@@ -64,11 +64,45 @@ class _SlotPositionScopeState extends State<SlotPositionScope> {
   }
 
   void _onPositionsChanged(int menuId, Map<int, Rect> positions) {
-    // Send positions to native bridge
-    // Format: flat list of [slotIndex, x, y, width, height, ...]
-    if (ClientBridge.isInitialized) {
-      ClientBridge.updateSlotPositions(menuId, positions);
+    // Send positions to Java via JNI
+    // Build comma-separated string: slotIndex,x,y,width,height,...
+    print('[SlotPositionScope] _onPositionsChanged called: menuId=$menuId, positions=${positions.length}');
+
+    if (positions.isEmpty) {
+      GenericJniBridge.callStaticVoidMethod(
+        'com/redstone/DartBridgeClient',
+        'onSlotPositionsUpdateFromString',
+        '(ILjava/lang/String;)V',
+        [menuId, ''],
+      );
+      return;
     }
+
+    final buffer = StringBuffer();
+    var first = true;
+    for (final entry in positions.entries) {
+      if (!first) buffer.write(',');
+      first = false;
+      buffer.write(entry.key); // slotIndex
+      buffer.write(',');
+      buffer.write(entry.value.left.round()); // x
+      buffer.write(',');
+      buffer.write(entry.value.top.round()); // y
+      buffer.write(',');
+      buffer.write(entry.value.width.round()); // width
+      buffer.write(',');
+      buffer.write(entry.value.height.round()); // height
+    }
+
+    final dataStr = buffer.toString();
+    print('[SlotPositionScope] Sending slot positions via JNI: ${dataStr.length} chars');
+
+    GenericJniBridge.callStaticVoidMethod(
+      'com/redstone/DartBridgeClient',
+      'onSlotPositionsUpdateFromString',
+      '(ILjava/lang/String;)V',
+      [menuId, dataStr],
+    );
   }
 
   @override

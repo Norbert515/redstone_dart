@@ -15,3 +15,4 @@ export 'src/widgets.dart';
 export 'src/network.dart';
 export 'src/gui/gui.dart';
 export 'src/inventory/client_container_view.dart';
+export 'src/events/container_events.dart';

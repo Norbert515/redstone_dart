@@ -1,5 +1,6 @@
 package com.redstone;
 
+import com.redstone.blockentity.DartBlockEntityMenu;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
@@ -16,10 +17,23 @@ public class RedstoneMenuTypes {
     private static final Logger LOGGER = LoggerFactory.getLogger("RedstoneMenuTypes");
     public static final String NAMESPACE = "redstone";
 
+    /**
+     * Menu type for custom Dart containers (chest-like, grid-based).
+     */
     public static final MenuType<DartContainerMenu> DART_CONTAINER_MENU = Registry.register(
             BuiltInRegistries.MENU,
             Identifier.fromNamespaceAndPath(NAMESPACE, "dart_container"),
             new MenuType<>(DartContainerMenu::new, FeatureFlags.VANILLA_SET)
+    );
+
+    /**
+     * Menu type for Dart block entity menus (furnace-like, with processing).
+     * Uses a simple constructor that creates empty container/data on client side.
+     */
+    public static final MenuType<DartBlockEntityMenu> DART_BLOCK_ENTITY_MENU = Registry.register(
+            BuiltInRegistries.MENU,
+            Identifier.fromNamespaceAndPath(NAMESPACE, "dart_block_entity"),
+            new MenuType<>(DartBlockEntityMenu::new, FeatureFlags.VANILLA_SET)
     );
 
     /**

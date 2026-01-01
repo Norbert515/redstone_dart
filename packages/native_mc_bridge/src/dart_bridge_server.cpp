@@ -380,6 +380,14 @@ static SendPacketToClientCallback g_server_send_packet_callback = nullptr;
 // Registry ready callback (called when Java signals registries are ready)
 static RegistryReadyCallback g_server_registry_ready_callback = nullptr;
 
+// Block entity callbacks
+static BlockEntityLoadCallback g_block_entity_load_callback = nullptr;
+static BlockEntitySaveCallback g_block_entity_save_callback = nullptr;
+static BlockEntityTickCallback g_block_entity_tick_callback = nullptr;
+static BlockEntityGetDataSlotCallback g_block_entity_get_data_slot_callback = nullptr;
+static BlockEntitySetDataSlotCallback g_block_entity_set_data_slot_callback = nullptr;
+static BlockEntityRemovedCallback g_block_entity_removed_callback = nullptr;
+
 // ==========================================================================
 // Registration Queue System (for thread-safe registration from Dart)
 // ==========================================================================
@@ -415,14 +423,24 @@ struct ServerEntityRegistration {
     std::string goals_json, target_goals_json;
 };
 
+struct ServerBlockEntityRegistration {
+    int32_t handler_id;
+    std::string block_id;
+    int32_t inventory_size;
+    std::string container_title;
+    bool ticks;
+};
+
 static std::queue<ServerBlockRegistration> g_server_block_queue;
 static std::queue<ServerItemRegistration> g_server_item_queue;
 static std::queue<ServerEntityRegistration> g_server_entity_queue;
+static std::queue<ServerBlockEntityRegistration> g_server_block_entity_queue;
 static std::mutex g_server_registration_mutex;
 static std::atomic<bool> g_server_registrations_complete{false};
 static std::atomic<int64_t> g_server_next_block_id{1};
 static std::atomic<int64_t> g_server_next_item_id{1};
 static std::atomic<int64_t> g_server_next_entity_id{1};
+static std::atomic<int32_t> g_server_next_block_entity_id{1};
 
 // ==========================================================================
 // Lifecycle Functions
@@ -625,6 +643,31 @@ void server_set_send_chat_message_callback(SendChatMessageCallback cb) {
     g_server_send_chat_callback = cb;
 }
 
+// Block entity callback registration
+void server_register_block_entity_load_handler(BlockEntityLoadCallback cb) {
+    g_block_entity_load_callback = cb;
+}
+
+void server_register_block_entity_save_handler(BlockEntitySaveCallback cb) {
+    g_block_entity_save_callback = cb;
+}
+
+void server_register_block_entity_tick_handler(BlockEntityTickCallback cb) {
+    g_block_entity_tick_callback = cb;
+}
+
+void server_register_block_entity_get_data_slot_handler(BlockEntityGetDataSlotCallback cb) {
+    g_block_entity_get_data_slot_callback = cb;
+}
+
+void server_register_block_entity_set_data_slot_handler(BlockEntitySetDataSlotCallback cb) {
+    g_block_entity_set_data_slot_callback = cb;
+}
+
+void server_register_block_entity_removed_handler(BlockEntityRemovedCallback cb) {
+    g_block_entity_removed_callback = cb;
+}
+
 // ==========================================================================
 // Event Dispatch (called from Java via JNI)
 // All dispatch functions use safe_enter_isolate/safe_exit_isolate pattern
@@ -744,6 +787,80 @@ void server_dispatch_proxy_block_entity_inside(int64_t handler_id, int64_t world
     bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
     dart_mc_bridge::ServerCallbackRegistry::instance().dispatchProxyBlockEntityInside(handler_id, world_id, x, y, z, entity_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+// ==========================================================================
+// Block Entity Dispatch Functions (called from Java via JNI)
+// ==========================================================================
+
+void server_dispatch_block_entity_load(int32_t handler_id, int64_t block_pos_hash, const char* nbt_json) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    if (g_block_entity_load_callback) {
+        g_block_entity_load_callback(handler_id, block_pos_hash, nbt_json);
+    }
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+const char* server_dispatch_block_entity_save(int32_t handler_id, int64_t block_pos_hash) {
+    SERVER_DISPATCH_BEGIN_RET("{}");
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    const char* result = "{}";
+    if (g_block_entity_save_callback) {
+        result = g_block_entity_save_callback(handler_id, block_pos_hash);
+    }
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result ? result : "{}";
+}
+
+void server_dispatch_block_entity_tick(int32_t handler_id, int64_t block_pos_hash) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    if (g_block_entity_tick_callback) {
+        g_block_entity_tick_callback(handler_id, block_pos_hash);
+    }
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+int32_t server_dispatch_block_entity_get_data_slot(int32_t handler_id, int64_t block_pos_hash, int32_t index) {
+    SERVER_DISPATCH_BEGIN_RET(0);
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = 0;
+    if (g_block_entity_get_data_slot_callback) {
+        result = g_block_entity_get_data_slot_callback(handler_id, block_pos_hash, index);
+    }
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+void server_dispatch_block_entity_set_data_slot(int32_t handler_id, int64_t block_pos_hash, int32_t index, int32_t value) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    if (g_block_entity_set_data_slot_callback) {
+        g_block_entity_set_data_slot_callback(handler_id, block_pos_hash, index, value);
+    }
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void server_dispatch_block_entity_removed(int32_t handler_id, int64_t block_pos_hash) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    if (g_block_entity_removed_callback) {
+        g_block_entity_removed_callback(handler_id, block_pos_hash);
+    }
     Dart_ExitScope();
     safe_exit_isolate(did_enter);
 }
@@ -1374,6 +1491,64 @@ bool server_get_next_entity_registration(
     out_target_goals_json[target_goals_json_len - 1] = '\0';
 
     g_server_entity_queue.pop();
+    return true;
+}
+
+// ==========================================================================
+// Block Entity Registration Queue Functions
+// ==========================================================================
+
+int32_t server_queue_block_entity_registration(
+    const char* block_id,
+    int32_t inventory_size,
+    const char* container_title,
+    bool ticks) {
+
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+    int32_t handler_id = g_server_next_block_entity_id.fetch_add(1);
+
+    ServerBlockEntityRegistration reg;
+    reg.handler_id = handler_id;
+    reg.block_id = block_id ? block_id : "";
+    reg.inventory_size = inventory_size;
+    reg.container_title = container_title ? container_title : "";
+    reg.ticks = ticks;
+
+    g_server_block_entity_queue.push(reg);
+
+    std::cout << "Queued block entity registration: " << reg.block_id
+              << " with handler ID " << handler_id << std::endl;
+
+    return handler_id;
+}
+
+bool server_has_pending_block_entity_registrations() {
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+    return !g_server_block_entity_queue.empty();
+}
+
+bool server_get_next_block_entity_registration(
+    int32_t* out_handler_id,
+    char* out_block_id, size_t block_id_len,
+    int32_t* out_inventory_size,
+    char* out_container_title, size_t container_title_len,
+    bool* out_ticks) {
+
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+
+    if (g_server_block_entity_queue.empty()) return false;
+
+    const auto& reg = g_server_block_entity_queue.front();
+
+    *out_handler_id = reg.handler_id;
+    strncpy(out_block_id, reg.block_id.c_str(), block_id_len - 1);
+    out_block_id[block_id_len - 1] = '\0';
+    *out_inventory_size = reg.inventory_size;
+    strncpy(out_container_title, reg.container_title.c_str(), container_title_len - 1);
+    out_container_title[container_title_len - 1] = '\0';
+    *out_ticks = reg.ticks;
+
+    g_server_block_entity_queue.pop();
     return true;
 }
 

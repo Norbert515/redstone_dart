@@ -81,6 +81,10 @@ public:
     void setContainerMayPlaceHandler(ContainerMayPlaceCallback cb) { container_may_place_handler_ = cb; }
     void setContainerMayPickupHandler(ContainerMayPickupCallback cb) { container_may_pickup_handler_ = cb; }
 
+    // Container lifecycle event handlers (for event-driven container open/close)
+    void setContainerOpenHandler(ContainerOpenCallback cb) { container_open_handler_ = cb; }
+    void setContainerCloseHandler(ContainerCloseCallback cb) { container_close_handler_ = cb; }
+
     // Network packet handler
     void setPacketReceivedHandler(ClientPacketReceivedCallback cb) { packet_received_handler_ = cb; }
 
@@ -183,6 +187,15 @@ public:
         if (packet_received_handler_) packet_received_handler_(packet_type, data, data_length);
     }
 
+    // Container lifecycle event dispatch (for event-driven container open/close)
+    void dispatchContainerOpen(int32_t menu_id, int32_t slot_count) {
+        if (container_open_handler_) container_open_handler_(menu_id, slot_count);
+    }
+
+    void dispatchContainerClose(int32_t menu_id) {
+        if (container_close_handler_) container_close_handler_(menu_id);
+    }
+
     void clear() {
         screen_init_handler_ = nullptr;
         screen_tick_handler_ = nullptr;
@@ -204,6 +217,8 @@ public:
         container_quick_move_handler_ = nullptr;
         container_may_place_handler_ = nullptr;
         container_may_pickup_handler_ = nullptr;
+        container_open_handler_ = nullptr;
+        container_close_handler_ = nullptr;
         packet_received_handler_ = nullptr;
     }
 
@@ -231,6 +246,8 @@ private:
     ContainerQuickMoveCallback container_quick_move_handler_ = nullptr;
     ContainerMayPlaceCallback container_may_place_handler_ = nullptr;
     ContainerMayPickupCallback container_may_pickup_handler_ = nullptr;
+    ContainerOpenCallback container_open_handler_ = nullptr;
+    ContainerCloseCallback container_close_handler_ = nullptr;
     ClientPacketReceivedCallback packet_received_handler_ = nullptr;
 };
 
@@ -470,6 +487,10 @@ void dart_client_process_tasks() {
 
 void dart_client_set_jvm(JavaVM* jvm) {
     g_client_jvm_ref = jvm;
+    // Also initialize generic_jni so Flutter can call Java methods via JNI
+    // This shares the same JVM with the server runtime - both should use the same g_jvm
+    extern void generic_jni_init(JavaVM* jvm);
+    generic_jni_init(jvm);
 }
 
 void dart_client_set_frame_callback(FrameCallback callback) {
@@ -563,6 +584,10 @@ void client_register_container_slot_click_handler(ContainerSlotClickCallback cb)
 void client_register_container_quick_move_handler(ContainerQuickMoveCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setContainerQuickMoveHandler(cb); }
 void client_register_container_may_place_handler(ContainerMayPlaceCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setContainerMayPlaceHandler(cb); }
 void client_register_container_may_pickup_handler(ContainerMayPickupCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setContainerMayPickupHandler(cb); }
+
+// Container lifecycle event callback registration
+void client_register_container_open_handler(ContainerOpenCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setContainerOpenHandler(cb); }
+void client_register_container_close_handler(ContainerCloseCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setContainerCloseHandler(cb); }
 
 // ==========================================================================
 // Event Dispatch (called from Java via JNI)
@@ -674,6 +699,17 @@ bool client_dispatch_container_may_place(int64_t menu_id, int32_t slot_index, co
 bool client_dispatch_container_may_pickup(int64_t menu_id, int32_t slot_index) {
     CLIENT_DISPATCH_CHECK_RET(true);
     return dart_mc_bridge::ClientCallbackRegistry::instance().dispatchContainerMayPickup(menu_id, slot_index);
+}
+
+// Container lifecycle event dispatch (for event-driven container open/close)
+void client_dispatch_container_open(int32_t menu_id, int32_t slot_count) {
+    CLIENT_DISPATCH_CHECK();
+    dart_mc_bridge::ClientCallbackRegistry::instance().dispatchContainerOpen(menu_id, slot_count);
+}
+
+void client_dispatch_container_close(int32_t menu_id) {
+    CLIENT_DISPATCH_CHECK();
+    dart_mc_bridge::ClientCallbackRegistry::instance().dispatchContainerClose(menu_id);
 }
 
 // ==========================================================================

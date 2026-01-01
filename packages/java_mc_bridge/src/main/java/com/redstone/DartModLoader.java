@@ -62,6 +62,32 @@ public class DartModLoader implements ModInitializer {
 
         LOGGER.info("[{}] Processing queued registrations...", MOD_ID);
 
+        // Process all queued block entity registrations FIRST
+        // These associate block IDs with block entity handler IDs
+        // Must be processed before blocks so BlockEntityRegistry.getConfig(blockId) works
+        int blockEntitiesRegistered = 0;
+        while (DartBridge.hasPendingBlockEntityRegistrations()) {
+            Object[] beReg = DartBridge.getNextBlockEntityRegistration();
+            if (beReg == null) break;
+
+            // Extract registration data from the array
+            // Format: [handlerId, blockId, inventorySize, containerTitle, ticks]
+            int handlerId = (Integer) beReg[0];
+            String blockId = (String) beReg[1];
+            int inventorySize = (Integer) beReg[2];
+            String containerTitle = (String) beReg[3];
+            boolean ticks = (Boolean) beReg[4];
+
+            // Store the mapping from block ID to block entity handler
+            com.redstone.blockentity.BlockEntityRegistry.registerBlockEntity(
+                blockId, handlerId, inventorySize, containerTitle, ticks
+            );
+
+            blockEntitiesRegistered++;
+            LOGGER.info("[{}] Registered block entity for {}: handlerId={}, inventory={}, ticks={}",
+                MOD_ID, blockId, handlerId, inventorySize, ticks);
+        }
+
         // Process all queued block registrations
         while (DartBridge.hasPendingBlockRegistrations()) {
             Object[] blockReg = DartBridge.getNextBlockRegistration();
@@ -169,7 +195,8 @@ public class DartModLoader implements ModInitializer {
             }
         }
 
-        LOGGER.info("[{}] Queued registrations complete: {} blocks, {} items, {} entities", MOD_ID, blocksRegistered, itemsRegistered, entitiesRegistered);
+        LOGGER.info("[{}] Queued registrations complete: {} blocks, {} items, {} entities, {} block entities",
+            MOD_ID, blocksRegistered, itemsRegistered, entitiesRegistered, blockEntitiesRegistered);
     }
 
     /**
@@ -281,6 +308,10 @@ public class DartModLoader implements ModInitializer {
 
         // Initialize Redstone menu types
         RedstoneMenuTypes.initialize();
+
+        // Note: BlockEntityTypes are now registered per-block in ProxyRegistry.registerBlockWithHandlerId()
+        // when blocks with block entities are registered. This ensures each BlockEntityType is
+        // associated with its specific block, which Minecraft requires for validation.
 
         boolean libLoaded = DartBridge.isLibraryLoaded();
         System.out.println("===== Native library loaded: " + libLoaded + " =====");

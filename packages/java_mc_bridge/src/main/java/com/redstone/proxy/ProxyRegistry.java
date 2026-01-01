@@ -1,5 +1,7 @@
 package com.redstone.proxy;
 
+import com.redstone.blockentity.BlockEntityRegistry;
+import com.redstone.blockentity.DartBlockWithEntity;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -482,11 +484,46 @@ public class ProxyRegistry {
                 ticksRandomly, collidable, replaceable, burnable
             );
 
-            DartBlockProxy block = new DartBlockProxy(properties, handlerId, settings);
+            // Check if this block has an associated block entity
+            String blockId = namespace + ":" + path;
+            BlockEntityRegistry.BlockEntityConfig beConfig = BlockEntityRegistry.getConfig(blockId);
+
+            DartBlockProxy block;
+            if (beConfig != null) {
+                // Create a block with entity support
+                // Pass the blockId so DartBlockWithEntity can look up its BlockEntityType
+                block = new DartBlockWithEntity(
+                    properties,
+                    handlerId,
+                    settings,
+                    beConfig.handlerId(),
+                    beConfig.inventorySize(),
+                    beConfig.containerTitle(),
+                    blockId
+                );
+                LOGGER.info("Creating block with entity: {}:{} (beHandler={}, inventory={})",
+                    namespace, path, beConfig.handlerId(), beConfig.inventorySize());
+            } else {
+                // Create a regular block
+                block = new DartBlockProxy(properties, handlerId, settings);
+            }
+
             blocks.put(handlerId, block);
 
-            // Register the block
+            // Register the block first
             Registry.register(BuiltInRegistries.BLOCK, blockKey, block);
+
+            // If this block has a block entity, register its BlockEntityType AFTER the block is registered
+            // This is required because FabricBlockEntityTypeBuilder.create() needs the Block instance
+            if (beConfig != null) {
+                com.redstone.blockentity.DartBlockEntityType.registerForBlock(
+                    blockId,
+                    block,
+                    beConfig.handlerId(),
+                    beConfig.inventorySize(),
+                    beConfig.containerTitle()
+                );
+            }
 
             // Also register a BlockItem
             BlockItem blockItem = new BlockItem(block,
@@ -498,7 +535,8 @@ public class ProxyRegistry {
                 entries.accept(blockItem);
             });
 
-            LOGGER.info("Registered queued block: {}:{} with handler ID {}", namespace, path, handlerId);
+            LOGGER.info("Registered queued block: {}:{} with handler ID {}{}", namespace, path, handlerId,
+                beConfig != null ? " (with block entity)" : "");
             return true;
         } catch (Exception e) {
             LOGGER.error("Failed to register queued block {}:{}: {}", namespace, path, e.getMessage());

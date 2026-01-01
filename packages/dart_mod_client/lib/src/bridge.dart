@@ -75,6 +75,10 @@ class ClientBridge {
   // Slot position update function
   static late final _ClientUpdateSlotPositions _clientUpdateSlotPositions;
 
+  // Container lifecycle event callback registration
+  static late final _ClientRegisterContainerOpenHandler _clientRegisterContainerOpenHandler;
+  static late final _ClientRegisterContainerCloseHandler _clientRegisterContainerCloseHandler;
+
   static void _bindFunctions() {
     final lib = _lib!;
 
@@ -202,6 +206,15 @@ class ClientBridge {
     _clientUpdateSlotPositions = lib.lookupFunction<
         Void Function(Int32, Pointer<Int32>, Int32),
         void Function(int, Pointer<Int32>, int)>('client_update_slot_positions');
+
+    // Container lifecycle event callback registration
+    _clientRegisterContainerOpenHandler = lib.lookupFunction<
+        Void Function(Pointer<NativeFunction<_ContainerOpenCallbackNative>>),
+        void Function(Pointer<NativeFunction<_ContainerOpenCallbackNative>>)>('client_register_container_open_handler');
+
+    _clientRegisterContainerCloseHandler = lib.lookupFunction<
+        Void Function(Pointer<NativeFunction<_ContainerCloseCallbackNative>>),
+        void Function(Pointer<NativeFunction<_ContainerCloseCallbackNative>>)>('client_register_container_close_handler');
   }
 
   // ==========================================================================
@@ -315,6 +328,20 @@ class ClientBridge {
       calloc.free(dataPtr);
     }
   }
+
+  /// Register container open callback.
+  ///
+  /// The callback is invoked when a container screen is opened.
+  static void registerContainerOpenHandler(Pointer<NativeFunction<_ContainerOpenCallbackNative>> callback) {
+    _clientRegisterContainerOpenHandler(callback);
+  }
+
+  /// Register container close callback.
+  ///
+  /// The callback is invoked when a container screen is closed.
+  static void registerContainerCloseHandler(Pointer<NativeFunction<_ContainerCloseCallbackNative>> callback) {
+    _clientRegisterContainerCloseHandler(callback);
+  }
 }
 
 // ==========================================================================
@@ -376,3 +403,11 @@ typedef _ContainerSlotClickCallbackNative = Int32 Function(Int64, Int32, Int32, 
 typedef _ContainerQuickMoveCallbackNative = Pointer<Utf8> Function(Int64, Int32);
 typedef _ContainerMayPlaceCallbackNative = Bool Function(Int64, Int32, Pointer<Utf8>);
 typedef _ContainerMayPickupCallbackNative = Bool Function(Int64, Int32);
+
+// Container lifecycle event callback signatures
+typedef _ContainerOpenCallbackNative = Void Function(Int32, Int32);
+typedef _ContainerCloseCallbackNative = Void Function(Int32);
+
+// Callback registration typedefs
+typedef _ClientRegisterContainerOpenHandler = void Function(Pointer<NativeFunction<_ContainerOpenCallbackNative>>);
+typedef _ClientRegisterContainerCloseHandler = void Function(Pointer<NativeFunction<_ContainerCloseCallbackNative>>);

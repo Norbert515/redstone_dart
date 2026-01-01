@@ -1,6 +1,9 @@
 package com.redstone;
 
+import com.redstone.blockentity.DartBlockEntityMenu;
+import com.redstone.flutter.FlutterContainerScreen;
 import com.redstone.flutter.FlutterScreen;
+import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.network.chat.Component;
 import com.redstone.proxy.EntityProxyRegistry;
 import com.redstone.render.DartEntityRenderer;
@@ -228,6 +231,9 @@ public class DartModClientLoader implements ClientModInitializer {
         // This runs AFTER DartModLoader.onInitialize() has initialized the server runtime
         initializeFlutterClientRuntime();
 
+        // Register menu screens for container menus
+        registerMenuScreens();
+
         LOGGER.info("[DartModClientLoader] Setting up entity renderer callback...");
 
         // Register a callback to be notified when entities are registered.
@@ -449,6 +455,29 @@ public class DartModClientLoader implements ClientModInitializer {
             WorldPresets::createFlatWorldDimensions,
             new TitleScreen()
         );
+    }
+
+    // ==========================================================================
+    // Menu Screen Registration
+    // ==========================================================================
+
+    /**
+     * Register menu screens for our custom container menus.
+     *
+     * This links our menu types (registered on the server) to their corresponding
+     * client-side screen implementations.
+     */
+    private void registerMenuScreens() {
+        LOGGER.info("[DartModClientLoader] Registering menu screens...");
+
+        // Register the block entity menu screen with Flutter rendering
+        // FlutterContainerScreen renders the UI via Flutter and handles item rendering on top
+        MenuScreens.<DartBlockEntityMenu, FlutterContainerScreen<DartBlockEntityMenu>>register(
+            RedstoneMenuTypes.DART_BLOCK_ENTITY_MENU,
+            (menu, inventory, title) -> new FlutterContainerScreen<>(menu, inventory, title)
+        );
+
+        LOGGER.info("[DartModClientLoader] Menu screens registered!");
     }
 
     // ==========================================================================

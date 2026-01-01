@@ -91,6 +91,10 @@ typedef const char* (*ContainerQuickMoveCallback)(int64_t menu_id, int32_t slot_
 typedef bool (*ContainerMayPlaceCallback)(int64_t menu_id, int32_t slot_index, const char* item_data);
 typedef bool (*ContainerMayPickupCallback)(int64_t menu_id, int32_t slot_index);
 
+// Container lifecycle event callbacks (for event-driven container open/close)
+typedef void (*ContainerOpenCallback)(int32_t menu_id, int32_t slot_count);
+typedef void (*ContainerCloseCallback)(int32_t menu_id);
+
 // ==========================================================================
 // Callback Registration (called from Dart via FFI)
 // ==========================================================================
@@ -118,6 +122,10 @@ void client_register_container_slot_click_handler(ContainerSlotClickCallback cb)
 void client_register_container_quick_move_handler(ContainerQuickMoveCallback cb);
 void client_register_container_may_place_handler(ContainerMayPlaceCallback cb);
 void client_register_container_may_pickup_handler(ContainerMayPickupCallback cb);
+
+// Container lifecycle event callbacks (for event-driven container open/close)
+void client_register_container_open_handler(ContainerOpenCallback cb);
+void client_register_container_close_handler(ContainerCloseCallback cb);
 
 // ==========================================================================
 // Event Dispatch (called from Java via JNI)
@@ -149,6 +157,10 @@ int32_t client_dispatch_container_slot_click(int64_t menu_id, int32_t slot_index
 const char* client_dispatch_container_quick_move(int64_t menu_id, int32_t slot_index);
 bool client_dispatch_container_may_place(int64_t menu_id, int32_t slot_index, const char* item_data);
 bool client_dispatch_container_may_pickup(int64_t menu_id, int32_t slot_index);
+
+// Container lifecycle event dispatch (for event-driven container open/close)
+void client_dispatch_container_open(int32_t menu_id, int32_t slot_count);
+void client_dispatch_container_close(int32_t menu_id);
 
 // ==========================================================================
 // Network Packet Functions (Client-side)

@@ -11,6 +11,7 @@
   "block.example_mod.weather_control": "Weather Control",
   "block.example_mod.entity_radar": "Entity Radar",
   "block.example_mod.test_chest_block": "Test Chest Block",
+  "block.example_mod.example_furnace": "Example Furnace",
   "item.example_mod.dart_item": "Dart Item",
   "item.example_mod.effect_wand": "Effect Wand",
   "item.example_mod.healing_orb": "Healing Orb",

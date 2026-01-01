@@ -963,6 +963,12 @@ class GenericJniBridge {
   ]) {
     // In datagen mode, return 0
     if (_datagenMode) {
+      print('[GenericJniBridge] callStaticIntMethod in DATAGEN mode, returning 0');
+      return 0;
+    }
+
+    if (!_initialized) {
+      print('[GenericJniBridge] callStaticIntMethod called but NOT INITIALIZED!');
       return 0;
     }
 
@@ -972,13 +978,14 @@ class GenericJniBridge {
     final encodedArgs = _encodeArgs(args);
 
     try {
-      return _callStaticIntMethod(
+      final result = _callStaticIntMethod(
         classNamePtr,
         methodNamePtr,
         sigPtr,
         encodedArgs.ptr,
         args.length,
       );
+      return result;
     } finally {
       calloc.free(classNamePtr);
       calloc.free(methodNamePtr);

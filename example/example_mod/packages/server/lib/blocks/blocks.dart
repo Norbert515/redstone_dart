@@ -1,5 +1,6 @@
 // Barrel export file for all blocks
 export 'entity_radar_block.dart';
+export 'example_furnace_block.dart';
 export 'hello_block.dart';
 export 'lightning_rod_block.dart';
 export 'message_block.dart';
@@ -15,6 +16,7 @@ export 'weather_control_block.dart';
 import 'package:dart_mod_server/dart_mod_server.dart';
 
 import 'entity_radar_block.dart';
+import 'example_furnace_block.dart';
 import 'hello_block.dart';
 import 'lightning_rod_block.dart';
 import 'message_block.dart';
@@ -29,6 +31,7 @@ import 'weather_control_block.dart';
 
 /// Registers all custom blocks and freezes the block registry.
 /// Must be called AFTER registerItems() since blocks may reference items as drops.
+/// Must be called AFTER registerBlockEntities() for blocks with block entities.
 void registerBlocks() {
   BlockRegistry.register(HelloBlock());
   BlockRegistry.register(MessageBlock());
@@ -42,5 +45,6 @@ void registerBlocks() {
   BlockRegistry.register(WeatherControlBlock());
   BlockRegistry.register(EntityRadarBlock());
   BlockRegistry.register(TestChestBlock());
+  BlockRegistry.register(ExampleFurnaceBlock());
   BlockRegistry.freeze();
 }

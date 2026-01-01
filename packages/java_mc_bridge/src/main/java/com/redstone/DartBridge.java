@@ -213,6 +213,14 @@ public class DartBridge {
     // Animal proxy native methods - called by DartAnimalProxy
     public static native void onProxyAnimalBreed(long handlerId, int parentId, int partnerId, int babyId);
 
+    // Block entity native methods - called by DartBlockEntity classes
+    public static native void onBlockEntityLoad(int handlerId, long blockPosHash, String nbtJson);
+    public static native String onBlockEntitySave(int handlerId, long blockPosHash);
+    public static native void onBlockEntityTick(int handlerId, long blockPosHash);
+    public static native int getBlockEntityDataSlot(int handlerId, long blockPosHash, int index);
+    public static native void setBlockEntityDataSlot(int handlerId, long blockPosHash, int index, int value);
+    public static native void onBlockEntityRemoved(int handlerId, long blockPosHash);
+
     // Item proxy native methods - called by DartItemProxy
     public static native boolean onProxyItemAttackEntity(long handlerId, int worldId, int attackerId, int targetId);
     public static native int onProxyItemUse(long handlerId, long worldId, int playerId, int hand);
@@ -356,6 +364,20 @@ public class DartBridge {
      *                modelScale(Double), goalsJson(String), targetGoalsJson(String)]
      */
     public static native Object[] getNextEntityRegistration();
+
+    /**
+     * Check if there are pending block entity registrations in the queue.
+     */
+    public static native boolean hasPendingBlockEntityRegistrations();
+
+    /**
+     * Get the next block entity registration from the queue.
+     * Returns an Object array with registration data, or null if queue is empty.
+     *
+     * Array format: [handlerId(Integer), blockId(String), inventorySize(Integer),
+     *                containerTitle(String), ticks(Boolean)]
+     */
+    public static native Object[] getNextBlockEntityRegistration();
 
     // Service URL for hot reload/debugging
     private static native String getDartServiceUrl();

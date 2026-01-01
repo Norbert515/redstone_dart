@@ -138,6 +138,7 @@ class ServerBridge {
   static late final _ServerQueueBlockRegistration _serverQueueBlockRegistration;
   static late final _ServerQueueItemRegistration _serverQueueItemRegistration;
   static late final _ServerQueueEntityRegistration _serverQueueEntityRegistration;
+  static late final _ServerQueueBlockEntityRegistration _serverQueueBlockEntityRegistration;
   static late final _ServerSignalRegistrationsQueued _serverSignalRegistrationsQueued;
 
   // Callback registration functions
@@ -268,6 +269,10 @@ class ServerBridge {
             int, int, Pointer<Utf8>,
             Pointer<Utf8>, Pointer<Utf8>, double,
             Pointer<Utf8>, Pointer<Utf8>)>('server_queue_entity_registration');
+
+    _serverQueueBlockEntityRegistration = lib.lookupFunction<
+        Int32 Function(Pointer<Utf8>, Int32, Pointer<Utf8>, Bool),
+        int Function(Pointer<Utf8>, int, Pointer<Utf8>, bool)>('server_queue_block_entity_registration');
 
     _serverSignalRegistrationsQueued =
         lib.lookupFunction<Void Function(), void Function()>('server_signal_registrations_queued');
@@ -646,6 +651,36 @@ class ServerBridge {
     }
   }
 
+  /// Queue a block entity for registration.
+  ///
+  /// Block entities are associated with blocks and provide state storage,
+  /// inventory, and tick behavior.
+  ///
+  /// Returns the handler ID assigned to this block entity type.
+  static int queueBlockEntityRegistration({
+    required String blockId,
+    required int inventorySize,
+    required String containerTitle,
+    required bool ticks,
+  }) {
+    // In datagen mode, return fake handler IDs (no FFI available)
+    if (isDatagenMode) {
+      return _datagenHandlerId++;
+    }
+
+    final blockIdPtr = blockId.toNativeUtf8();
+    final containerTitlePtr = containerTitle.toNativeUtf8();
+
+    try {
+      return _serverQueueBlockEntityRegistration(
+        blockIdPtr, inventorySize, containerTitlePtr, ticks,
+      );
+    } finally {
+      calloc.free(blockIdPtr);
+      calloc.free(containerTitlePtr);
+    }
+  }
+
   /// Signal that all registrations are queued.
   static void signalRegistrationsQueued() {
     if (isDatagenMode) return;
@@ -1021,6 +1056,9 @@ typedef _ServerQueueEntityRegistration = int Function(
     int, int, Pointer<Utf8>,
     Pointer<Utf8>, Pointer<Utf8>, double,
     Pointer<Utf8>, Pointer<Utf8>);
+
+typedef _ServerQueueBlockEntityRegistration = int Function(
+    Pointer<Utf8>, int, Pointer<Utf8>, bool);
 
 typedef _ServerSignalRegistrationsQueued = void Function();
 

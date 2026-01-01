@@ -65,6 +65,14 @@ typedef void (*ProxyBlockNeighborChangedCallback)(int64_t handler_id, int64_t wo
 typedef void (*ProxyBlockEntityInsideCallback)(int64_t handler_id, int64_t world_id,
                                                 int32_t x, int32_t y, int32_t z, int32_t entity_id);
 
+// Block entity callbacks
+typedef void (*BlockEntityLoadCallback)(int32_t handler_id, int64_t block_pos_hash, const char* nbt_json);
+typedef const char* (*BlockEntitySaveCallback)(int32_t handler_id, int64_t block_pos_hash);
+typedef void (*BlockEntityTickCallback)(int32_t handler_id, int64_t block_pos_hash);
+typedef int32_t (*BlockEntityGetDataSlotCallback)(int32_t handler_id, int64_t block_pos_hash, int32_t index);
+typedef void (*BlockEntitySetDataSlotCallback)(int32_t handler_id, int64_t block_pos_hash, int32_t index, int32_t value);
+typedef void (*BlockEntityRemovedCallback)(int32_t handler_id, int64_t block_pos_hash);
+
 // Player events
 typedef void (*PlayerJoinCallback)(int32_t player_id);
 typedef void (*PlayerLeaveCallback)(int32_t player_id);
@@ -154,6 +162,14 @@ void server_register_proxy_block_removed_handler(ProxyBlockRemovedCallback cb);
 void server_register_proxy_block_neighbor_changed_handler(ProxyBlockNeighborChangedCallback cb);
 void server_register_proxy_block_entity_inside_handler(ProxyBlockEntityInsideCallback cb);
 
+// Block entity callback registration
+void server_register_block_entity_load_handler(BlockEntityLoadCallback cb);
+void server_register_block_entity_save_handler(BlockEntitySaveCallback cb);
+void server_register_block_entity_tick_handler(BlockEntityTickCallback cb);
+void server_register_block_entity_get_data_slot_handler(BlockEntityGetDataSlotCallback cb);
+void server_register_block_entity_set_data_slot_handler(BlockEntitySetDataSlotCallback cb);
+void server_register_block_entity_removed_handler(BlockEntityRemovedCallback cb);
+
 void server_register_player_join_handler(PlayerJoinCallback cb);
 void server_register_player_leave_handler(PlayerLeaveCallback cb);
 void server_register_player_respawn_handler(PlayerRespawnCallback cb);
@@ -227,6 +243,14 @@ void server_dispatch_proxy_block_neighbor_changed(int64_t handler_id, int64_t wo
                                                    int32_t neighbor_x, int32_t neighbor_y, int32_t neighbor_z);
 void server_dispatch_proxy_block_entity_inside(int64_t handler_id, int64_t world_id,
                                                 int32_t x, int32_t y, int32_t z, int32_t entity_id);
+
+// Block entity dispatch functions
+void server_dispatch_block_entity_load(int32_t handler_id, int64_t block_pos_hash, const char* nbt_json);
+const char* server_dispatch_block_entity_save(int32_t handler_id, int64_t block_pos_hash);
+void server_dispatch_block_entity_tick(int32_t handler_id, int64_t block_pos_hash);
+int32_t server_dispatch_block_entity_get_data_slot(int32_t handler_id, int64_t block_pos_hash, int32_t index);
+void server_dispatch_block_entity_set_data_slot(int32_t handler_id, int64_t block_pos_hash, int32_t index, int32_t value);
+void server_dispatch_block_entity_removed(int32_t handler_id, int64_t block_pos_hash);
 
 void server_dispatch_player_join(int32_t player_id);
 void server_dispatch_player_leave(int32_t player_id);
@@ -365,5 +389,40 @@ bool server_get_next_entity_registration(
     double* out_model_scale,
     char* out_goals_json, size_t goals_json_len,
     char* out_target_goals_json, size_t target_goals_json_len);
+
+// ==========================================================================
+// Block Entity Registration Queue Functions
+// ==========================================================================
+
+/**
+ * Queue a block entity registration from Dart.
+ *
+ * @param block_id The block ID this block entity is associated with (e.g., "mymod:furnace")
+ * @param inventory_size Number of inventory slots (0 for no inventory)
+ * @param container_title Display title for the container UI
+ * @param ticks Whether this block entity should tick
+ * @return Handler ID assigned to this block entity type
+ */
+int32_t server_queue_block_entity_registration(
+    const char* block_id,
+    int32_t inventory_size,
+    const char* container_title,
+    bool ticks);
+
+/**
+ * Check if there are pending block entity registrations.
+ */
+bool server_has_pending_block_entity_registrations();
+
+/**
+ * Get the next block entity registration from the queue.
+ * Returns true if a registration was retrieved, false if queue is empty.
+ */
+bool server_get_next_block_entity_registration(
+    int32_t* out_handler_id,
+    char* out_block_id, size_t block_id_len,
+    int32_t* out_inventory_size,
+    char* out_container_title, size_t container_title_len,
+    bool* out_ticks);
 
 } // extern "C"
