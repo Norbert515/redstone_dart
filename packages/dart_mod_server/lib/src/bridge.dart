@@ -210,9 +210,6 @@ class ServerBridge {
   // static late final _ServerClearContainerSlot _serverClearContainerSlot;
   // static late final _ServerFreeString _serverFreeString;
 
-  // Container functions
-  static late final _DartOpenContainerForPlayer _dartOpenContainerForPlayer;
-
   static void _bindFunctions() {
     final lib = _lib!;
 
@@ -490,11 +487,6 @@ class ServerBridge {
 
     // Note: Container item access functions are not implemented in native code yet
     // These should use JNI calls instead
-
-    // Container functions
-    _dartOpenContainerForPlayer = lib.lookupFunction<
-        Bool Function(Int32, Pointer<Utf8>),
-        bool Function(int, Pointer<Utf8>)>('dart_open_container_for_player');
   }
 
   // ==========================================================================
@@ -793,12 +785,12 @@ class ServerBridge {
   /// Returns true if the container was opened successfully.
   static bool openContainerForPlayer(int playerId, String containerId) {
     if (isDatagenMode) return false;
-    final containerIdPtr = containerId.toNativeUtf8();
-    try {
-      return _dartOpenContainerForPlayer(playerId, containerIdPtr);
-    } finally {
-      calloc.free(containerIdPtr);
-    }
+    return GenericJniBridge.callStaticBoolMethod(
+      'com/redstone/DartBridge',
+      'openContainerForPlayer',
+      '(ILjava/lang/String;)Z',
+      [playerId, containerId],
+    );
   }
 
   // ==========================================================================
@@ -1092,9 +1084,6 @@ typedef _ServerSendChatMessage = void Function(int, Pointer<Utf8>);
 // typedef _ServerGetContainerSlotCount = int Function(int);
 // typedef _ServerClearContainerSlot = void Function(int, int);
 // typedef _ServerFreeString = void Function(Pointer<Utf8>);
-
-// Container functions
-typedef _DartOpenContainerForPlayer = bool Function(int, Pointer<Utf8>);
 
 // Native callback signatures
 typedef _BlockBreakCallbackNative = Int32 Function(Int32, Int32, Int32, Int64);
