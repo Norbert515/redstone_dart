@@ -146,10 +146,34 @@ JNIEXPORT jstring JNICALL Java_com_redstone_DartBridgeClient_getClientServiceUrl
  * Signature: ()Ljava/nio/ByteBuffer;
  *
  * Returns a direct ByteBuffer containing the latest frame pixels (RGBA).
+ * When Metal rendering is active, this reads back from the IOSurface.
  */
 JNIEXPORT jobject JNICALL Java_com_redstone_DartBridgeClient_getFramePixels(
     JNIEnv* env, jclass /* cls */) {
 
+    // Check if using hardware renderer (Metal on macOS)
+    if (dart_client_is_opengl_renderer()) {
+        // Metal/hardware path - read back from IOSurface
+        void* pixels = dart_client_get_frame_pixels();
+        if (pixels == nullptr) {
+            return nullptr;
+        }
+
+        int32_t width = dart_client_get_frame_width();
+        int32_t height = dart_client_get_frame_height();
+        if (width <= 0 || height <= 0) {
+            return nullptr;
+        }
+
+        // Calculate buffer size (4 bytes per pixel for RGBA/BGRA)
+        // Note: IOSurface may have padding, so we use bytesPerRow from the surface
+        // For simplicity, assume 4 * width as the row stride
+        size_t size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+
+        return env->NewDirectByteBuffer(pixels, static_cast<jlong>(size));
+    }
+
+    // Software renderer path - use local buffer
     std::lock_guard<std::mutex> lock(g_frame_mutex);
 
     if (g_frame_buffer.empty() || g_frame_width == 0 || g_frame_height == 0) {
@@ -169,6 +193,12 @@ JNIEXPORT jobject JNICALL Java_com_redstone_DartBridgeClient_getFramePixels(
 JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFrameWidth(
     JNIEnv* /* env */, jclass /* cls */) {
 
+    // Check if using hardware renderer (Metal on macOS)
+    if (dart_client_is_opengl_renderer()) {
+        return static_cast<jint>(dart_client_get_frame_width());
+    }
+
+    // Software renderer path
     std::lock_guard<std::mutex> lock(g_frame_mutex);
     return static_cast<jint>(g_frame_width);
 }
@@ -181,6 +211,12 @@ JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFrameWidth(
 JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFrameHeight(
     JNIEnv* /* env */, jclass /* cls */) {
 
+    // Check if using hardware renderer (Metal on macOS)
+    if (dart_client_is_opengl_renderer()) {
+        return static_cast<jint>(dart_client_get_frame_height());
+    }
+
+    // Software renderer path
     std::lock_guard<std::mutex> lock(g_frame_mutex);
     return static_cast<jint>(g_frame_height);
 }
@@ -193,10 +229,96 @@ JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFrameHeight(
 JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_hasNewFrame(
     JNIEnv* /* env */, jclass /* cls */) {
 
+    // Check if using OpenGL renderer first
+    if (dart_client_is_opengl_renderer()) {
+        return dart_client_has_new_frame() ? JNI_TRUE : JNI_FALSE;
+    }
+
+    // Software renderer path
     std::lock_guard<std::mutex> lock(g_frame_mutex);
     bool result = g_has_new_frame;
     g_has_new_frame = false;  // Clear the flag after reading
     return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// ==========================================================================
+// OpenGL Texture Access JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getFlutterTextureId
+ * Signature: ()I
+ *
+ * Get the OpenGL texture ID for Flutter's rendered output.
+ * Returns 0 if OpenGL rendering is not enabled or no texture exists.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFlutterTextureId(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return static_cast<jint>(dart_client_get_flutter_texture_id());
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getFlutterTextureWidth
+ * Signature: ()I
+ *
+ * Get the width of the Flutter texture in pixels.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFlutterTextureWidth(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return static_cast<jint>(dart_client_get_texture_width());
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getFlutterTextureHeight
+ * Signature: ()I
+ *
+ * Get the height of the Flutter texture in pixels.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getFlutterTextureHeight(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return static_cast<jint>(dart_client_get_texture_height());
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    isOpenGLRenderer
+ * Signature: ()Z
+ *
+ * Check if OpenGL rendering is enabled.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_isOpenGLRenderer(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return dart_client_is_opengl_renderer() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    setOpenGLEnabled
+ * Signature: (Z)V
+ *
+ * Enable or disable hardware-accelerated rendering (must be called before initClient).
+ * On macOS, this controls Metal rendering. On Windows/Linux, this controls OpenGL.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_setOpenGLEnabled(
+    JNIEnv* /* env */, jclass /* cls */, jboolean enabled) {
+    dart_client_set_opengl_enabled(enabled == JNI_TRUE);
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    isMetalRenderer
+ * Signature: ()Z
+ *
+ * Check if Metal rendering is being used (macOS only).
+ * Metal textures are shared via IOSurface and use GL_TEXTURE_RECTANGLE.
+ * Returns false on Windows/Linux (which use regular OpenGL).
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_isMetalRenderer(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return dart_client_is_metal_renderer() ? JNI_TRUE : JNI_FALSE;
 }
 
 /*

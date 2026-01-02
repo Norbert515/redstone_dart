@@ -11,6 +11,61 @@
 #include <thread>
 #include <queue>
 #include <chrono>
+#include <atomic>
+
+// ==========================================================================
+// Renderer Headers and Platform Detection
+// ==========================================================================
+
+// Feature flag for hardware-accelerated vs software rendering
+// On macOS: Metal (OpenGL is deprecated)
+// On Windows/Linux: OpenGL
+static bool g_use_hardware_renderer = true;
+
+#ifdef __APPLE__
+    // macOS uses Metal for Flutter rendering (OpenGL is deprecated since 2018)
+    #include "metal_renderer.h"
+    #define METAL_SUPPORTED 1
+    #define OPENGL_SUPPORTED 0
+
+    // Still need OpenGL headers for IOSurface -> OpenGL texture binding
+    // (Minecraft uses OpenGL via LWJGL)
+    #include <dlfcn.h>
+    #define GL_SILENCE_DEPRECATION
+    #include <OpenGL/gl3.h>
+    #include <OpenGL/OpenGL.h>
+    #include <OpenGL/CGLIOSurface.h>
+    #include <IOSurface/IOSurface.h>
+
+    // GL_TEXTURE_RECTANGLE and related constants are not defined in gl3.h
+    // but are required for CGLTexImageIOSurface2D. Define them manually.
+    #ifndef GL_TEXTURE_RECTANGLE
+    #define GL_TEXTURE_RECTANGLE 0x84F5
+    #endif
+    #ifndef GL_BGRA
+    #define GL_BGRA 0x80E1
+    #endif
+    #ifndef GL_UNSIGNED_INT_8_8_8_8_REV
+    #define GL_UNSIGNED_INT_8_8_8_8_REV 0x8367
+    #endif
+#elif defined(_WIN32)
+    #include <windows.h>
+    #include <GL/gl.h>
+    #include <GL/glext.h>
+    #define OPENGL_SUPPORTED 1
+    // Windows OpenGL extension function pointers
+    static PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers = nullptr;
+    static PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer = nullptr;
+    static PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D = nullptr;
+    static PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatus = nullptr;
+    static PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers = nullptr;
+#elif defined(__linux__)
+    #include <GL/glx.h>
+    #include <GL/gl.h>
+    #define OPENGL_SUPPORTED 1
+#else
+    #define OPENGL_SUPPORTED 0
+#endif
 
 // ==========================================================================
 // Flutter Engine State
@@ -39,6 +94,36 @@ static double g_client_pixel_ratio = 1.0;
 
 // JVM reference
 static JavaVM* g_client_jvm_ref = nullptr;
+
+// ==========================================================================
+// Renderer State
+// ==========================================================================
+
+#if OPENGL_SUPPORTED
+// FBO and texture for OpenGL rendering (Windows/Linux)
+static GLuint g_flutter_fbo = 0;
+static GLuint g_flutter_texture = 0;
+static int g_texture_width = 0;
+static int g_texture_height = 0;
+static std::atomic<bool> g_frame_ready{false};
+#endif // OPENGL_SUPPORTED
+
+#if METAL_SUPPORTED
+// macOS Metal renderer state
+// The actual Metal objects are in metal_renderer.mm
+// Here we just need the OpenGL texture for Minecraft to sample
+static GLuint g_iosurface_gl_texture = 0;
+static int g_iosurface_texture_width = 0;
+static int g_iosurface_texture_height = 0;
+// Track the IOSurface ID to avoid recreating texture every frame
+static IOSurfaceID g_cached_iosurface_id = 0;
+
+// Buffer for IOSurface readback (software fallback display path)
+static void* g_metal_readback_buffer = nullptr;
+static size_t g_metal_readback_buffer_size = 0;
+static int32_t g_metal_frame_width = 0;
+static int32_t g_metal_frame_height = 0;
+#endif // METAL_SUPPORTED
 
 // ==========================================================================
 // Client Callback Registry (separate from server)
@@ -274,6 +359,210 @@ static void ClientTaskRunnerPostTask(FlutterTask task, uint64_t target_time, voi
 }
 
 // ==========================================================================
+// OpenGL Renderer Callbacks and Helpers
+// ==========================================================================
+
+#if OPENGL_SUPPORTED
+
+// Platform-specific GL proc resolver
+static void* OnGLProcResolver(void* user_data, const char* name) {
+#ifdef __APPLE__
+    // macOS: Use dlsym on the OpenGL framework
+    static void* lib = nullptr;
+    if (!lib) {
+        lib = dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_LAZY);
+    }
+    return lib ? dlsym(lib, name) : nullptr;
+#elif defined(_WIN32)
+    // Windows: Try wglGetProcAddress first, then opengl32.dll
+    void* proc = (void*)wglGetProcAddress(name);
+    if (!proc) {
+        static HMODULE lib = LoadLibraryA("opengl32.dll");
+        if (lib) {
+            proc = (void*)GetProcAddress(lib, name);
+        }
+    }
+    return proc;
+#else
+    // Linux: Use glXGetProcAddress
+    return (void*)glXGetProcAddress((const GLubyte*)name);
+#endif
+}
+
+// Initialize Windows OpenGL extension function pointers
+#ifdef _WIN32
+static bool InitWindowsGLExtensions() {
+    glGenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)wglGetProcAddress("glGenFramebuffers");
+    glBindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)wglGetProcAddress("glBindFramebuffer");
+    glFramebufferTexture2D = (PFNGLFRAMEBUFFERTEXTURE2DPROC)wglGetProcAddress("glFramebufferTexture2D");
+    glCheckFramebufferStatus = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)wglGetProcAddress("glCheckFramebufferStatus");
+    glDeleteFramebuffers = (PFNGLDELETEFRAMEBUFFERSPROC)wglGetProcAddress("glDeleteFramebuffers");
+    return glGenFramebuffers && glBindFramebuffer && glFramebufferTexture2D &&
+           glCheckFramebufferStatus && glDeleteFramebuffers;
+}
+#endif
+
+// Create or resize the Flutter FBO and texture
+static bool CreateOrResizeFlutterFBO(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    // Check if resize is needed
+    if (width == g_texture_width && height == g_texture_height && g_flutter_fbo != 0) {
+        return true; // No change needed
+    }
+
+    std::cout << "Creating Flutter FBO: " << width << "x" << height << std::endl;
+
+    // Delete old resources if they exist
+    if (g_flutter_fbo != 0) {
+        glDeleteFramebuffers(1, &g_flutter_fbo);
+        g_flutter_fbo = 0;
+    }
+    if (g_flutter_texture != 0) {
+        glDeleteTextures(1, &g_flutter_texture);
+        g_flutter_texture = 0;
+    }
+
+    // Create new texture
+    glGenTextures(1, &g_flutter_texture);
+    glBindTexture(GL_TEXTURE_2D, g_flutter_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // Create FBO and attach texture
+    glGenFramebuffers(1, &g_flutter_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_flutter_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_flutter_texture, 0);
+
+    // Verify FBO completeness
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "Flutter FBO not complete! Status: " << status << std::endl;
+        glDeleteFramebuffers(1, &g_flutter_fbo);
+        glDeleteTextures(1, &g_flutter_texture);
+        g_flutter_fbo = 0;
+        g_flutter_texture = 0;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return false;
+    }
+
+    g_texture_width = width;
+    g_texture_height = height;
+
+    // Restore default framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    std::cout << "Flutter FBO created successfully: texture=" << g_flutter_texture
+              << ", fbo=" << g_flutter_fbo << std::endl;
+    return true;
+}
+
+// Cleanup OpenGL resources
+static void CleanupFlutterGL() {
+    if (g_flutter_fbo != 0) {
+        glDeleteFramebuffers(1, &g_flutter_fbo);
+        g_flutter_fbo = 0;
+    }
+    if (g_flutter_texture != 0) {
+        glDeleteTextures(1, &g_flutter_texture);
+        g_flutter_texture = 0;
+    }
+    g_texture_width = 0;
+    g_texture_height = 0;
+    g_frame_ready = false;
+}
+
+// Flutter OpenGL callbacks
+static bool OnGLMakeCurrent(void* user_data) {
+    // We're borrowing Minecraft's GL context on the render thread.
+    // The context is captured lazily on first call because onInitializeClient()
+    // runs BEFORE Minecraft creates its OpenGL context.
+#ifdef __APPLE__
+    // Lazy capture: if we don't have a stored context yet, capture it now
+    if (!g_minecraft_gl_context) {
+        g_minecraft_gl_context = CGLGetCurrentContext();
+        if (g_minecraft_gl_context) {
+            std::cout << "OpenGL context captured lazily at first render" << std::endl;
+        }
+    }
+
+    if (g_minecraft_gl_context) {
+        CGLError err = CGLSetCurrentContext(g_minecraft_gl_context);
+        return err == kCGLNoError;
+    }
+    // If we still don't have a context, assume it's already current
+    return true;
+#elif defined(_WIN32)
+    // Windows: lazily initialize GL extension functions on first render call
+    static bool gl_extensions_initialized = false;
+    if (!gl_extensions_initialized) {
+        if (InitWindowsGLExtensions()) {
+            std::cout << "Windows OpenGL extensions initialized lazily at first render" << std::endl;
+            gl_extensions_initialized = true;
+        } else {
+            std::cerr << "Failed to initialize Windows GL extensions" << std::endl;
+            return false;
+        }
+    }
+    return true;
+#else
+    // On Linux/other platforms, assume context is already current
+    return true;
+#endif
+}
+
+static bool OnGLClearCurrent(void* user_data) {
+    // Don't actually clear the context - Minecraft still needs it
+    return true;
+}
+
+static uint32_t OnGLFboCallback(void* user_data) {
+    // Ensure FBO exists with current dimensions
+    if (g_flutter_fbo == 0) {
+        int width = static_cast<int>(g_client_window_width * g_client_pixel_ratio);
+        int height = static_cast<int>(g_client_window_height * g_client_pixel_ratio);
+        if (!CreateOrResizeFlutterFBO(width, height)) {
+            std::cerr << "Failed to create Flutter FBO in fbo_callback" << std::endl;
+            return 0;
+        }
+    }
+    return g_flutter_fbo;
+}
+
+static bool OnGLPresent(void* user_data) {
+    // Signal that a new frame is ready
+    g_frame_ready = true;
+    return true;
+}
+
+static bool OnGLMakeResourceCurrent(void* user_data) {
+    // For resource loading - we use the same context
+    return OnGLMakeCurrent(user_data);
+}
+
+static FlutterTransformation OnGLSurfaceTransformation(void* user_data) {
+    // Identity transformation - Flutter renders with Y-axis pointing down
+    // We may need to flip this when sampling in Minecraft
+    FlutterTransformation transform = {};
+    transform.scaleX = 1.0;
+    transform.scaleY = 1.0;
+    transform.transX = 0.0;
+    transform.transY = 0.0;
+    transform.pers0 = 0.0;
+    transform.pers1 = 0.0;
+    transform.pers2 = 1.0;
+    return transform;
+}
+
+#endif // OPENGL_SUPPORTED
+
+// ==========================================================================
 // Flutter Embedder Callbacks
 // ==========================================================================
 
@@ -328,11 +617,69 @@ bool dart_client_init(const char* assets_path, const char* icu_data_path, const 
     std::cout << "  ICU data path: " << (icu_data_path ? icu_data_path : "null") << std::endl;
     std::cout << "  AOT library: " << (aot_library_path ? aot_library_path : "JIT mode") << std::endl;
 
-    // Configure renderer - client always uses rendering
+    // Configure renderer based on platform
     FlutterRendererConfig renderer = {};
-    renderer.type = kSoftware;
-    renderer.software.struct_size = sizeof(FlutterSoftwareRendererConfig);
-    renderer.software.surface_present_callback = OnClientSoftwareSurfacePresent;
+
+#if METAL_SUPPORTED
+    // macOS: Use Metal renderer (OpenGL is deprecated on macOS)
+    if (g_use_hardware_renderer) {
+        std::cout << "  Renderer: Metal (attempting hardware acceleration)" << std::endl;
+
+        // Initialize Metal renderer
+        if (!metal_renderer_init()) {
+            std::cerr << "Failed to initialize Metal renderer, falling back to software rendering" << std::endl;
+            std::cerr << "  This may happen on unsupported hardware or in virtualized environments" << std::endl;
+            g_use_hardware_renderer = false;
+        } else {
+            // Verify Metal device and command queue are valid
+            void* metal_device = metal_renderer_get_device();
+            void* metal_queue = metal_renderer_get_command_queue();
+            if (metal_device == nullptr || metal_queue == nullptr) {
+                std::cerr << "Metal renderer initialized but device/queue is null, falling back to software" << std::endl;
+                metal_renderer_shutdown();
+                g_use_hardware_renderer = false;
+            }
+        }
+    }
+
+    if (g_use_hardware_renderer) {
+        std::cout << "  Using Metal hardware renderer" << std::endl;
+        renderer.type = kMetal;
+        renderer.metal.struct_size = sizeof(FlutterMetalRendererConfig);
+        renderer.metal.device = metal_renderer_get_device();
+        renderer.metal.present_command_queue = metal_renderer_get_command_queue();
+        renderer.metal.get_next_drawable_callback = metal_renderer_get_next_drawable;
+        renderer.metal.present_drawable_callback = metal_renderer_present_drawable;
+    } else
+#elif OPENGL_SUPPORTED
+    // Windows/Linux: Use OpenGL renderer
+    if (g_use_hardware_renderer) {
+        std::cout << "  Renderer: OpenGL (context will be captured lazily at first render)" << std::endl;
+        // NOTE: We don't check for or capture the OpenGL context here because
+        // onInitializeClient() runs BEFORE Minecraft creates its OpenGL context.
+        // The context will be captured lazily in OnGLMakeCurrent() when Flutter
+        // first tries to render (at which point Minecraft's GL context exists).
+    }
+
+    if (g_use_hardware_renderer) {
+        renderer.type = kOpenGL;
+        renderer.open_gl.struct_size = sizeof(FlutterOpenGLRendererConfig);
+        renderer.open_gl.make_current = OnGLMakeCurrent;
+        renderer.open_gl.clear_current = OnGLClearCurrent;
+        renderer.open_gl.fbo_callback = OnGLFboCallback;
+        renderer.open_gl.present = OnGLPresent;
+        renderer.open_gl.make_resource_current = OnGLMakeResourceCurrent;
+        renderer.open_gl.gl_proc_resolver = OnGLProcResolver;
+        renderer.open_gl.fbo_reset_after_present = true;
+        renderer.open_gl.surface_transformation = OnGLSurfaceTransformation;
+    } else
+#endif // OPENGL_SUPPORTED
+    {
+        std::cout << "  Renderer: Software" << std::endl;
+        renderer.type = kSoftware;
+        renderer.software.struct_size = sizeof(FlutterSoftwareRendererConfig);
+        renderer.software.surface_present_callback = OnClientSoftwareSurfacePresent;
+    }
 
     // Configure project args
     FlutterProjectArgs args = {};
@@ -454,6 +801,32 @@ void dart_client_shutdown() {
         g_client_engine = nullptr;
     }
 
+#if METAL_SUPPORTED
+    // Cleanup Metal resources
+    std::cout << "Client shutdown: cleaning up Metal resources..." << std::endl;
+    metal_renderer_shutdown();
+    if (g_iosurface_gl_texture != 0) {
+        glDeleteTextures(1, &g_iosurface_gl_texture);
+        g_iosurface_gl_texture = 0;
+    }
+    g_iosurface_texture_width = 0;
+    g_iosurface_texture_height = 0;
+    g_cached_iosurface_id = 0;
+
+    // Cleanup Metal readback buffer
+    if (g_metal_readback_buffer) {
+        free(g_metal_readback_buffer);
+        g_metal_readback_buffer = nullptr;
+        g_metal_readback_buffer_size = 0;
+    }
+    g_metal_frame_width = 0;
+    g_metal_frame_height = 0;
+#elif OPENGL_SUPPORTED
+    // Cleanup OpenGL resources
+    std::cout << "Client shutdown: cleaning up OpenGL resources..." << std::endl;
+    CleanupFlutterGL();
+#endif
+
     g_client_initialized = false;
     g_client_jvm_ref = nullptr;
     g_client_frame_callback = nullptr;
@@ -514,6 +887,17 @@ void dart_client_send_window_metrics(int32_t width, int32_t height, double pixel
     g_client_window_width = width;
     g_client_window_height = height;
     g_client_pixel_ratio = pixel_ratio;
+
+#if OPENGL_SUPPORTED
+    // Resize FBO if using OpenGL and dimensions changed
+    if (g_use_opengl_renderer) {
+        int tex_width = static_cast<int>(width * pixel_ratio);
+        int tex_height = static_cast<int>(height * pixel_ratio);
+        if (tex_width != g_texture_width || tex_height != g_texture_height) {
+            CreateOrResizeFlutterFBO(tex_width, tex_height);
+        }
+    }
+#endif
 
     FlutterWindowMetricsEvent metrics = {};
     metrics.struct_size = sizeof(FlutterWindowMetricsEvent);
@@ -784,6 +1168,447 @@ void client_update_slot_positions(int32_t menu_id, const int32_t* data, int32_t 
 
     env->DeleteLocalRef(bridgeClass);
     if (needs_detach) g_client_jvm_ref->DetachCurrentThread();
+}
+
+// ==========================================================================
+// Texture Access Functions (for Java/Minecraft to sample Flutter output)
+// ==========================================================================
+
+#if METAL_SUPPORTED
+// Track consecutive failures to avoid spamming logs
+static int g_iosurface_bind_failures = 0;
+static constexpr int MAX_BIND_FAILURE_LOGS = 5;
+
+// Helper: Get CGL error string for better diagnostics
+// Named differently from system's CGLErrorString to avoid conflicts
+static const char* GetCGLErrorDescription(CGLError err) {
+    switch (err) {
+        case kCGLNoError: return "No error";
+        case kCGLBadAttribute: return "Invalid attribute";
+        case kCGLBadProperty: return "Invalid property";
+        case kCGLBadPixelFormat: return "Invalid pixel format";
+        case kCGLBadRendererInfo: return "Invalid renderer info";
+        case kCGLBadContext: return "Invalid context";
+        case kCGLBadDrawable: return "Invalid drawable";
+        case kCGLBadDisplay: return "Invalid display";
+        case kCGLBadState: return "Invalid state";
+        case kCGLBadValue: return "Invalid value";
+        case kCGLBadMatch: return "Invalid match";
+        case kCGLBadEnumeration: return "Invalid enumeration";
+        case kCGLBadOffScreen: return "Invalid off-screen";
+        case kCGLBadFullScreen: return "Invalid full-screen";
+        case kCGLBadWindow: return "Invalid window";
+        case kCGLBadAddress: return "Invalid address";
+        case kCGLBadCodeModule: return "Invalid code module";
+        case kCGLBadAlloc: return "Memory allocation failed";
+        case kCGLBadConnection: return "Invalid connection";
+        default: return "Unknown error";
+    }
+}
+
+// Helper: Check for OpenGL errors and log them
+static bool CheckGLError(const char* operation) {
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        if (g_iosurface_bind_failures < MAX_BIND_FAILURE_LOGS) {
+            std::cerr << "OpenGL error during " << operation << ": 0x" << std::hex << err << std::dec << std::endl;
+        }
+        return false;
+    }
+    return true;
+}
+
+// Helper: Create/update OpenGL texture from IOSurface
+// This is called from the render thread when Minecraft needs to sample the Flutter texture
+//
+// IMPORTANT: CGLTexImageIOSurface2D REQUIRES GL_TEXTURE_RECTANGLE as the target.
+// It returns kCGLBadValue (error 10008) with GL_TEXTURE_2D.
+// GL_TEXTURE_RECTANGLE uses pixel coordinates (0 to width/height) not normalized (0 to 1).
+static bool UpdateIOSurfaceGLTexture() {
+    // Check if Metal renderer is in error state
+    if (metal_renderer_has_error()) {
+        if (g_iosurface_bind_failures == 0) {
+            std::cerr << "UpdateIOSurfaceGLTexture: Metal renderer is in error state" << std::endl;
+        }
+        g_iosurface_bind_failures++;
+        return false;
+    }
+
+    // Use thread-safe API to get IOSurface info atomically
+    void* surface_ptr = nullptr;
+    int32_t width = 0;
+    int32_t height = 0;
+
+    if (!metal_renderer_get_iosurface_info(&surface_ptr, &width, &height)) {
+        // IOSurface not ready yet - this is normal during startup
+        static bool logged_waiting = false;
+        if (!logged_waiting) {
+            std::cout << "UpdateIOSurfaceGLTexture: Waiting for IOSurface to be ready..." << std::endl;
+            logged_waiting = true;
+        }
+        return false;
+    }
+
+    IOSurfaceRef surface = (IOSurfaceRef)surface_ptr;
+
+    // Validate dimensions (should be guaranteed by metal_renderer_get_iosurface_info, but double-check)
+    if (width <= 0 || height <= 0) {
+        if (g_iosurface_bind_failures < MAX_BIND_FAILURE_LOGS) {
+            std::cerr << "UpdateIOSurfaceGLTexture: Invalid dimensions " << width << "x" << height << std::endl;
+        }
+        g_iosurface_bind_failures++;
+        return false;
+    }
+
+    // Get IOSurface ID for logging
+    IOSurfaceID currentId = IOSurfaceGetID(surface);
+
+    // Always rebind the IOSurface to ensure fresh texture data each frame.
+    // Caching was causing "unloadable" texture errors on macOS Apple Silicon
+    // where the cached IOSurface-backed GL_TEXTURE_RECTANGLE would become stale.
+
+    // Only log when dimensions change to avoid spam
+    static int32_t last_logged_width = 0;
+    static int32_t last_logged_height = 0;
+    if (width != last_logged_width || height != last_logged_height) {
+        std::cout << "UpdateIOSurfaceGLTexture: Rebinding GL texture from IOSurface "
+              << width << "x" << height << " (ID: " << currentId << ")" << std::endl;
+        last_logged_width = width;
+        last_logged_height = height;
+    }
+
+    // Clear any pending GL errors before we start
+    while (glGetError() != GL_NO_ERROR) {}
+
+    // Delete old texture if exists
+    if (g_iosurface_gl_texture != 0) {
+        glDeleteTextures(1, &g_iosurface_gl_texture);
+        g_iosurface_gl_texture = 0;
+        g_cached_iosurface_id = 0;
+    }
+
+    // Get current CGL context
+    CGLContextObj cglContext = CGLGetCurrentContext();
+    if (cglContext == nullptr) {
+        if (g_iosurface_bind_failures < MAX_BIND_FAILURE_LOGS) {
+            std::cerr << "UpdateIOSurfaceGLTexture: No CGL context available" << std::endl;
+            std::cerr << "  This may happen if called from wrong thread or before Minecraft creates GL context" << std::endl;
+        }
+        g_iosurface_bind_failures++;
+        return false;
+    }
+
+    // GL_TEXTURE_RECTANGLE is core in OpenGL 3.1+
+    // On macOS with Core Profile 4.1 (which Minecraft uses), it's always available.
+    // Skip extension check since glGetString(GL_EXTENSIONS) doesn't work in Core Profile
+    // and would generate GL_INVALID_ENUM errors.
+
+    // Create new OpenGL texture
+    glGenTextures(1, &g_iosurface_gl_texture);
+    if (!CheckGLError("glGenTextures") || g_iosurface_gl_texture == 0) {
+        g_iosurface_bind_failures++;
+        return false;
+    }
+
+    // CGLTexImageIOSurface2D REQUIRES GL_TEXTURE_RECTANGLE - it returns kCGLBadValue with GL_TEXTURE_2D
+    glBindTexture(GL_TEXTURE_RECTANGLE, g_iosurface_gl_texture);
+    if (!CheckGLError("glBindTexture GL_TEXTURE_RECTANGLE")) {
+        glDeleteTextures(1, &g_iosurface_gl_texture);
+        g_iosurface_gl_texture = 0;
+        g_iosurface_bind_failures++;
+        return false;
+    }
+
+    // Verify IOSurface is still valid before binding
+    // (it could have been released between getting info and now)
+    size_t surface_width = IOSurfaceGetWidth(surface);
+    size_t surface_height = IOSurfaceGetHeight(surface);
+    if (surface_width == 0 || surface_height == 0) {
+        if (g_iosurface_bind_failures < MAX_BIND_FAILURE_LOGS) {
+            std::cerr << "UpdateIOSurfaceGLTexture: IOSurface became invalid" << std::endl;
+        }
+        glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+        glDeleteTextures(1, &g_iosurface_gl_texture);
+        g_iosurface_gl_texture = 0;
+        g_iosurface_bind_failures++;
+        return false;
+    }
+
+    // Pre-flight checks before CGLTexImageIOSurface2D
+    // 1. Verify the CGL context is valid and current
+    CGLContextObj currentContext = CGLGetCurrentContext();
+    if (currentContext != cglContext) {
+        if (g_iosurface_bind_failures < MAX_BIND_FAILURE_LOGS) {
+            std::cerr << "UpdateIOSurfaceGLTexture: Context mismatch! Expected " << cglContext
+                      << " but current is " << currentContext << std::endl;
+        }
+        glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+        glDeleteTextures(1, &g_iosurface_gl_texture);
+        g_iosurface_gl_texture = 0;
+        g_iosurface_bind_failures++;
+        return false;
+    }
+
+    // 2. Log OpenGL version/profile for diagnostics (only on first success or after failures)
+    static bool logged_gl_info = false;
+    if (!logged_gl_info || g_iosurface_bind_failures > 0) {
+        const GLubyte* version = glGetString(GL_VERSION);
+        const GLubyte* renderer = glGetString(GL_RENDERER);
+        std::cout << "UpdateIOSurfaceGLTexture: GL Version: " << (version ? (const char*)version : "unknown")
+                  << ", Renderer: " << (renderer ? (const char*)renderer : "unknown") << std::endl;
+        logged_gl_info = true;
+    }
+
+    // Ensure Metal has finished writing to the IOSurface before OpenGL reads it
+    metal_renderer_flush_and_wait();
+
+    // Bind IOSurface to OpenGL texture using CGLTexImageIOSurface2D
+    // MUST use GL_TEXTURE_RECTANGLE - GL_TEXTURE_2D returns kCGLBadValue
+    CGLError err = CGLTexImageIOSurface2D(
+        cglContext,
+        GL_TEXTURE_RECTANGLE,  // REQUIRED - GL_TEXTURE_2D returns kCGLBadValue
+        GL_RGBA8,
+        width,
+        height,
+        GL_BGRA,
+        GL_UNSIGNED_INT_8_8_8_8_REV,
+        surface,
+        0  // plane
+    );
+
+    if (err != kCGLNoError) {
+        if (g_iosurface_bind_failures < MAX_BIND_FAILURE_LOGS) {
+            std::cerr << "CGLTexImageIOSurface2D failed: " << GetCGLErrorDescription(err)
+                      << " (error code: " << err << ")" << std::endl;
+
+            // Additional diagnostics
+            if (err == kCGLBadMatch) {
+                std::cerr << "  Possible causes: format mismatch between IOSurface and GL texture" << std::endl;
+                std::cerr << "  IOSurface format: " << IOSurfaceGetPixelFormat(surface) << std::endl;
+                std::cerr << "  IOSurface dimensions: " << surface_width << "x" << surface_height << std::endl;
+            } else if (err == kCGLBadContext) {
+                std::cerr << "  The CGL context may be invalid or not current" << std::endl;
+            } else if (err == kCGLBadAlloc) {
+                std::cerr << "  Memory allocation failed - system may be low on VRAM" << std::endl;
+            } else if (err == kCGLBadValue) {
+                std::cerr << "  Invalid value - this usually means wrong texture target (must be GL_TEXTURE_RECTANGLE)" << std::endl;
+            }
+        }
+        glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+        glDeleteTextures(1, &g_iosurface_gl_texture);
+        g_iosurface_gl_texture = 0;
+        g_iosurface_bind_failures++;
+        return false;
+    }
+
+    // Check for GL errors after CGL call
+    if (!CheckGLError("CGLTexImageIOSurface2D")) {
+        glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+        glDeleteTextures(1, &g_iosurface_gl_texture);
+        g_iosurface_gl_texture = 0;
+        g_iosurface_bind_failures++;
+        return false;
+    }
+
+    // Set texture parameters for GL_TEXTURE_RECTANGLE
+    // Note: GL_TEXTURE_RECTANGLE doesn't support mipmaps or repeat wrap modes
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    if (!CheckGLError("glTexParameteri")) {
+        // Non-fatal, texture may still work
+        std::cerr << "Warning: Failed to set texture parameters" << std::endl;
+    }
+
+    // Ensure Metal render is complete before OpenGL can read the texture.
+    // This synchronizes the IOSurface between Metal and OpenGL contexts.
+    glFlush();
+
+    glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+
+    g_iosurface_texture_width = width;
+    g_iosurface_texture_height = height;
+    g_cached_iosurface_id = currentId;
+
+    // Reset failure counter on success
+    g_iosurface_bind_failures = 0;
+
+    return true;
+}
+#endif // METAL_SUPPORTED
+
+int32_t dart_client_get_flutter_texture_id() {
+#if METAL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        // Ensure IOSurface-backed GL texture exists
+        if (!UpdateIOSurfaceGLTexture()) {
+            return 0;
+        }
+        return static_cast<int32_t>(g_iosurface_gl_texture);
+    }
+#elif OPENGL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        return static_cast<int32_t>(g_flutter_texture);
+    }
+#endif
+    return 0;
+}
+
+int32_t dart_client_get_texture_width() {
+#if METAL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        return metal_renderer_get_texture_width();
+    }
+#elif OPENGL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        return static_cast<int32_t>(g_texture_width);
+    }
+#endif
+    return 0;
+}
+
+int32_t dart_client_get_texture_height() {
+#if METAL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        return metal_renderer_get_texture_height();
+    }
+#elif OPENGL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        return static_cast<int32_t>(g_texture_height);
+    }
+#endif
+    return 0;
+}
+
+bool dart_client_has_new_frame() {
+#if METAL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        return metal_renderer_has_new_frame();
+    }
+#elif OPENGL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        bool expected = true;
+        return g_frame_ready.compare_exchange_strong(expected, false);
+    }
+#endif
+    return false;
+}
+
+bool dart_client_is_opengl_renderer() {
+    // This now returns true if hardware rendering is enabled
+    // (Metal on macOS, OpenGL on Windows/Linux)
+#if METAL_SUPPORTED || OPENGL_SUPPORTED
+    return g_use_hardware_renderer;
+#else
+    return false;
+#endif
+}
+
+void dart_client_set_opengl_enabled(bool enabled) {
+#if METAL_SUPPORTED || OPENGL_SUPPORTED
+    g_use_hardware_renderer = enabled;
+#endif
+}
+
+// Check if using Metal renderer (macOS only)
+bool dart_client_is_metal_renderer() {
+#if METAL_SUPPORTED
+    return g_use_hardware_renderer;
+#else
+    return false;
+#endif
+}
+
+// Get the IOSurface ID for sharing (macOS only, for debugging)
+uint32_t dart_client_get_iosurface_id() {
+#if METAL_SUPPORTED
+    IOSurfaceRef surface = (IOSurfaceRef)metal_renderer_get_iosurface();
+    if (surface != nullptr) {
+        return IOSurfaceGetID(surface);
+    }
+#endif
+    return 0;
+}
+
+// ==========================================================================
+// Frame Pixel Access (for software fallback display path)
+// ==========================================================================
+
+void* dart_client_get_frame_pixels() {
+#if METAL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        // Read back from IOSurface for the software display fallback
+        void* surface = nullptr;
+        int32_t width = 0;
+        int32_t height = 0;
+
+        if (!metal_renderer_get_iosurface_info(&surface, &width, &height)) {
+            return nullptr;
+        }
+
+        IOSurfaceRef ioSurface = (IOSurfaceRef)surface;
+
+        // Lock for CPU read
+        IOReturn lockResult = IOSurfaceLock(ioSurface, kIOSurfaceLockReadOnly, nullptr);
+        if (lockResult != kIOReturnSuccess) {
+            std::cerr << "Failed to lock IOSurface for read: " << lockResult << std::endl;
+            return nullptr;
+        }
+
+        // Get pixel data
+        void* baseAddress = IOSurfaceGetBaseAddress(ioSurface);
+        size_t bytesPerRow = IOSurfaceGetBytesPerRow(ioSurface);
+
+        // Ensure our buffer is big enough
+        size_t requiredSize = bytesPerRow * height;
+        if (g_metal_readback_buffer_size < requiredSize) {
+            if (g_metal_readback_buffer) {
+                free(g_metal_readback_buffer);
+            }
+            g_metal_readback_buffer = malloc(requiredSize);
+            g_metal_readback_buffer_size = requiredSize;
+        }
+
+        // Copy the pixels
+        if (g_metal_readback_buffer && baseAddress) {
+            memcpy(g_metal_readback_buffer, baseAddress, requiredSize);
+        }
+
+        // Update dimensions
+        g_metal_frame_width = width;
+        g_metal_frame_height = height;
+
+        // Unlock
+        IOSurfaceUnlock(ioSurface, kIOSurfaceLockReadOnly, nullptr);
+
+        return g_metal_readback_buffer;
+    }
+#endif
+    // Software path - pixels are delivered via the frame callback to jni_interface_client.cpp
+    // Return nullptr here since the JNI layer handles its own buffer
+    return nullptr;
+}
+
+int32_t dart_client_get_frame_width() {
+#if METAL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        return metal_renderer_get_texture_width();
+    }
+#endif
+    // Software path - JNI layer tracks this itself
+    return 0;
+}
+
+int32_t dart_client_get_frame_height() {
+#if METAL_SUPPORTED
+    if (g_use_hardware_renderer) {
+        return metal_renderer_get_texture_height();
+    }
+#endif
+    // Software path - JNI layer tracks this itself
+    return 0;
 }
 
 } // extern "C"

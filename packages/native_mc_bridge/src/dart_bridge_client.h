@@ -193,4 +193,49 @@ void client_send_packet_to_server(int32_t packet_type, const uint8_t* data, int3
 // All values are int32, positions in physical pixels
 void client_update_slot_positions(int32_t menu_id, const int32_t* data, int32_t data_length);
 
+// ==========================================================================
+// OpenGL Texture Access Functions
+// ==========================================================================
+
+// Get the OpenGL texture ID for Flutter's rendered output
+// Returns 0 if OpenGL rendering is not enabled or no texture exists
+int32_t dart_client_get_flutter_texture_id();
+
+// Get the width of the Flutter texture in pixels
+int32_t dart_client_get_texture_width();
+
+// Get the height of the Flutter texture in pixels
+int32_t dart_client_get_texture_height();
+
+// Check if a new frame is ready and clear the flag
+// Returns true if a new frame was rendered since last check
+bool dart_client_has_new_frame();
+
+// Check if hardware-accelerated rendering is enabled (Metal on macOS, OpenGL on Windows/Linux)
+bool dart_client_is_opengl_renderer();
+
+// Enable or disable hardware-accelerated rendering (must be called before dart_client_init)
+void dart_client_set_opengl_enabled(bool enabled);
+
+// Check if using Metal renderer (macOS only)
+bool dart_client_is_metal_renderer();
+
+// Get the IOSurface ID for sharing (macOS only, for debugging)
+uint32_t dart_client_get_iosurface_id();
+
+// ==========================================================================
+// Frame Pixel Access (for software fallback display path)
+// ==========================================================================
+
+// Get the frame pixels for software rendering fallback
+// When Metal is active, this reads back from the IOSurface
+// Returns nullptr if no frame is available
+void* dart_client_get_frame_pixels();
+
+// Get the frame width (works for both software and hardware paths)
+int32_t dart_client_get_frame_width();
+
+// Get the frame height (works for both software and hardware paths)
+int32_t dart_client_get_frame_height();
+
 } // extern "C"

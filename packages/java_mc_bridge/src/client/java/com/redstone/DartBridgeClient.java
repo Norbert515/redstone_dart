@@ -105,6 +105,51 @@ public class DartBridgeClient {
      */
     public static native boolean hasNewFrame();
 
+    // ==========================================================================
+    // OpenGL Rendering Native Methods
+    // ==========================================================================
+
+    /**
+     * Get the OpenGL texture ID for Flutter's rendered output.
+     * Returns 0 if OpenGL rendering is not enabled or no texture exists.
+     * When non-zero, this texture can be bound directly in Minecraft's render loop.
+     */
+    public static native int getFlutterTextureId();
+
+    /**
+     * Get the width of the Flutter texture in pixels.
+     */
+    public static native int getFlutterTextureWidth();
+
+    /**
+     * Get the height of the Flutter texture in pixels.
+     */
+    public static native int getFlutterTextureHeight();
+
+    /**
+     * Check if hardware-accelerated rendering is enabled.
+     * On macOS, this means Metal (via IOSurface). On Windows/Linux, this means OpenGL.
+     * When true, use getFlutterTextureId() to get the texture directly.
+     * When false, use getFramePixels() to get the software-rendered buffer.
+     */
+    public static native boolean isOpenGLRenderer();
+
+    /**
+     * Check if Metal rendering is being used (macOS only).
+     * Metal textures are shared via IOSurface and use GL_TEXTURE_RECTANGLE.
+     * Returns false on Windows/Linux (which use regular OpenGL).
+     */
+    public static native boolean isMetalRenderer();
+
+    /**
+     * Enable or disable hardware-accelerated rendering.
+     * Must be called BEFORE initClient() to take effect.
+     * On macOS, this controls Metal rendering. On Windows/Linux, this controls OpenGL.
+     *
+     * @param enabled true to use hardware rendering, false for software rendering
+     */
+    public static native void setOpenGLEnabled(boolean enabled);
+
     /**
      * Send window metrics to Flutter (call when window/screen resizes).
      * @param width Screen width in GUI coordinates

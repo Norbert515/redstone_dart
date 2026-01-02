@@ -33,6 +33,10 @@ else()
         src/object_registry.cpp
         src/generic_jni.cpp
     )
+    # Add Metal renderer for macOS (Objective-C++)
+    if(APPLE)
+        list(APPEND SOURCES src/metal_renderer.mm)
+    endif()
 endif()
 
 # Create shared library
@@ -115,13 +119,29 @@ endif()
 
 # Platform-specific dependencies
 if(WIN32)
-    target_link_libraries(dart_mc_bridge PRIVATE dbghelp bcrypt ws2_32)
+    target_link_libraries(dart_mc_bridge PRIVATE dbghelp bcrypt ws2_32 opengl32)
 elseif(APPLE)
     target_link_libraries(dart_mc_bridge PRIVATE
         "-framework Cocoa"
         "-framework QuartzCore"
         "-framework Security"
+        "-framework OpenGL"
+        "-framework Metal"
+        "-framework IOSurface"
+        "-framework CoreVideo"
     )
+    # Enable ARC for Objective-C++ Metal code
+    if(NOT SERVER_ONLY)
+        set_source_files_properties(src/metal_renderer.mm PROPERTIES
+            COMPILE_FLAGS "-fobjc-arc"
+        )
+    endif()
+elseif(UNIX)
+    # Linux - link GL and X11 for OpenGL support
+    find_package(OpenGL)
+    if(OpenGL_FOUND)
+        target_link_libraries(dart_mc_bridge PRIVATE OpenGL::GL)
+    endif()
 endif()
 
 # Output naming - platform-specific
