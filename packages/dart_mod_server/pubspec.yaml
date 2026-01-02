@@ -1,0 +1,12 @@
+name: dart_mod_server
+description: Server-side Dart Minecraft mod runtime with FFI bridge to native server code
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  dart_mod_common:
+    path: ../dart_mod_common
+  ffi: ^2.0.0

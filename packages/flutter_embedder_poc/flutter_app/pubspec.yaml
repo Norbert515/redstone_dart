@@ -1,0 +1,13 @@
+name: flutter_embedder_poc
+description: Test Flutter app for embedder PoC
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  minecraft_ui:
+    path: ../../minecraft_ui

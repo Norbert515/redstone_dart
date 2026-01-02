@@ -13,6 +13,8 @@
 // ============================================================================
 
 static JavaVM* g_jvm = nullptr;
+static jobject g_class_loader = nullptr;  // Global ref to Knot classloader (captured from render thread)
+static jmethodID g_loadClass_method = nullptr;  // ClassLoader.loadClass(String)
 static std::unordered_map<std::string, jclass> class_cache;
 static std::unordered_map<std::string, jmethodID> method_cache;
 static std::unordered_map<std::string, jfieldID> field_cache;
@@ -49,6 +51,9 @@ static JNIEnv* get_env() {
 
 /**
  * Get a cached jclass, loading and creating global ref if necessary.
+ * Uses the stored classloader (from render thread) to ensure we get classes from
+ * the correct classloader (Fabric's KnotClassLoader) regardless of which
+ * thread is calling.
  */
 static jclass get_class(JNIEnv* env, const char* name) {
     std::string key(name);
@@ -61,11 +66,36 @@ static jclass get_class(JNIEnv* env, const char* name) {
         }
     }
 
-    jclass local = env->FindClass(name);
+    jclass local = nullptr;
+
+    // Use the stored classloader if available (ensures correct classloader context)
+    if (g_class_loader != nullptr && g_loadClass_method != nullptr) {
+        // Convert name from JNI format (com/foo/Bar) to Java format (com.foo.Bar)
+        std::string java_name(name);
+        for (char& c : java_name) {
+            if (c == '/') c = '.';
+        }
+
+        jstring jname = env->NewStringUTF(java_name.c_str());
+        if (jname != nullptr) {
+            local = static_cast<jclass>(env->CallObjectMethod(g_class_loader, g_loadClass_method, jname));
+            env->DeleteLocalRef(jname);
+
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                local = nullptr;
+            }
+        }
+    }
+
+    // Fallback to FindClass if classloader not available or loadClass failed
     if (local == nullptr) {
-        env->ExceptionClear();
-        std::cerr << "generic_jni: Class not found: " << name << std::endl;
-        return nullptr;
+        local = env->FindClass(name);
+        if (local == nullptr) {
+            env->ExceptionClear();
+            std::cerr << "generic_jni: Class not found: " << name << std::endl;
+            return nullptr;
+        }
     }
 
     jclass global = static_cast<jclass>(env->NewGlobalRef(local));
@@ -300,6 +330,107 @@ void generic_jni_init(JavaVM* jvm) {
     std::cout << "generic_jni: Initialized" << std::endl;
 }
 
+/**
+ * Capture the classloader from the current thread.
+ * This MUST be called from the render thread (which uses KnotClassLoader)
+ * so that subsequent JNI calls from other threads can load classes correctly.
+ *
+ * Returns 1 on success, 0 on failure.
+ */
+int32_t generic_jni_capture_classloader() {
+    JNIEnv* env = get_env();
+    if (!env) {
+        std::cerr << "generic_jni: capture_classloader failed - no JNIEnv" << std::endl;
+        return 0;
+    }
+
+    // Already captured?
+    if (g_class_loader != nullptr) {
+        std::cout << "generic_jni: classloader already captured" << std::endl;
+        return 1;
+    }
+
+    // Get Thread class and currentThread() method
+    jclass threadClass = env->FindClass("java/lang/Thread");
+    if (!threadClass || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        std::cerr << "generic_jni: Failed to find Thread class" << std::endl;
+        return 0;
+    }
+
+    jmethodID currentThreadMethod = env->GetStaticMethodID(threadClass, "currentThread", "()Ljava/lang/Thread;");
+    if (!currentThreadMethod || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(threadClass);
+        std::cerr << "generic_jni: Failed to find currentThread method" << std::endl;
+        return 0;
+    }
+
+    // Get current thread
+    jobject currentThread = env->CallStaticObjectMethod(threadClass, currentThreadMethod);
+    if (!currentThread || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(threadClass);
+        std::cerr << "generic_jni: Failed to get current thread" << std::endl;
+        return 0;
+    }
+
+    // Get getContextClassLoader() method
+    jmethodID getLoaderMethod = env->GetMethodID(threadClass, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
+    if (!getLoaderMethod || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(currentThread);
+        env->DeleteLocalRef(threadClass);
+        std::cerr << "generic_jni: Failed to find getContextClassLoader method" << std::endl;
+        return 0;
+    }
+
+    // Get the classloader
+    jobject classLoader = env->CallObjectMethod(currentThread, getLoaderMethod);
+    if (!classLoader || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(currentThread);
+        env->DeleteLocalRef(threadClass);
+        std::cerr << "generic_jni: Failed to get context classloader" << std::endl;
+        return 0;
+    }
+
+    // Get ClassLoader class and loadClass method
+    jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
+    if (!classLoaderClass || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(classLoader);
+        env->DeleteLocalRef(currentThread);
+        env->DeleteLocalRef(threadClass);
+        std::cerr << "generic_jni: Failed to find ClassLoader class" << std::endl;
+        return 0;
+    }
+
+    jmethodID loadClassMethod = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    if (!loadClassMethod || env->ExceptionCheck()) {
+        env->ExceptionClear();
+        env->DeleteLocalRef(classLoaderClass);
+        env->DeleteLocalRef(classLoader);
+        env->DeleteLocalRef(currentThread);
+        env->DeleteLocalRef(threadClass);
+        std::cerr << "generic_jni: Failed to find loadClass method" << std::endl;
+        return 0;
+    }
+
+    // Store global refs
+    g_class_loader = env->NewGlobalRef(classLoader);
+    g_loadClass_method = loadClassMethod;  // Method IDs don't need global refs
+
+    // Clean up local refs
+    env->DeleteLocalRef(classLoaderClass);
+    env->DeleteLocalRef(classLoader);
+    env->DeleteLocalRef(currentThread);
+    env->DeleteLocalRef(threadClass);
+
+    std::cout << "generic_jni: Classloader captured successfully" << std::endl;
+    return 1;
+}
+
 void generic_jni_shutdown() {
     JNIEnv* env = get_env();
 
@@ -310,12 +441,18 @@ void generic_jni_shutdown() {
             for (auto& pair : class_cache) {
                 env->DeleteGlobalRef(pair.second);
             }
+            // Clean up classloader global ref
+            if (g_class_loader != nullptr) {
+                env->DeleteGlobalRef(g_class_loader);
+            }
         }
         class_cache.clear();
         method_cache.clear();
         field_cache.clear();
     }
 
+    g_class_loader = nullptr;
+    g_loadClass_method = nullptr;
     g_jvm = nullptr;
     std::cout << "generic_jni: Shutdown complete" << std::endl;
 }

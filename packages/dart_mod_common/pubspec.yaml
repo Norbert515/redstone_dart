@@ -1,0 +1,10 @@
+name: dart_mod_common
+description: Shared types and interfaces for Dart Minecraft modding (pure Dart, no platform dependencies)
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  ffi: ^2.0.0

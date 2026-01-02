@@ -13,7 +13,10 @@ class NativeBuildSync {
   /// Rebuilds native library if sources changed.
   ///
   /// Returns true if rebuild was performed, false if already up-to-date.
-  static Future<bool> rebuildIfNeeded(String projectDir) async {
+  ///
+  /// If [flutterMode] is true, skips dart_dll check since Flutter embedder
+  /// provides the Dart VM instead.
+  static Future<bool> rebuildIfNeeded(String projectDir, {bool flutterMode = false}) async {
     final nativeBridgeDir = findNativeBridgeDir();
     if (nativeBridgeDir == null) {
       Logger.debug('Could not find native_mc_bridge directory (development mode)');
@@ -38,11 +41,13 @@ class NativeBuildSync {
     // Need to rebuild
     Logger.info('Native sources changed, rebuilding...');
 
-    // Ensure dart_dll is available before building
-    final dartDllAvailable = await DartDllManager.ensureAvailable();
-    if (!dartDllAvailable) {
-      Logger.error('Cannot build native library: dart_dll is not available');
-      return false;
+    // Ensure dart_dll is available before building (not needed in Flutter mode)
+    if (!flutterMode) {
+      final dartDllAvailable = await DartDllManager.ensureAvailable();
+      if (!dartDllAvailable) {
+        Logger.error('Cannot build native library: dart_dll is not available');
+        return false;
+      }
     }
 
     // Run CMake build

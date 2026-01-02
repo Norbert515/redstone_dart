@@ -1,0 +1,11 @@
+import 'package:dart_mod_server/dart_mod_server.dart';
+
+/// A stick made from obsidian - used to craft the Peer Schwert.
+class ObsidianStick extends CustomItem {
+  ObsidianStick()
+      : super(
+          id: 'example_mod:obsidian_stick',
+          settings: ItemSettings(maxStackSize: 64),
+          model: ItemModel.generated(texture: 'assets/textures/item/obsidian_stick.png'),
+        );
+}

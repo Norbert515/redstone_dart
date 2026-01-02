@@ -1,8 +1,7 @@
 /// Commands API tests.
 ///
 /// Tests for the command registration and execution system.
-import 'package:dart_mc/api/api.dart';
-import 'package:dart_mc/api/commands.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 import 'package:redstone_test/redstone_test.dart';
 import 'package:test/test.dart' as dart_test;
 

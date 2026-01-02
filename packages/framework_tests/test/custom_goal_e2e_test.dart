@@ -3,7 +3,7 @@
 /// Tests for custom goals defined in Dart that control entity AI behavior
 /// through Dart callbacks. Verifies the CustomGoal lifecycle, registration,
 /// and EntityActions API.
-import 'package:dart_mc/dart_mc.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 import 'package:redstone_test/redstone_test.dart';
 import 'package:test/test.dart' as dart_test show test, group, returnsNormally;
 

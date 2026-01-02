@@ -32,6 +32,15 @@ loom {
     accessWidenerPath = file("src/main/resources/redstone.accesswidener")
 }
 
+// Include client source files in main source set (they use @Environment annotations)
+sourceSets {
+    main {
+        java {
+            srcDirs += 'src/client/java'
+        }
+    }
+}
+
 tasks.withType(JavaCompile).configureEach {
     it.options.release = 21
 }

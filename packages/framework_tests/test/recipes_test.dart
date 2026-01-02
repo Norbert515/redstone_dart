@@ -1,8 +1,7 @@
 /// Recipe API tests.
 ///
 /// Tests for the recipe registration system.
-import 'package:dart_mc/api/api.dart';
-import 'package:dart_mc/api/recipes.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 import 'package:redstone_test/redstone_test.dart';
 import 'package:test/test.dart' as dart_test;
 

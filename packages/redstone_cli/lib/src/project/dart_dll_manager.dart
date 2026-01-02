@@ -80,17 +80,9 @@ class DartDllManager {
   static String? _getDownloadUrl() {
     final platform = PlatformInfo.detect();
 
-    // ARM64 macOS requires building from source
-    if (platform.isMacOS && platform.isArm64) {
-      Logger.warning(
-        'dart_dll for macOS ARM64 (M1/M2/M3) must be built from source.',
-      );
-      Logger.step('See: https://github.com/fuzzybinary/dart_shared_library');
-      return null;
-    }
-
     String platformName;
     if (platform.isMacOS) {
+      // macOS binary is a fat/universal binary supporting both x64 and ARM64
       platformName = 'macos';
     } else if (platform.isWindows) {
       platformName = 'win';

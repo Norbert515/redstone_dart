@@ -1,4 +1,4 @@
-import 'package:dart_mc/dart_mc.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 
 /// Marker block for defining nocterm screen corners.
 ///
@@ -22,7 +22,7 @@ class ScreenCornerBlock extends CustomBlock {
 
   /// Register this block with the game.
   /// Must be called during mod initialization before BlockRegistry.freeze().
-  static void register() {
-    BlockRegistry.register(instance);
+  void register() {
+    BlockRegistry.register(this);
   }
 }

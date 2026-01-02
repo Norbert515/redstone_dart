@@ -4,8 +4,7 @@
 /// goals, goal serialization, and runtime behavior verification.
 import 'dart:convert';
 
-import 'package:dart_mc/api/custom_entity.dart';
-import 'package:dart_mc/api/entity_goal.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 import 'package:redstone_test/redstone_test.dart';
 import 'package:test/test.dart' as dart_test show test, group, returnsNormally;
 

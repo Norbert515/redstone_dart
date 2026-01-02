@@ -97,3 +97,7 @@ dart_mc_bridge/native/deps/
 *.local
 secrets/
 credentials/
+# Flutter embedder framework (downloaded dynamically)
+packages/flutter_embedder_poc/deps/FlutterEmbedder.framework/
+packages/flutter_embedder_poc/deps/FlutterEmbedder.framework.zip
+packages/native_mc_bridge/deps/flutter_embedder/

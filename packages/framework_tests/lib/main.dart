@@ -3,7 +3,7 @@
 // Tests for the onAttackEntity callback system, entity goal system,
 // and custom goal system with Dart-defined AI behavior.
 
-import 'package:dart_mc/dart_mc.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 
 // ===========================================================================
 // Test Items - onAttackEntity callback testing
@@ -19,8 +19,8 @@ class TestLightningSword extends CustomItem {
           settings: ItemSettings(
             maxStackSize: 1,
             maxDamage: 100,
-            combat: CombatAttributes.sword(damage: 10.0),
           ),
+          combat: CombatAttributes.sword(damage: 10.0),
           model: ItemModel.handheld(
             texture: 'assets/textures/item/test_sword.png',
           ),
@@ -62,8 +62,8 @@ class TestSimpleSword extends CustomItem {
           settings: ItemSettings(
             maxStackSize: 1,
             maxDamage: 100,
-            combat: CombatAttributes.sword(damage: 5.0),
           ),
+          combat: CombatAttributes.sword(damage: 5.0),
           model: ItemModel.handheld(
             texture: 'assets/textures/item/test_sword.png',
           ),

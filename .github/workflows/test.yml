@@ -36,49 +36,25 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Cache dart_dll
+        uses: actions/cache@v4
+        with:
+          path: packages/native_mc_bridge/deps/dart_dll/lib
+          key: dart-dll-0.2.0-${{ runner.os }}
+
       - name: Cache CMake build
         uses: actions/cache@v4
         with:
           path: packages/native_mc_bridge/build
-          key: ${{ runner.os }}-cmake-${{ hashFiles('packages/native_mc_bridge/**/*.cpp', 'packages/native_mc_bridge/**/*.h', 'packages/native_mc_bridge/CMakeLists.txt') }}
+          key: ${{ runner.os }}-cmake-server-only-${{ hashFiles('packages/native_mc_bridge/**/*.cpp', 'packages/native_mc_bridge/**/*.h', 'packages/native_mc_bridge/CMakeLists.txt') }}
           restore-keys: |
-            ${{ runner.os }}-cmake-
+            ${{ runner.os }}-cmake-server-only-
 
       - name: Install CMake
         run: sudo apt-get update && sudo apt-get install -y cmake
 
-      - name: Download dart_dll
-        working-directory: packages/native_mc_bridge/deps/dart_dll
-        run: |
-          if [ -f "lib/libdart_dll.so" ]; then
-            echo "dart_dll already exists, skipping download"
-            exit 0
-          fi
-
-          echo "Downloading dart_dll v0.2.0..."
-          curl -L -o lib-linux.zip https://github.com/fuzzybinary/dart_shared_library/releases/download/0.2.0/lib-linux.zip
-          unzip -o lib-linux.zip -d .
-          rm lib-linux.zip
-          mkdir -p lib
-          mv bin/libdart_dll.so lib/
-
-          if [ ! -f "lib/libdart_dll.so" ]; then
-            echo "ERROR: libdart_dll.so not found after extraction!"
-            exit 1
-          fi
-          echo "dart_dll downloaded successfully"
-
-      - name: Build native bridge
-        working-directory: packages/native_mc_bridge
-        run: |
-          mkdir -p build
-          cd build
-          cmake ..
-          make -j$(nproc)
-
-      - name: Install CLI dependencies
-        working-directory: packages/redstone_cli
-        run: dart pub get
+      - name: Install CLI globally
+        run: dart pub global activate --source path packages/redstone_cli
 
       - name: Run project creation E2E test
         working-directory: packages/redstone_cli
@@ -93,8 +69,8 @@ jobs:
           name: project-creation-test-logs
           path: /tmp/redstone_e2e_test_*
 
-  # Existing tests for the example mod
-  test:
+  # Run framework tests using redstone test
+  framework-tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -122,115 +98,37 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Cache dart_dll
+        uses: actions/cache@v4
+        with:
+          path: packages/native_mc_bridge/deps/dart_dll/lib
+          key: dart-dll-0.2.0-${{ runner.os }}
+
       - name: Cache CMake build
         uses: actions/cache@v4
         with:
           path: packages/native_mc_bridge/build
-          key: ${{ runner.os }}-cmake-${{ hashFiles('packages/native_mc_bridge/**/*.cpp', 'packages/native_mc_bridge/**/*.h', 'packages/native_mc_bridge/CMakeLists.txt') }}
+          key: ${{ runner.os }}-cmake-server-only-${{ hashFiles('packages/native_mc_bridge/**/*.cpp', 'packages/native_mc_bridge/**/*.h', 'packages/native_mc_bridge/CMakeLists.txt') }}
           restore-keys: |
-            ${{ runner.os }}-cmake-
+            ${{ runner.os }}-cmake-server-only-
 
       - name: Install CMake
         run: sudo apt-get update && sudo apt-get install -y cmake
 
-      - name: Download dart_dll
-        working-directory: packages/native_mc_bridge/deps/dart_dll
+      - name: Install CLI globally
+        run: dart pub global activate --source path packages/redstone_cli
+
+      - name: Run framework tests
+        working-directory: packages/framework_tests
         run: |
-          # Check if dart_dll already exists
-          if [ -f "lib/libdart_dll.so" ]; then
-            echo "dart_dll already exists, skipping download"
-            exit 0
-          fi
+          dart pub get
+          redstone test --verbose
 
-          echo "Downloading dart_dll v0.2.0..."
-          curl -L -o lib-linux.zip https://github.com/fuzzybinary/dart_shared_library/releases/download/0.2.0/lib-linux.zip
-
-          echo "Extracting..."
-          unzip -o lib-linux.zip -d .
-          rm lib-linux.zip
-
-          # The zip extracts to bin/, but CMake expects lib/
-          # Move the library to the expected location
-          mkdir -p lib
-          mv bin/libdart_dll.so lib/
-
-          echo "Contents of deps/dart_dll/lib:"
-          ls -la lib/
-
-          # Verify the library exists
-          if [ ! -f "lib/libdart_dll.so" ]; then
-            echo "ERROR: libdart_dll.so not found after extraction!"
-            exit 1
-          fi
-          echo "dart_dll downloaded successfully"
-
-      - name: Build native bridge
-        working-directory: packages/native_mc_bridge
-        run: |
-          mkdir -p build
-          cd build
-          cmake ..
-          make -j$(nproc)
-
-      - name: Copy native libraries to run directory
-        run: |
-          # Create natives directory for the Gradle run task
-          mkdir -p example/example_mod/minecraft/run/natives
-          # Copy dart_mc_bridge native library
-          cp packages/native_mc_bridge/build/libdart_mc_bridge.so example/example_mod/minecraft/run/natives/
-          # Copy dart_dll library (needed at runtime)
-          cp packages/native_mc_bridge/deps/dart_dll/lib/libdart_dll.so example/example_mod/minecraft/run/natives/
-
-      - name: Copy Java bridge code
-        run: |
-          # The Gradle build expects bridge code in .redstone/bridge/
-          # Normally the CLI copies this, but in CI we do it manually
-          mkdir -p example/example_mod/.redstone/bridge
-          cp -r packages/java_mc_bridge/src/main/* example/example_mod/.redstone/bridge/
-          mkdir -p example/example_mod/.redstone/bridge/client
-          cp -r packages/java_mc_bridge/src/client/* example/example_mod/.redstone/bridge/client/
-
-          # Copy access widener to the expected location for example_mod
-          # (example_mod uses src/main/resources/, new projects use .redstone/bridge/resources/)
-          cp packages/java_mc_bridge/src/main/resources/redstone.accesswidener \
-             example/example_mod/minecraft/src/main/resources/redstone.accesswidener
-
-          echo "Bridge code copied. Verifying structure:"
-          echo "=== .redstone/bridge/java ==="
-          find example/example_mod/.redstone/bridge/java -name "*.java" | head -10
-          echo "=== Looking for DartModLoader.java ==="
-          find example/example_mod/.redstone/bridge -name "DartModLoader.java"
-          echo "=== Access widener ==="
-          cat example/example_mod/minecraft/src/main/resources/redstone.accesswidener
-
-      - name: Build mod
-        working-directory: example/example_mod/minecraft
-        run: |
-          # Clean to avoid stale cached outputs
-          ./gradlew clean build --no-daemon
-          echo "=== Checking compiled classes ==="
-          find build/classes -name "*.class" | head -10 || echo "No class files found"
-
-      - name: Run GameTests
-        working-directory: example/example_mod/minecraft
-        run: ./gradlew runGametest --no-daemon
-        env:
-          # Ensure libdart_dll.so can be found at runtime
-          LD_LIBRARY_PATH: ${{ github.workspace }}/example/example_mod/minecraft/run/natives
-        continue-on-error: true
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results
-          path: example/example_mod/minecraft/build/junit.xml
-
-      - name: Upload build artifacts
+      - name: Upload test artifacts on failure
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: build-logs
+          name: framework-test-logs
           path: |
-            example/example_mod/minecraft/build/reports/
-            example/example_mod/minecraft/build/logs/
+            packages/framework_tests/minecraft/run/logs/
+            packages/framework_tests/minecraft/build/reports/

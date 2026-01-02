@@ -2,7 +2,7 @@
 ///
 /// Tests for CustomProjectile, CustomMonster, CustomAnimal classes
 /// and their respective settings.
-import 'package:dart_mc/api/custom_entity.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 import 'package:test/test.dart';
 
 // Test implementations of custom entity classes

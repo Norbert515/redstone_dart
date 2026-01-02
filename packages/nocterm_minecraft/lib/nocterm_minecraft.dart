@@ -7,7 +7,7 @@
 ///
 /// ```dart
 /// import 'package:nocterm_minecraft/nocterm_minecraft.dart';
-/// import 'package:dart_mc/dart_mc.dart';
+/// import 'package:dart_mod_server/dart_mod_server.dart';
 ///
 /// // Define screen corners (must be in same vertical plane)
 /// final screen = MinecraftScreen.fromCorners(

@@ -1,4 +1,4 @@
-import 'package:dart_mc/dart_mc.dart';
+import 'package:dart_mod_common/dart_mod_common.dart';
 
 /// Defines a rectangular screen surface in Minecraft world.
 ///

@@ -1,0 +1,20 @@
+name: example_mod_client
+description: Client-side Flutter UI for Example Mod
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dart_mod_client:
+    path: ../../../../packages/dart_mod_client
+  dart_mod_common:
+    path: ../../../../packages/dart_mod_common
+  minecraft_ui:
+    path: ../../../../packages/minecraft_ui
+  example_mod_common:
+    path: ../common

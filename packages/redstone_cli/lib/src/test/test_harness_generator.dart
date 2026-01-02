@@ -117,11 +117,11 @@ class TestHarnessGenerator {
     if (projectPubspecFile.existsSync()) {
       final content = projectPubspecFile.readAsStringSync();
       // Simple regex to find path dependencies - this is sufficient for our use case
-      final dartMcMatch = RegExp(r'dart_mc:\s*\n\s*path:\s*(.+)').firstMatch(content);
+      final dartModServerMatch = RegExp(r'dart_mod_server:\s*\n\s*path:\s*(.+)').firstMatch(content);
       final redstoneTestMatch = RegExp(r'redstone_test:\s*\n\s*path:\s*(.+)').firstMatch(content);
 
-      if (dartMcMatch != null) {
-        final relativePath = dartMcMatch.group(1)!.trim();
+      if (dartModServerMatch != null) {
+        final relativePath = dartModServerMatch.group(1)!.trim();
         dartMcPath = Uri.directory(project.rootDir).resolve(relativePath).toFilePath();
       }
       if (redstoneTestMatch != null) {
@@ -130,7 +130,7 @@ class TestHarnessGenerator {
       }
     }
 
-    // Create a minimal pubspec that includes dart_mc and redstone_test
+    // Create a minimal pubspec that includes dart_mod_server and redstone_test
     final harnessPubspec = '''
 name: test_harness
 description: Generated test harness for ${project.name}
@@ -140,9 +140,9 @@ environment:
   sdk: ^3.0.0
 
 dependencies:
-  # dart_mc package for Bridge and Events
-  dart_mc:
-    path: ${dartMcPath ?? '../dart_mc'}
+  # dart_mod_server package for ServerBridge and Events
+  dart_mod_server:
+    path: ${dartMcPath ?? '../dart_mod_server'}
   # redstone_test for test utilities
   redstone_test:
     path: ${redstoneTestPath ?? '../redstone_test'}
@@ -208,12 +208,16 @@ dependencies:
     buffer.writeln();
 
     // Core imports
-    buffer.writeln("import 'package:dart_mc/dart_mc.dart';");
+    buffer.writeln("import 'dart:async';");
+    buffer.writeln("import 'package:dart_mod_server/dart_mod_server.dart';");
     buffer.writeln("import 'package:redstone_test/redstone_test.dart';");
     buffer.writeln();
 
-    // Import the mod's main.dart to register blocks, items, and entities
-    final modMainPath = p.join(project.rootDir, 'lib', 'main.dart');
+    // Import the mod's server entry point to register blocks, items, and entities
+    // Use configured server entry point or fall back to main.dart
+    final modMainPath = File(project.serverEntry).existsSync()
+        ? project.serverEntry
+        : project.entryPoint;
     buffer.writeln("import 'file://$modMainPath' as mod_main;");
     buffer.writeln();
 
@@ -227,52 +231,82 @@ dependencies:
 
     buffer.writeln();
 
+    // State tracking for tick-based polling
+    // In an embedded Dart runtime, async code only progresses when the event loop
+    // is pumped. Using tick events ensures the async test execution can complete.
+    buffer.writeln('bool _serverReady = false;');
+    buffer.writeln('bool _testsRunning = false;');
+    buffer.writeln();
+
+    // Test runner function
+    buffer.writeln('Future<void> _runTests() async {');
+    buffer.writeln('  if (_testsRunning) return;');
+    buffer.writeln('  _testsRunning = true;');
+    buffer.writeln();
+    buffer.writeln('  print("Server started - running tests...");');
+    buffer.writeln();
+    buffer.writeln('  try {');
+
+    // Call each test file's main function with suite events
+    buffer.writeln('    // Run all test files');
+    for (var i = 0; i < testFiles.length; i++) {
+      final testFile = testFiles[i];
+      final fileName = testFile.split('/').last;
+      buffer.writeln("    emitEvent(SuiteStartEvent(name: '$fileName'));");
+      buffer.writeln("    print('Running: $fileName');");
+      buffer.writeln('    await test_$i.main();');
+      buffer.writeln("    emitEvent(SuiteEndEvent(name: '$fileName'));");
+      buffer.writeln("    print('Completed: $fileName');");
+    }
+
+    buffer.writeln('  } catch (e, st) {');
+    buffer.writeln('    print("Test harness error: \$e");');
+    buffer.writeln('    print(st);');
+    buffer.writeln('  }');
+    buffer.writeln();
+    buffer.writeln('  // Print summary');
+    buffer.writeln('  testResults.printSummary();');
+    buffer.writeln();
+    buffer.writeln('  // Emit done event with final counts');
+    buffer.writeln('  emitEvent(DoneEvent(');
+    buffer.writeln('    passed: testResults.passed,');
+    buffer.writeln('    failed: testResults.failed,');
+    buffer.writeln('    skipped: testResults.skipped,');
+    buffer.writeln('    exitCode: testResults.exitCode,');
+    buffer.writeln('  ));');
+    buffer.writeln();
+    buffer.writeln('  // Stop the server and exit');
+    buffer.writeln("  print('Tests complete, stopping server...');");
+    buffer.writeln('  ServerBridge.stopServer();');
+    buffer.writeln('}');
+    buffer.writeln();
+
     // Main function
     buffer.writeln('void main() async {');
     buffer.writeln('  // Initialize bridge');
-    buffer.writeln('  Bridge.initialize();');
+    buffer.writeln('  ServerBridge.initialize();');
     buffer.writeln();
     buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
     buffer.writeln('  mod_main.main();');
     buffer.writeln();
-    buffer.writeln('  // Wait for server to be ready');
-    buffer.writeln('  Events.onServerStarted(() async {');
-    buffer.writeln('    print("Server started - running tests...");');
-    buffer.writeln();
-    buffer.writeln('    try {');
-
-    // Call each test file's main function with suite events
-    buffer.writeln('      // Run all test files');
-    for (var i = 0; i < testFiles.length; i++) {
-      final testFile = testFiles[i];
-      final fileName = testFile.split('/').last;
-      buffer.writeln("      emitEvent(SuiteStartEvent(name: '$fileName'));");
-      buffer.writeln("      print('Running: $fileName');");
-      buffer.writeln('      await test_$i.main();');
-      buffer.writeln("      emitEvent(SuiteEndEvent(name: '$fileName'));");
-      buffer.writeln("      print('Completed: $fileName');");
-    }
-
-    buffer.writeln('    } catch (e, st) {');
-    buffer.writeln('      print("Test harness error: \$e");');
-    buffer.writeln('      print(st);');
-    buffer.writeln('    }');
-    buffer.writeln();
-    buffer.writeln('    // Print summary');
-    buffer.writeln('    testResults.printSummary();');
-    buffer.writeln();
-    buffer.writeln('    // Emit done event with final counts');
-    buffer.writeln('    emitEvent(DoneEvent(');
-    buffer.writeln('      passed: testResults.passed,');
-    buffer.writeln('      failed: testResults.failed,');
-    buffer.writeln('      skipped: testResults.skipped,');
-    buffer.writeln('      exitCode: testResults.exitCode,');
-    buffer.writeln('    ));');
-    buffer.writeln();
-    buffer.writeln('    // Stop the server and exit');
-    buffer.writeln("    print('Tests complete, stopping server...');");
-    buffer.writeln('    Bridge.stopServer();');
+    buffer.writeln('  // Mark server as ready when it starts');
+    buffer.writeln('  Events.onServerStarted(() {');
+    buffer.writeln('    _serverReady = true;');
+    buffer.writeln('    print("Server ready, will start tests on next tick...");');
     buffer.writeln('  });');
+    buffer.writeln();
+    buffer.writeln('  // Use tick events to poll for server readiness and trigger test execution.');
+    buffer.writeln('  // In an embedded Dart runtime, async code only progresses when the event');
+    buffer.writeln('  // loop is pumped. Tick events naturally pump the event loop, ensuring');
+    buffer.writeln('  // the async _runTests() function can execute to completion.');
+    buffer.writeln('  Events.addTickListener((tick) {');
+    buffer.writeln('    if (_serverReady && !_testsRunning) {');
+    buffer.writeln('      // Run tests asynchronously so we don\'t block the tick handler');
+    buffer.writeln('      Future(() => _runTests());');
+    buffer.writeln('    }');
+    buffer.writeln('  });');
+    buffer.writeln();
+    buffer.writeln('  print("Test harness initialized, waiting for server to be ready...");');
     buffer.writeln('}');
 
     return buffer.toString();
@@ -292,12 +326,15 @@ dependencies:
 
     // Core imports
     buffer.writeln("import 'dart:async';");
-    buffer.writeln("import 'package:dart_mc/dart_mc.dart';");
+    buffer.writeln("import 'package:dart_mod_server/dart_mod_server.dart';");
     buffer.writeln("import 'package:redstone_test/redstone_test.dart';");
     buffer.writeln();
 
-    // Import the mod's main.dart to register blocks, items, and entities
-    final modMainPath = p.join(project.rootDir, 'lib', 'main.dart');
+    // Import the mod's client entry point to register blocks, items, and entities
+    // Use configured client entry point or fall back to main.dart
+    final modMainPath = File(project.clientEntry).existsSync()
+        ? project.clientEntry
+        : project.entryPoint;
     buffer.writeln("import 'file://$modMainPath' as mod_main;");
     buffer.writeln();
 
@@ -357,28 +394,30 @@ dependencies:
     buffer.writeln();
     buffer.writeln('  // Stop the server and exit');
     buffer.writeln("  print('Tests complete, stopping server...');");
-    buffer.writeln('  Bridge.stopServer();');
+    buffer.writeln('  ServerBridge.stopServer();');
     buffer.writeln('}');
     buffer.writeln();
 
     // Main function for client tests - uses polling via server tick events
     buffer.writeln('void main() async {');
     buffer.writeln('  // Initialize bridge');
-    buffer.writeln('  Bridge.initialize();');
+    buffer.writeln('  ServerBridge.initialize();');
     buffer.writeln();
     buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
     buffer.writeln('  // This is important for visual tests that need custom entities to be registered');
     buffer.writeln('  mod_main.main();');
     buffer.writeln();
     buffer.writeln('  // Enable visual test mode to auto-join test world');
-    buffer.writeln('  ClientBridge.setVisualTestMode(true);');
+    buffer.writeln('  // TODO: ClientBridge needs to be imported from dart_mod_client when available');
+    buffer.writeln('  // ClientBridge.setVisualTestMode(true);');
     buffer.writeln();
     buffer.writeln('  // Use server tick events to poll for client readiness.');
     buffer.writeln('  // In singleplayer mode, the integrated server runs alongside the client.');
     buffer.writeln('  // This avoids needing complex FFI callbacks for client events.');
     buffer.writeln('  Events.addTickListener((tick) {');
     buffer.writeln('    // Check if client is ready (has player and world)');
-    buffer.writeln('    if (!_clientReady && ClientBridge.isClientReady()) {');
+    buffer.writeln('    // TODO: ClientBridge needs to be imported from dart_mod_client when available');
+    buffer.writeln('    if (!_clientReady) { // && ClientBridge.isClientReady()');
     buffer.writeln('      _clientReady = true;');
     buffer.writeln('      print("Client ready detected at tick \$tick");');
     buffer.writeln('      // Run tests asynchronously so we don\'t block the tick handler');

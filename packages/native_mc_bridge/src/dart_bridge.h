@@ -2,15 +2,55 @@
 
 #include <cstdint>
 #include <jni.h>
+#include <stddef.h>
 
 extern "C" {
-    // Lifecycle
-    bool dart_bridge_init(const char* kernel_path);
+    // ==========================================================================
+    // Lifecycle - Flutter Embedder Mode
+    // ==========================================================================
+
+    // Initialize the Flutter engine
+    // assets_path: Path to Flutter app assets (flutter_assets directory)
+    // icu_data_path: Path to icudtl.dat file
+    // aot_library_path: Path to AOT compiled library (libapp.so/app.dll) or nullptr for JIT mode
+    // enable_rendering: If true, enables software rendering with frame callbacks
+    //                   If false, runs in headless mode (server-side)
+    bool dart_bridge_init(const char* assets_path, const char* icu_data_path,
+                          const char* aot_library_path, bool enable_rendering);
+
     void dart_bridge_shutdown();
     void dart_bridge_tick();
     void dart_bridge_set_jvm(JavaVM* jvm);
 
+    // ==========================================================================
+    // Flutter Rendering Support (Client-side only)
+    // ==========================================================================
+
+    // Frame callback receives rendered frame pixels from Flutter
+    // pixels: RGBA pixel data
+    // width: Frame width in pixels
+    // height: Frame height in pixels
+    // row_bytes: Bytes per row (stride)
+    typedef void (*FlutterFrameCallback)(const void* pixels, size_t width, size_t height, size_t row_bytes);
+
+    // Set the callback to receive rendered frames
+    void dart_bridge_set_frame_callback(FlutterFrameCallback callback);
+
+    // Send window metrics to Flutter (call when window resizes)
+    void dart_bridge_send_window_metrics(int32_t width, int32_t height, double pixel_ratio);
+
+    // Send pointer/mouse events to Flutter
+    // phase: 0=cancel, 1=up, 2=down, 3=move, 4=add, 5=remove, 6=hover
+    void dart_bridge_send_pointer_event(int32_t phase, double x, double y, int64_t buttons);
+
+    // Send keyboard events to Flutter
+    // type: 0=down, 1=up, 2=repeat
+    void dart_bridge_send_key_event(int32_t type, int64_t physical_key, int64_t logical_key,
+                                    const char* character, int32_t modifiers);
+
+    // ==========================================================================
     // Callback registration (called from Dart via FFI)
+    // ==========================================================================
     typedef int32_t (*BlockBreakCallback)(int32_t x, int32_t y, int32_t z, int64_t player_id);
     typedef int32_t (*BlockInteractCallback)(int32_t x, int32_t y, int32_t z, int64_t player_id, int32_t hand);
     typedef void (*TickCallback)(int64_t tick);
@@ -371,6 +411,19 @@ extern "C" {
     int32_t dispatch_command_execute(int64_t command_id, int32_t player_id, const char* args_json);
 
     // ==========================================================================
+    // Registry Ready Callback (for Flutter embedder timing)
+    // ==========================================================================
+
+    // Registry ready callback type - called when Java signals it's safe to register items/blocks
+    typedef void (*RegistryReadyCallback)();
+
+    // Register a callback to be called when Java signals registries are ready
+    void register_registry_ready_callback(RegistryReadyCallback callback);
+
+    // Signal that registries are ready (called from Java via JNI)
+    void signal_registry_ready();
+
+    // ==========================================================================
     // Custom Goal Callbacks (for custom Dart entity goals)
     // ==========================================================================
 
@@ -404,4 +457,133 @@ extern "C" {
     void dispatch_custom_goal_tick(const char* goal_id, int32_t entity_id);
     // Called when the goal stops
     void dispatch_custom_goal_stop(const char* goal_id, int32_t entity_id);
+
+    // ==========================================================================
+    // Registration Queue System
+    // ==========================================================================
+    // When Flutter engine runs, Dart executes on a separate thread (Thread-3).
+    // Minecraft registry calls must happen on the Render thread.
+    // This queue system allows Dart to queue registrations from any thread,
+    // and Java processes them on the correct thread after FlutterEngineRun() returns.
+
+    // Queue a block registration - called from Dart (any thread)
+    // Returns the pre-allocated handler ID so Dart can use it immediately
+    int64_t queue_block_registration(
+        const char* namespace_id,
+        const char* path,
+        float hardness,
+        float resistance,
+        bool requires_tool,
+        int32_t luminance,
+        double slipperiness,
+        double velocity_multiplier,
+        double jump_velocity_multiplier,
+        bool ticks_randomly,
+        bool collidable,
+        bool replaceable,
+        bool burnable
+    );
+
+    // Queue an item registration - called from Dart (any thread)
+    // Returns the pre-allocated handler ID so Dart can use it immediately
+    int64_t queue_item_registration(
+        const char* namespace_id,
+        const char* path,
+        int32_t max_stack_size,
+        int32_t max_damage,
+        bool fire_resistant,
+        double attack_damage,
+        double attack_speed,
+        double attack_knockback
+    );
+
+    // Signal that Dart has finished queueing registrations
+    void signal_registrations_queued();
+
+    // Check if Dart has signaled completion (called from Java)
+    bool are_registrations_queued();
+
+    // Check if there are pending block registrations (called from Java)
+    bool has_pending_block_registrations();
+
+    // Check if there are pending item registrations (called from Java)
+    bool has_pending_item_registrations();
+
+    // Get next block registration from queue (called from Java)
+    // Returns false if queue is empty
+    bool get_next_block_registration(
+        int64_t* out_handler_id,
+        char* out_namespace, int32_t namespace_len,
+        char* out_path, int32_t path_len,
+        float* out_hardness,
+        float* out_resistance,
+        bool* out_requires_tool,
+        int32_t* out_luminance,
+        double* out_slipperiness,
+        double* out_velocity_multiplier,
+        double* out_jump_velocity_multiplier,
+        bool* out_ticks_randomly,
+        bool* out_collidable,
+        bool* out_replaceable,
+        bool* out_burnable
+    );
+
+    // Get next item registration from queue (called from Java)
+    // Returns false if queue is empty
+    bool get_next_item_registration(
+        int64_t* out_handler_id,
+        char* out_namespace, int32_t namespace_len,
+        char* out_path, int32_t path_len,
+        int32_t* out_max_stack_size,
+        int32_t* out_max_damage,
+        bool* out_fire_resistant,
+        double* out_attack_damage,
+        double* out_attack_speed,
+        double* out_attack_knockback
+    );
+
+    // Queue an entity registration - called from Dart (any thread)
+    // Returns the pre-allocated handler ID so Dart can use it immediately
+    int64_t queue_entity_registration(
+        const char* namespace_id,
+        const char* path,
+        double width,
+        double height,
+        double max_health,
+        double movement_speed,
+        double attack_damage,
+        int32_t spawn_group,
+        int32_t base_type,
+        const char* breeding_item,
+        const char* model_type,
+        const char* texture_path,
+        double model_scale,
+        const char* goals_json,
+        const char* target_goals_json
+    );
+
+    // Check if there are pending entity registrations (called from Java)
+    bool has_pending_entity_registrations();
+
+    // Get next entity registration from queue (called from Java)
+    // Returns false if queue is empty
+    bool get_next_entity_registration(
+        int64_t* out_handler_id,
+        char* out_namespace, int32_t namespace_len,
+        char* out_path, int32_t path_len,
+        double* out_width,
+        double* out_height,
+        double* out_max_health,
+        double* out_movement_speed,
+        double* out_attack_damage,
+        int32_t* out_spawn_group,
+        int32_t* out_base_type,
+        char* out_breeding_item, int32_t breeding_item_len,
+        char* out_model_type, int32_t model_type_len,
+        char* out_texture_path, int32_t texture_path_len,
+        double* out_model_scale,
+        char* out_goals_json, int32_t goals_json_len,
+        char* out_target_goals_json, int32_t target_goals_json_len
+    );
+
 }

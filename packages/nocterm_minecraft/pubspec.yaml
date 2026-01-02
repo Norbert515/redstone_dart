@@ -9,5 +9,7 @@ environment:
 dependencies:
   nocterm:
     path: /Users/norbertkozsir/IdeaProjects/nocterm
-  dart_mc:
-    path: ../dart_mc
+  dart_mod_server:
+    path: ../dart_mod_server
+  dart_mod_common:
+    path: ../dart_mod_common

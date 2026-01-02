@@ -49,6 +49,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.redstone.util.ItemStackSerializer;
+
 /**
  * JNI interface to the native Dart bridge.
  *
@@ -149,14 +151,41 @@ public class DartBridge {
         throw new UnsatisfiedLinkError("Could not find dart_mc_bridge native library");
     }
 
-    // Native methods
-    private static native boolean init(String scriptPath);
-    private static native void shutdown();
-    private static native void tick();
+    // ==========================================================================
+    // Native Methods - Server Runtime (Dart VM only, no Flutter)
+    // ==========================================================================
+    // The server runtime runs the Dart VM to handle game logic (blocks, entities, events).
+    // It does NOT use Flutter - it's a pure Dart runtime for server-side logic.
+
+    /**
+     * Initialize the server Dart VM.
+     *
+     * @param scriptPath Path to the Dart kernel snapshot or script
+     * @param packageConfigPath Path to package_config.json (can be empty)
+     * @param servicePort Port for Dart VM service (hot reload/debugging), use 0 to disable
+     * @return true if initialization succeeded
+     */
+    private static native boolean initServer(String scriptPath, String packageConfigPath, int servicePort);
+
+    /**
+     * Shutdown the server Dart VM and clean up resources.
+     */
+    private static native void shutdownServer();
+
+    /**
+     * Tick the server runtime - drains microtask queue and timers.
+     * Call this each server tick to process async Dart tasks.
+     */
+    private static native void tickServer();
+
     private static native int onBlockBreak(int x, int y, int z, long playerId);
     private static native int onBlockInteract(int x, int y, int z, long playerId, int hand);
     private static native void onTick(long tick);
     private static native void setSendChatCallback();
+
+    // Flutter task processing - call this from the game loop to pump Flutter's event loop
+    // This must be called on the same thread that initialized the engine
+    public static native void processFlutterTasks();
 
     // Proxy block native methods - called by DartBlockProxy
     public static native boolean onProxyBlockBreak(long handlerId, long worldId, int x, int y, int z, long playerId);
@@ -184,6 +213,14 @@ public class DartBridge {
     // Animal proxy native methods - called by DartAnimalProxy
     public static native void onProxyAnimalBreed(long handlerId, int parentId, int partnerId, int babyId);
 
+    // Block entity native methods - called by DartBlockEntity classes
+    public static native void onBlockEntityLoad(int handlerId, long blockPosHash, String nbtJson);
+    public static native String onBlockEntitySave(int handlerId, long blockPosHash);
+    public static native void onBlockEntityTick(int handlerId, long blockPosHash);
+    public static native int getBlockEntityDataSlot(int handlerId, long blockPosHash, int index);
+    public static native void setBlockEntityDataSlot(int handlerId, long blockPosHash, int index, int value);
+    public static native void onBlockEntityRemoved(int handlerId, long blockPosHash);
+
     // Item proxy native methods - called by DartItemProxy
     public static native boolean onProxyItemAttackEntity(long handlerId, int worldId, int attackerId, int targetId);
     public static native int onProxyItemUse(long handlerId, long worldId, int playerId, int hand);
@@ -192,6 +229,155 @@ public class DartBridge {
 
     // Command system native methods - called by CommandRegistry
     public static native int onCommandExecute(long commandId, int playerId, String argsJson);
+
+    // Registry ready signal - tells Dart it's safe to register items/blocks
+    public static native void signalRegistryReady();
+
+    // ==========================================================================
+    // Network Packet Native Methods
+    // ==========================================================================
+
+    /**
+     * Dispatch a packet received from a client to the server Dart VM.
+     * Called by C2SPacketHandler when a packet is received from a client.
+     *
+     * @param playerId The player ID who sent the packet
+     * @param packetType The packet type ID
+     * @param data The packet payload data
+     */
+    public static native void dispatchClientPacketNative(int playerId, int packetType, byte[] data);
+
+    /**
+     * Register a callback for sending packets to clients.
+     * The callback signature is: void callback(int playerId, int packetType, byte[] data)
+     */
+    private static native void registerSendPacketCallback();
+
+    // Packet send callback handler
+    private static PacketSendHandler packetSendHandler = null;
+
+    @FunctionalInterface
+    public interface PacketSendHandler {
+        void sendPacket(int playerId, int packetType, byte[] data);
+    }
+
+    /**
+     * Set the handler for sending packets from Dart to clients.
+     */
+    public static void setPacketSendHandler(PacketSendHandler handler) {
+        packetSendHandler = handler;
+        if (libraryLoaded) {
+            registerSendPacketCallback();
+            LOGGER.info("Packet send handler registered");
+        }
+    }
+
+    /**
+     * Called from native code when Dart wants to send a packet to a client.
+     */
+    @SuppressWarnings("unused") // Called from native code
+    private static void onSendPacket(int playerId, int packetType, byte[] data) {
+        if (packetSendHandler != null) {
+            packetSendHandler.sendPacket(playerId, packetType, data);
+        } else {
+            LOGGER.warn("Packet send requested but no handler registered");
+        }
+    }
+
+    /**
+     * Public method to dispatch a packet from client to server Dart VM.
+     *
+     * @param playerId The player ID who sent the packet
+     * @param packetType The packet type ID
+     * @param data The packet payload data
+     */
+    public static void dispatchClientPacket(int playerId, int packetType, byte[] data) {
+        if (!initialized) {
+            LOGGER.warn("Cannot dispatch client packet: Dart bridge not initialized");
+            return;
+        }
+        try {
+            dispatchClientPacketNative(playerId, packetType, data);
+        } catch (Exception e) {
+            LOGGER.error("Exception dispatching client packet: {}", e.getMessage());
+        }
+    }
+
+    // ==========================================================================
+    // Registration Queue Native Methods (for Flutter threading)
+    // ==========================================================================
+    // These methods allow Java to poll registrations queued by Dart from Thread-3
+    // and process them on the correct (Render) thread.
+
+    /**
+     * Check if Dart has finished queueing registrations.
+     * Call this after init() to know when it's safe to start processing the queue.
+     */
+    public static native boolean areRegistrationsQueued();
+
+    /**
+     * Check if there are pending block registrations in the queue.
+     */
+    public static native boolean hasPendingBlockRegistrations();
+
+    /**
+     * Check if there are pending item registrations in the queue.
+     */
+    public static native boolean hasPendingItemRegistrations();
+
+    /**
+     * Get the next block registration from the queue.
+     * Returns an Object array with registration data, or null if queue is empty.
+     *
+     * Array format: [handlerId(Long), namespace(String), path(String),
+     *                hardness(Float), resistance(Float), requiresTool(Boolean),
+     *                luminance(Integer), slipperiness(Double), velocityMult(Double),
+     *                jumpVelocityMult(Double), ticksRandomly(Boolean),
+     *                collidable(Boolean), replaceable(Boolean), burnable(Boolean)]
+     */
+    public static native Object[] getNextBlockRegistration();
+
+    /**
+     * Get the next item registration from the queue.
+     * Returns an Object array with registration data, or null if queue is empty.
+     *
+     * Array format: [handlerId(Long), namespace(String), path(String),
+     *                maxStackSize(Integer), maxDamage(Integer), fireResistant(Boolean),
+     *                attackDamage(Double), attackSpeed(Double), attackKnockback(Double)]
+     */
+    public static native Object[] getNextItemRegistration();
+
+    /**
+     * Check if there are pending entity registrations in the queue.
+     */
+    public static native boolean hasPendingEntityRegistrations();
+
+    /**
+     * Get the next entity registration from the queue.
+     * Returns an Object array with registration data, or null if queue is empty.
+     *
+     * Array format: [handlerId(Long), namespace(String), path(String),
+     *                width(Double), height(Double), maxHealth(Double),
+     *                movementSpeed(Double), attackDamage(Double),
+     *                spawnGroup(Integer), baseType(Integer),
+     *                breedingItem(String), modelType(String), texturePath(String),
+     *                modelScale(Double), goalsJson(String), targetGoalsJson(String)]
+     */
+    public static native Object[] getNextEntityRegistration();
+
+    /**
+     * Check if there are pending block entity registrations in the queue.
+     */
+    public static native boolean hasPendingBlockEntityRegistrations();
+
+    /**
+     * Get the next block entity registration from the queue.
+     * Returns an Object array with registration data, or null if queue is empty.
+     *
+     * Array format: [handlerId(Integer), blockId(String), inventorySize(Integer),
+     *                containerTitle(String), ticks(Boolean)]
+     */
+    public static native Object[] getNextBlockEntityRegistration();
 
     // Service URL for hot reload/debugging
     private static native String getDartServiceUrl();
@@ -227,62 +413,88 @@ public class DartBridge {
         }
     }
 
+    // ==========================================================================
+    // Server Runtime Public Methods
+    // ==========================================================================
+
     /**
-     * Initialize the Dart VM with the given script file.
+     * Safely initialize the server Dart runtime.
      *
-     * @param scriptPath Path to the Dart script (.dart file)
+     * This initializes a pure Dart VM (no Flutter) for server-side game logic.
+     * Call this during mod initialization, BEFORE the client runtime (if on client).
+     *
+     * @param scriptPath Path to the Dart kernel snapshot or main.dart script
+     * @param packageConfigPath Path to package_config.json (can be empty/null)
      * @return true if initialization succeeded
      */
-    public static boolean safeInit(String scriptPath) {
+    public static boolean safeInitServerRuntime(String scriptPath, String packageConfigPath) {
         if (!libraryLoaded) {
-            LOGGER.error("Cannot initialize: native library not loaded");
+            LOGGER.error("Cannot initialize server runtime: native library not loaded");
             return false;
         }
 
         if (initialized) {
-            LOGGER.warn("Dart VM already initialized");
+            LOGGER.warn("Server runtime already initialized");
             return true;
         }
 
         try {
-            LOGGER.info("Initializing Dart VM with script: {}", scriptPath);
-            initialized = init(scriptPath);
+            LOGGER.info("Initializing server Dart runtime with script: {}", scriptPath);
+            if (packageConfigPath != null && !packageConfigPath.isEmpty()) {
+                LOGGER.info("Package config path: {}", packageConfigPath);
+            }
+
+            // Check for VM service port from system property (for hot reload support)
+            // Set DART_SERVER_VM_SERVICE_PORT to enable hot reload from CLI
+            int servicePort = 0;
+            String portProp = System.getProperty("DART_SERVER_VM_SERVICE_PORT");
+            if (portProp != null && !portProp.isEmpty()) {
+                try {
+                    servicePort = Integer.parseInt(portProp);
+                    LOGGER.info("VM service port from property: {}", servicePort);
+                } catch (NumberFormatException e) {
+                    LOGGER.warn("Invalid DART_SERVER_VM_SERVICE_PORT: {}", portProp);
+                }
+            }
+
+            initialized = initServer(scriptPath, packageConfigPath != null ? packageConfigPath : "", servicePort);
             if (initialized) {
-                LOGGER.info("Dart VM initialized successfully");
+                LOGGER.info("Server Dart runtime initialized successfully");
             } else {
-                LOGGER.error("Dart VM initialization returned false");
+                LOGGER.error("Server Dart runtime initialization returned false");
             }
             return initialized;
         } catch (Exception e) {
-            LOGGER.error("Exception during Dart VM initialization: {}", e.getMessage());
+            LOGGER.error("Exception during server runtime initialization: {}", e.getMessage(), e);
             return false;
         }
     }
 
     /**
-     * Shutdown the Dart VM and clean up resources.
+     * Shutdown the server Dart runtime and clean up resources.
      */
-    public static void safeShutdown() {
+    public static void safeShutdownServerRuntime() {
         if (!initialized) return;
 
         try {
-            shutdown();
+            shutdownServer();
             initialized = false;
-            LOGGER.info("Dart VM shut down");
+            LOGGER.info("Server Dart runtime shut down");
         } catch (Exception e) {
-            LOGGER.error("Exception during Dart VM shutdown: {}", e.getMessage());
+            LOGGER.error("Exception during server runtime shutdown: {}", e.getMessage());
         }
     }
 
     /**
-     * Process Dart async tasks. Should be called each game tick.
+     * Tick the server runtime - processes async Dart tasks.
+     * Should be called each server tick.
      */
-    public static void safeTick() {
+    public static void safeTickServer() {
         if (!initialized) return;
         try {
-            tick();
+            tickServer();
         } catch (Exception e) {
-            LOGGER.error("Exception during tick: {}", e.getMessage());
+            LOGGER.error("Exception during server tick: {}", e.getMessage());
         }
     }
 
@@ -347,10 +559,19 @@ public class DartBridge {
 
     /**
      * Dispatch a tick event to Dart handlers.
+     *
+     * This also processes pending Flutter tasks to pump the Flutter engine's event loop.
+     * The merged thread approach allows FFI callbacks to work correctly because the
+     * Dart isolate runs on the same thread as the JNI calls.
      */
     public static void dispatchTick(long tick) {
         if (!initialized) return;
         try {
+            // Process any pending Flutter tasks first
+            // This pumps the Flutter engine's event loop so scheduled tasks execute
+            processFlutterTasks();
+
+            // Then dispatch the tick event to Dart
             onTick(tick);
         } catch (Exception e) {
             LOGGER.error("Exception during tick dispatch: {}", e.getMessage());
@@ -753,6 +974,28 @@ public class DartBridge {
      */
     public static Set<String> getContainerTypeIds() {
         return containerDefinitions.keySet();
+    }
+
+    /**
+     * Look up a container type ID by its title.
+     *
+     * This is a workaround for client-side lookups where the containerTypeId
+     * isn't synced via Minecraft's networking. Returns the first matching
+     * containerId, or empty string if not found.
+     *
+     * @param title The container title to look up
+     * @return The container type ID, or empty string if not found
+     */
+    public static String getContainerIdByTitle(String title) {
+        if (title == null || title.isEmpty()) {
+            return "";
+        }
+        for (Map.Entry<String, ContainerDef> entry : containerDefinitions.entrySet()) {
+            if (title.equals(entry.getValue().title)) {
+                return entry.getKey();
+            }
+        }
+        return "";
     }
 
     // ==========================================================================
@@ -1585,7 +1828,7 @@ public class DartBridge {
      * The handlerId links to the Dart CustomEntity definition.
      *
      * @param dimensionId Dimension ID string (e.g., "minecraft:overworld")
-     * @param handlerId Handler ID from EntityProxyRegistry.createEntity()
+     * @param handlerId Handler ID from entity registration queue
      * @param x X coordinate
      * @param y Y coordinate
      * @param z Z coordinate
@@ -2833,14 +3076,12 @@ public class DartBridge {
 
     /**
      * Serialize an ItemStack to a string format.
+     *
      * @return "itemId:count:damage:maxDamage" or empty string if empty
+     * @see ItemStackSerializer#serialize(ItemStack)
      */
     public static String serializeItemStack(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return "";
-        String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-        int damage = stack.isDamageableItem() ? stack.getDamageValue() : 0;
-        int maxDamage = stack.getMaxDamage();
-        return itemId + ":" + stack.getCount() + ":" + damage + ":" + maxDamage;
+        return ItemStackSerializer.serialize(stack);
     }
 
     // ==========================================================================

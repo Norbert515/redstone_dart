@@ -129,8 +129,8 @@ export 'src/matchers.dart'
         isAliveEntity,
         hasGameMode;
 
-// Re-export dart_mc types needed for testing
-export 'package:dart_mc/dart_mc.dart'
+// Re-export dart_mod_server types needed for testing
+export 'package:dart_mod_server/dart_mod_server.dart'
     show
         // Core types
         Block,

@@ -85,12 +85,25 @@ fabricApi {
     }
 }
 
-// Pass DART_SCRIPT_PATH to run tasks via JVM system property
-// This allows the CLI to specify the script location directly
+// Pass DART_SERVER_SCRIPT and DART_PACKAGE_CONFIG to run tasks via JVM system properties
+// This allows the CLI to specify the script and package locations directly
 tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
     // Read from Gradle project property (passed via -PdartScriptPath=...)
     if (project.hasProperty('dartScriptPath')) {
         def dartScriptPath = project.property('dartScriptPath')
-        jvmArgs("-DDART_SCRIPT_PATH=${dartScriptPath}")
+        jvmArgs("-DDART_SERVER_SCRIPT=${dartScriptPath}")
+    }
+
+    // Read package config path from Gradle property (passed via -PdartPackageConfigPath=...)
+    // This is the correct package_config.json for the script being run (test harness or project)
+    if (project.hasProperty('dartPackageConfigPath')) {
+        def packageConfigPath = project.property('dartPackageConfigPath')
+        jvmArgs("-DDART_PACKAGE_CONFIG=${packageConfigPath}")
+    }
+
+    // Pass server VM service port for hot reload support
+    if (project.hasProperty('serverVmServicePort')) {
+        def port = project.property('serverVmServicePort')
+        jvmArgs("-DDART_SERVER_VM_SERVICE_PORT=${port}")
     }
 }

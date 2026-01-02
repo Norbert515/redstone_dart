@@ -162,6 +162,16 @@ void jni_free_string(const char* str);
 void generic_jni_init(JavaVM* jvm);
 
 /**
+ * Capture the classloader from the current thread.
+ * This MUST be called from the render thread (which uses KnotClassLoader)
+ * so that subsequent JNI calls from other threads can load classes correctly.
+ * Should be called after generic_jni_init().
+ *
+ * @return 1 on success, 0 on failure
+ */
+int32_t generic_jni_capture_classloader();
+
+/**
  * Shutdown and cleanup caches.
  */
 void generic_jni_shutdown();

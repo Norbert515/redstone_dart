@@ -1,0 +1,966 @@
+/// Event handler registration for Minecraft server events.
+///
+/// This file provides a high-level API for registering event handlers
+/// that will be called when events occur in the Minecraft server.
+library;
+
+import 'dart:ffi';
+
+import 'package:dart_mod_common/dart_mod_common.dart';
+import 'package:ffi/ffi.dart';
+
+import 'bridge.dart';
+import 'player.dart';
+import 'entity.dart';
+import 'registries.dart';
+
+/// Default return value for block use events (ActionResult.pass ordinal)
+const int _actionResultPassOrdinal = 3;
+
+/// Dart callback types
+typedef BlockBreakHandler = EventResult Function(
+    int x, int y, int z, int playerId);
+typedef BlockInteractHandler = EventResult Function(
+    int x, int y, int z, int playerId, int hand);
+typedef TickHandler = void Function(int tick);
+
+/// Static storage for callbacks (prevents garbage collection)
+BlockBreakHandler? _blockBreakHandler;
+BlockInteractHandler? _blockInteractHandler;
+final List<TickHandler> _tickListeners = [];
+bool _proxyHandlersRegistered = false;
+bool _proxyEntityHandlersRegistered = false;
+bool _proxyItemHandlersRegistered = false;
+bool _customGoalHandlersRegistered = false;
+
+// New event handlers
+void Function(Player player)? _playerJoinHandler;
+void Function(Player player)? _playerLeaveHandler;
+void Function(Player player, bool endConquered)? _playerRespawnHandler;
+String? Function(Player player, String damageSource)? _playerDeathHandler;
+bool Function(Entity entity, String damageSource, double amount)?
+    _entityDamageHandler;
+void Function(Entity entity, String damageSource)? _entityDeathHandler;
+bool Function(Player player, Entity target)? _playerAttackEntityHandler;
+String? Function(Player player, String message)? _playerChatHandler;
+bool Function(Player player, String command)? _playerCommandHandler;
+bool Function(Player player, ItemStack item, Hand hand)? _itemUseHandler;
+EventResult Function(
+        Player player, ItemStack item, Hand hand, BlockPos pos, Direction face)?
+    _itemUseOnBlockHandler;
+EventResult Function(Player player, ItemStack item, Hand hand, Entity target)?
+    _itemUseOnEntityHandler;
+bool Function(Player player, BlockPos pos, String blockId)? _blockPlaceHandler;
+bool Function(Player player, ItemEntity item)? _playerPickupItemHandler;
+bool Function(Player player, ItemStack item)? _playerDropItemHandler;
+void Function()? _serverStartingHandler;
+void Function()? _serverStartedHandler;
+void Function()? _serverStoppingHandler;
+
+/// Native callback type for server lifecycle events (void return, no params).
+typedef _ServerLifecycleCallbackNative = Void Function();
+
+/// Native callback trampolines - these are called from native code
+@pragma('vm:entry-point')
+int _onBlockBreak(int x, int y, int z, int playerId) {
+  if (_blockBreakHandler != null) {
+    return _blockBreakHandler!(x, y, z, playerId).value;
+  }
+  return EventResult.allow.value;
+}
+
+@pragma('vm:entry-point')
+int _onBlockInteract(int x, int y, int z, int playerId, int hand) {
+  if (_blockInteractHandler != null) {
+    return _blockInteractHandler!(x, y, z, playerId, hand).value;
+  }
+  return EventResult.allow.value;
+}
+
+@pragma('vm:entry-point')
+void _onTick(int tick) {
+  for (final listener in _tickListeners) {
+    listener(tick);
+  }
+}
+
+// New event trampolines
+
+@pragma('vm:entry-point')
+void _onPlayerJoin(int playerId) {
+  _playerJoinHandler?.call(Player(playerId));
+}
+
+@pragma('vm:entry-point')
+void _onPlayerLeave(int playerId) {
+  _playerLeaveHandler?.call(Player(playerId));
+}
+
+@pragma('vm:entry-point')
+void _onPlayerRespawn(int playerId, bool endConquered) {
+  _playerRespawnHandler?.call(Player(playerId), endConquered);
+}
+
+@pragma('vm:entry-point')
+Pointer<Utf8> _onPlayerDeath(int playerId, Pointer<Utf8> damageSourcePtr) {
+  if (_playerDeathHandler == null) return nullptr;
+  final damageSource = damageSourcePtr.toDartString();
+  final result = _playerDeathHandler!(Player(playerId), damageSource);
+  if (result == null) return nullptr;
+  return result.toNativeUtf8();
+}
+
+@pragma('vm:entry-point')
+bool _onEntityDamage(
+    int entityId, Pointer<Utf8> damageSourcePtr, double amount) {
+  if (_entityDamageHandler == null) return true; // Allow by default
+  final damageSource = damageSourcePtr.toDartString();
+  final entity = Entities.getTypedEntity(entityId) ?? Entity(entityId);
+  return _entityDamageHandler!(entity, damageSource, amount);
+}
+
+@pragma('vm:entry-point')
+void _onEntityDeath(int entityId, Pointer<Utf8> damageSourcePtr) {
+  if (_entityDeathHandler == null) return;
+  final damageSource = damageSourcePtr.toDartString();
+  final entity = Entities.getTypedEntity(entityId) ?? Entity(entityId);
+  _entityDeathHandler!(entity, damageSource);
+}
+
+@pragma('vm:entry-point')
+bool _onPlayerAttackEntity(int playerId, int targetId) {
+  if (_playerAttackEntityHandler == null) return true; // Allow by default
+  final target = Entities.getTypedEntity(targetId) ?? Entity(targetId);
+  return _playerAttackEntityHandler!(Player(playerId), target);
+}
+
+@pragma('vm:entry-point')
+Pointer<Utf8> _onPlayerChat(int playerId, Pointer<Utf8> messagePtr) {
+  if (_playerChatHandler == null) return messagePtr; // Pass through
+  final message = messagePtr.toDartString();
+  final result = _playerChatHandler!(Player(playerId), message);
+  if (result == null) return nullptr; // Cancel
+  return result.toNativeUtf8();
+}
+
+@pragma('vm:entry-point')
+bool _onPlayerCommand(int playerId, Pointer<Utf8> commandPtr) {
+  if (_playerCommandHandler == null) return true; // Allow by default
+  final command = commandPtr.toDartString();
+  return _playerCommandHandler!(Player(playerId), command);
+}
+
+@pragma('vm:entry-point')
+bool _onItemUse(int playerId, Pointer<Utf8> itemIdPtr, int count, int hand) {
+  if (_itemUseHandler == null) return true; // Allow by default
+  final itemId = itemIdPtr.toDartString();
+  final stack = ItemStack(Item(itemId), count);
+  return _itemUseHandler!(Player(playerId), stack, Hand.fromValue(hand));
+}
+
+@pragma('vm:entry-point')
+int _onItemUseOnBlock(int playerId, Pointer<Utf8> itemIdPtr, int count,
+    int hand, int x, int y, int z, int face) {
+  if (_itemUseOnBlockHandler == null) return EventResult.allow.value;
+  final itemId = itemIdPtr.toDartString();
+  final stack = ItemStack(Item(itemId), count);
+  final direction = Direction.values
+      .firstWhere((d) => d.id == face, orElse: () => Direction.up);
+  return _itemUseOnBlockHandler!(
+          Player(playerId), stack, Hand.fromValue(hand), BlockPos(x, y, z), direction)
+      .value;
+}
+
+@pragma('vm:entry-point')
+int _onItemUseOnEntity(int playerId, Pointer<Utf8> itemIdPtr, int count,
+    int hand, int targetId) {
+  if (_itemUseOnEntityHandler == null) return EventResult.allow.value;
+  final itemId = itemIdPtr.toDartString();
+  final stack = ItemStack(Item(itemId), count);
+  final target = Entities.getTypedEntity(targetId) ?? Entity(targetId);
+  return _itemUseOnEntityHandler!(
+          Player(playerId), stack, Hand.fromValue(hand), target)
+      .value;
+}
+
+@pragma('vm:entry-point')
+bool _onBlockPlace(int playerId, int x, int y, int z, Pointer<Utf8> blockIdPtr) {
+  if (_blockPlaceHandler == null) return true; // Allow by default
+  final blockId = blockIdPtr.toDartString();
+  return _blockPlaceHandler!(Player(playerId), BlockPos(x, y, z), blockId);
+}
+
+@pragma('vm:entry-point')
+bool _onPlayerPickupItem(int playerId, int itemEntityId) {
+  if (_playerPickupItemHandler == null) return true; // Allow by default
+  return _playerPickupItemHandler!(Player(playerId), ItemEntity(itemEntityId));
+}
+
+@pragma('vm:entry-point')
+bool _onPlayerDropItem(int playerId, Pointer<Utf8> itemIdPtr, int count) {
+  if (_playerDropItemHandler == null) return true; // Allow by default
+  final itemId = itemIdPtr.toDartString();
+  final stack = ItemStack(Item(itemId), count);
+  return _playerDropItemHandler!(Player(playerId), stack);
+}
+
+@pragma('vm:entry-point')
+void _onServerStarting() {
+  _serverStartingHandler?.call();
+}
+
+@pragma('vm:entry-point')
+void _onServerStarted() {
+  _serverStartedHandler?.call();
+}
+
+@pragma('vm:entry-point')
+void _onServerStopping() {
+  _serverStoppingHandler?.call();
+}
+
+/// Proxy block callback trampolines - route to BlockRegistry
+/// Returns true to allow break, false to cancel
+@pragma('vm:entry-point')
+bool _onProxyBlockBreak(
+    int handlerId, int worldId, int x, int y, int z, int playerId) {
+  return BlockRegistry.dispatchBlockBreak(
+      handlerId, worldId, x, y, z, playerId);
+}
+
+@pragma('vm:entry-point')
+int _onProxyBlockUse(
+    int handlerId, int worldId, int x, int y, int z, int playerId, int hand) {
+  return BlockRegistry.dispatchBlockUse(
+      handlerId, worldId, x, y, z, playerId, hand);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockSteppedOn(
+    int handlerId, int worldId, int x, int y, int z, int entityId) {
+  BlockRegistry.dispatchSteppedOn(
+      handlerId, worldId, x, y, z, entityId);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockFallenUpon(int handlerId, int worldId, int x, int y, int z,
+    int entityId, double fallDistance) {
+  BlockRegistry.dispatchFallenUpon(
+      handlerId, worldId, x, y, z, entityId, fallDistance);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockRandomTick(int handlerId, int worldId, int x, int y, int z) {
+  BlockRegistry.dispatchRandomTick(handlerId, worldId, x, y, z);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockPlaced(
+    int handlerId, int worldId, int x, int y, int z, int playerId) {
+  BlockRegistry.dispatchPlaced(handlerId, worldId, x, y, z, playerId);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockRemoved(int handlerId, int worldId, int x, int y, int z) {
+  BlockRegistry.dispatchRemoved(handlerId, worldId, x, y, z);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockNeighborChanged(int handlerId, int worldId, int x, int y,
+    int z, int neighborX, int neighborY, int neighborZ) {
+  BlockRegistry.dispatchNeighborChanged(
+      handlerId, worldId, x, y, z, neighborX, neighborY, neighborZ);
+}
+
+@pragma('vm:entry-point')
+void _onProxyBlockEntityInside(
+    int handlerId, int worldId, int x, int y, int z, int entityId) {
+  BlockRegistry.dispatchEntityInside(
+      handlerId, worldId, x, y, z, entityId);
+}
+
+// =============================================================================
+// Proxy Entity Callback Trampolines - route to EntityRegistry
+// =============================================================================
+
+@pragma('vm:entry-point')
+void _onProxyEntitySpawn(int handlerId, int entityId, int worldId) {
+  EntityRegistry.dispatchSpawn(handlerId, entityId, worldId);
+}
+
+@pragma('vm:entry-point')
+void _onProxyEntityTick(int handlerId, int entityId) {
+  EntityRegistry.dispatchTick(handlerId, entityId);
+}
+
+@pragma('vm:entry-point')
+void _onProxyEntityDeath(
+    int handlerId, int entityId, Pointer<Utf8> damageSourcePtr) {
+  final damageSource = damageSourcePtr.toDartString();
+  EntityRegistry.dispatchDeath(handlerId, entityId, damageSource);
+}
+
+@pragma('vm:entry-point')
+bool _onProxyEntityDamage(
+    int handlerId, int entityId, Pointer<Utf8> damageSourcePtr, double amount) {
+  final damageSource = damageSourcePtr.toDartString();
+  return EntityRegistry.dispatchDamage(
+      handlerId, entityId, damageSource, amount);
+}
+
+@pragma('vm:entry-point')
+void _onProxyEntityAttack(int handlerId, int entityId, int targetId) {
+  EntityRegistry.dispatchAttack(handlerId, entityId, targetId);
+}
+
+@pragma('vm:entry-point')
+void _onProxyEntityTarget(int handlerId, int entityId, int targetId) {
+  EntityRegistry.dispatchTargetAcquired(handlerId, entityId, targetId);
+}
+
+// =============================================================================
+// Proxy Item Callback Trampolines - route to ItemRegistry
+// =============================================================================
+
+@pragma('vm:entry-point')
+bool _onProxyItemAttackEntity(
+    int handlerId, int worldId, int attackerId, int targetId) {
+  return ItemRegistry.dispatchItemAttackEntity(
+      handlerId, worldId, attackerId, targetId);
+}
+
+/// Default return value for item use events (ItemActionResult.pass ordinal = 4)
+const int _itemActionResultPassOrdinal = 4;
+
+@pragma('vm:entry-point')
+int _onProxyItemUse(int handlerId, int worldId, int playerId, int hand) {
+  return ItemRegistry.dispatchItemUse(
+      handlerId, worldId, playerId, hand);
+}
+
+@pragma('vm:entry-point')
+int _onProxyItemUseOnBlock(
+    int handlerId, int worldId, int x, int y, int z, int playerId, int hand) {
+  return ItemRegistry.dispatchItemUseOnBlock(
+      handlerId, worldId, x, y, z, playerId, hand);
+}
+
+@pragma('vm:entry-point')
+int _onProxyItemUseOnEntity(
+    int handlerId, int worldId, int entityId, int playerId, int hand) {
+  return ItemRegistry.dispatchItemUseOnEntity(
+      handlerId, worldId, entityId, playerId, hand);
+}
+
+// =============================================================================
+// Custom Goal Callback Trampolines - route to CustomGoalRegistry
+// =============================================================================
+
+@pragma('vm:entry-point')
+bool _onCustomGoalCanUse(Pointer<Utf8> goalIdPtr, int entityId) {
+  final goalId = goalIdPtr.toDartString();
+  return CustomGoalRegistry.dispatchCanUse(goalId, entityId);
+}
+
+@pragma('vm:entry-point')
+bool _onCustomGoalCanContinueToUse(Pointer<Utf8> goalIdPtr, int entityId) {
+  final goalId = goalIdPtr.toDartString();
+  return CustomGoalRegistry.dispatchCanContinueToUse(goalId, entityId);
+}
+
+@pragma('vm:entry-point')
+void _onCustomGoalStart(Pointer<Utf8> goalIdPtr, int entityId) {
+  final goalId = goalIdPtr.toDartString();
+  CustomGoalRegistry.dispatchStart(goalId, entityId);
+}
+
+@pragma('vm:entry-point')
+void _onCustomGoalTick(Pointer<Utf8> goalIdPtr, int entityId) {
+  final goalId = goalIdPtr.toDartString();
+  CustomGoalRegistry.dispatchTick(goalId, entityId);
+}
+
+@pragma('vm:entry-point')
+void _onCustomGoalStop(Pointer<Utf8> goalIdPtr, int entityId) {
+  final goalId = goalIdPtr.toDartString();
+  CustomGoalRegistry.dispatchStop(goalId, entityId);
+}
+
+/// Native callback type definitions for FFI
+typedef _BlockBreakCallbackNative = Int32 Function(
+    Int32, Int32, Int32, Int64);
+typedef _BlockInteractCallbackNative = Int32 Function(
+    Int32, Int32, Int32, Int64, Int32);
+typedef _TickCallbackNative = Void Function(Int64);
+typedef _ProxyBlockBreakCallbackNative = Bool Function(
+    Int64, Int64, Int32, Int32, Int32, Int64);
+typedef _ProxyBlockUseCallbackNative = Int32 Function(
+    Int64, Int64, Int32, Int32, Int32, Int64, Int32);
+typedef _ProxyBlockSteppedOnCallbackNative = Void Function(
+    Int64, Int64, Int32, Int32, Int32, Int32);
+typedef _ProxyBlockFallenUponCallbackNative = Void Function(
+    Int64, Int64, Int32, Int32, Int32, Int32, Float);
+typedef _ProxyBlockRandomTickCallbackNative = Void Function(
+    Int64, Int64, Int32, Int32, Int32);
+typedef _ProxyBlockPlacedCallbackNative = Void Function(
+    Int64, Int64, Int32, Int32, Int32, Int64);
+typedef _ProxyBlockRemovedCallbackNative = Void Function(
+    Int64, Int64, Int32, Int32, Int32);
+typedef _ProxyBlockNeighborChangedCallbackNative = Void Function(
+    Int64, Int64, Int32, Int32, Int32, Int32, Int32, Int32);
+typedef _ProxyBlockEntityInsideCallbackNative = Void Function(
+    Int64, Int64, Int32, Int32, Int32, Int32);
+typedef _PlayerJoinCallbackNative = Void Function(Int32);
+typedef _PlayerLeaveCallbackNative = Void Function(Int32);
+typedef _PlayerRespawnCallbackNative = Void Function(Int32, Bool);
+typedef _PlayerDeathCallbackNative = Pointer<Utf8> Function(
+    Int32, Pointer<Utf8>);
+typedef _EntityDamageCallbackNative = Bool Function(
+    Int32, Pointer<Utf8>, Double);
+typedef _EntityDeathCallbackNative = Void Function(Int32, Pointer<Utf8>);
+typedef _PlayerAttackEntityCallbackNative = Bool Function(Int32, Int32);
+typedef _PlayerChatCallbackNative = Pointer<Utf8> Function(
+    Int32, Pointer<Utf8>);
+typedef _PlayerCommandCallbackNative = Bool Function(Int32, Pointer<Utf8>);
+typedef _ItemUseCallbackNative = Bool Function(Int32, Pointer<Utf8>, Int32, Int32);
+typedef _ItemUseOnBlockCallbackNative = Int32 Function(
+    Int32, Pointer<Utf8>, Int32, Int32, Int32, Int32, Int32, Int32);
+typedef _ItemUseOnEntityCallbackNative = Int32 Function(
+    Int32, Pointer<Utf8>, Int32, Int32, Int32);
+typedef _BlockPlaceCallbackNative = Bool Function(
+    Int32, Int32, Int32, Int32, Pointer<Utf8>);
+typedef _PlayerPickupItemCallbackNative = Bool Function(Int32, Int32);
+typedef _PlayerDropItemCallbackNative = Bool Function(
+    Int32, Pointer<Utf8>, Int32);
+typedef _ProxyEntitySpawnCallbackNative = Void Function(Int64, Int32, Int64);
+typedef _ProxyEntityTickCallbackNative = Void Function(Int64, Int32);
+typedef _ProxyEntityDeathCallbackNative = Void Function(
+    Int64, Int32, Pointer<Utf8>);
+typedef _ProxyEntityDamageCallbackNative = Bool Function(
+    Int64, Int32, Pointer<Utf8>, Double);
+typedef _ProxyEntityAttackCallbackNative = Void Function(Int64, Int32, Int32);
+typedef _ProxyEntityTargetCallbackNative = Void Function(Int64, Int32, Int32);
+typedef _ProxyItemAttackEntityCallbackNative = Bool Function(
+    Int64, Int32, Int32, Int32);
+typedef _ProxyItemUseCallbackNative = Int32 Function(Int64, Int64, Int32, Int32);
+typedef _ProxyItemUseOnBlockCallbackNative = Int32 Function(
+    Int64, Int64, Int32, Int32, Int32, Int32, Int32);
+typedef _ProxyItemUseOnEntityCallbackNative = Int32 Function(
+    Int64, Int64, Int32, Int32, Int32);
+typedef _CustomGoalCanUseCallbackNative = Bool Function(Pointer<Utf8>, Int32);
+typedef _CustomGoalCanContinueToUseCallbackNative = Bool Function(
+    Pointer<Utf8>, Int32);
+typedef _CustomGoalStartCallbackNative = Void Function(Pointer<Utf8>, Int32);
+typedef _CustomGoalTickCallbackNative = Void Function(Pointer<Utf8>, Int32);
+typedef _CustomGoalStopCallbackNative = Void Function(Pointer<Utf8>, Int32);
+
+/// Event registration API.
+class Events {
+  Events._();
+
+  /// Register a handler for block break events.
+  ///
+  /// The handler receives the block coordinates and player ID.
+  /// Return [EventResult.allow] to allow the break, or [EventResult.cancel] to prevent it.
+  static void onBlockBreak(BlockBreakHandler handler) {
+    _blockBreakHandler = handler;
+    final callback =
+        Pointer.fromFunction<_BlockBreakCallbackNative>(_onBlockBreak, 1);
+    ServerBridge.registerBlockBreakHandler(callback);
+  }
+
+  /// Register a handler for block interact events.
+  ///
+  /// The handler receives the block coordinates, player ID, and which hand was used.
+  /// Return [EventResult.allow] to allow the interaction, or [EventResult.cancel] to prevent it.
+  static void onBlockInteract(BlockInteractHandler handler) {
+    _blockInteractHandler = handler;
+    final callback =
+        Pointer.fromFunction<_BlockInteractCallbackNative>(_onBlockInteract, 1);
+    ServerBridge.registerBlockInteractHandler(callback);
+  }
+
+  /// Adds a tick listener. Returns a function to remove the listener.
+  ///
+  /// The handler receives the current tick number.
+  /// This is called 20 times per second.
+  ///
+  /// Multiple listeners can be registered and all will be called on each tick.
+  static void Function() addTickListener(TickHandler handler) {
+    _tickListeners.add(handler);
+
+    // Register the native callback if this is the first listener
+    if (_tickListeners.length == 1) {
+      final callback = Pointer.fromFunction<_TickCallbackNative>(_onTick);
+      ServerBridge.registerTickHandler(callback);
+    }
+
+    return () => _tickListeners.remove(handler);
+  }
+
+  /// Removes a tick listener.
+  static void removeTickListener(TickHandler handler) {
+    _tickListeners.remove(handler);
+  }
+
+  /// Register proxy block handlers for custom Dart-defined blocks.
+  ///
+  /// This is called automatically during Bridge initialization.
+  /// It routes proxy block events to BlockRegistry which dispatches
+  /// to the appropriate CustomBlock instances.
+  static void registerProxyBlockHandlers() {
+    if (_proxyHandlersRegistered) return;
+    _proxyHandlersRegistered = true;
+
+    // Skip FFI registration in datagen mode
+    if (ServerBridge.isDatagenMode) return;
+
+    // Default return value true = allow break
+    final breakCallback =
+        Pointer.fromFunction<_ProxyBlockBreakCallbackNative>(
+            _onProxyBlockBreak, true);
+    ServerBridge.registerProxyBlockBreakHandler(breakCallback);
+
+    // Default: pass (no interaction)
+    final useCallback = Pointer.fromFunction<_ProxyBlockUseCallbackNative>(
+        _onProxyBlockUse, _actionResultPassOrdinal);
+    ServerBridge.registerProxyBlockUseHandler(useCallback);
+
+    // Stepped on callback (void return)
+    final steppedOnCallback =
+        Pointer.fromFunction<_ProxyBlockSteppedOnCallbackNative>(
+            _onProxyBlockSteppedOn);
+    ServerBridge.registerProxyBlockSteppedOnHandler(steppedOnCallback);
+
+    // Fallen upon callback (void return)
+    final fallenUponCallback =
+        Pointer.fromFunction<_ProxyBlockFallenUponCallbackNative>(
+            _onProxyBlockFallenUpon);
+    ServerBridge.registerProxyBlockFallenUponHandler(fallenUponCallback);
+
+    // Random tick callback (void return)
+    final randomTickCallback =
+        Pointer.fromFunction<_ProxyBlockRandomTickCallbackNative>(
+            _onProxyBlockRandomTick);
+    ServerBridge.registerProxyBlockRandomTickHandler(randomTickCallback);
+
+    // Placed callback (void return)
+    final placedCallback =
+        Pointer.fromFunction<_ProxyBlockPlacedCallbackNative>(
+            _onProxyBlockPlaced);
+    ServerBridge.registerProxyBlockPlacedHandler(placedCallback);
+
+    // Removed callback (void return)
+    final removedCallback =
+        Pointer.fromFunction<_ProxyBlockRemovedCallbackNative>(
+            _onProxyBlockRemoved);
+    ServerBridge.registerProxyBlockRemovedHandler(removedCallback);
+
+    // Neighbor changed callback (void return)
+    final neighborChangedCallback =
+        Pointer.fromFunction<_ProxyBlockNeighborChangedCallbackNative>(
+            _onProxyBlockNeighborChanged);
+    ServerBridge.registerProxyBlockNeighborChangedHandler(
+        neighborChangedCallback);
+
+    // Entity inside callback (void return)
+    final entityInsideCallback =
+        Pointer.fromFunction<_ProxyBlockEntityInsideCallbackNative>(
+            _onProxyBlockEntityInside);
+    ServerBridge.registerProxyBlockEntityInsideHandler(entityInsideCallback);
+
+    print('Events: Proxy block handlers registered');
+  }
+
+  /// Register proxy entity handlers for custom Dart-defined entities.
+  ///
+  /// This is called automatically during Bridge initialization.
+  /// It routes proxy entity events to EntityRegistry which dispatches
+  /// to the appropriate CustomEntity instances.
+  static void registerProxyEntityHandlers() {
+    if (_proxyEntityHandlersRegistered) return;
+    _proxyEntityHandlersRegistered = true;
+
+    // Skip FFI registration in datagen mode
+    if (ServerBridge.isDatagenMode) return;
+
+    // Spawn callback (no return value)
+    final spawnCallback =
+        Pointer.fromFunction<_ProxyEntitySpawnCallbackNative>(
+            _onProxyEntitySpawn);
+    ServerBridge.registerProxyEntitySpawnHandler(spawnCallback);
+
+    // Tick callback (no return value)
+    final tickCallback =
+        Pointer.fromFunction<_ProxyEntityTickCallbackNative>(
+            _onProxyEntityTick);
+    ServerBridge.registerProxyEntityTickHandler(tickCallback);
+
+    // Death callback (no return value)
+    final deathCallback =
+        Pointer.fromFunction<_ProxyEntityDeathCallbackNative>(
+            _onProxyEntityDeath);
+    ServerBridge.registerProxyEntityDeathHandler(deathCallback);
+
+    // Damage callback - default: allow damage (return true)
+    final damageCallback =
+        Pointer.fromFunction<_ProxyEntityDamageCallbackNative>(
+            _onProxyEntityDamage, true);
+    ServerBridge.registerProxyEntityDamageHandler(damageCallback);
+
+    // Attack callback (no return value)
+    final attackCallback =
+        Pointer.fromFunction<_ProxyEntityAttackCallbackNative>(
+            _onProxyEntityAttack);
+    ServerBridge.registerProxyEntityAttackHandler(attackCallback);
+
+    // Target callback (no return value)
+    final targetCallback =
+        Pointer.fromFunction<_ProxyEntityTargetCallbackNative>(
+            _onProxyEntityTarget);
+    ServerBridge.registerProxyEntityTargetHandler(targetCallback);
+
+    print('Events: Proxy entity handlers registered');
+  }
+
+  /// Register proxy item callback handlers with native code.
+  ///
+  /// This is called automatically during mod initialization.
+  /// It routes proxy item events to ItemRegistry which dispatches
+  /// to the appropriate CustomItem instances.
+  static void registerProxyItemHandlers() {
+    if (_proxyItemHandlersRegistered) return;
+    _proxyItemHandlersRegistered = true;
+
+    // Skip FFI registration in datagen mode
+    if (ServerBridge.isDatagenMode) return;
+
+    // Attack entity callback - default: allow attack (return true)
+    final attackEntityCallback =
+        Pointer.fromFunction<_ProxyItemAttackEntityCallbackNative>(
+            _onProxyItemAttackEntity, true);
+    ServerBridge.registerProxyItemAttackEntityHandler(attackEntityCallback);
+
+    // Use callback - default: PASS (ordinal 4)
+    final useCallback = Pointer.fromFunction<_ProxyItemUseCallbackNative>(
+        _onProxyItemUse, _itemActionResultPassOrdinal);
+    ServerBridge.registerProxyItemUseHandler(useCallback);
+
+    // Use on block callback - default: PASS (ordinal 4)
+    final useOnBlockCallback =
+        Pointer.fromFunction<_ProxyItemUseOnBlockCallbackNative>(
+            _onProxyItemUseOnBlock, _itemActionResultPassOrdinal);
+    ServerBridge.registerProxyItemUseOnBlockHandler(useOnBlockCallback);
+
+    // Use on entity callback - default: PASS (ordinal 4)
+    final useOnEntityCallback =
+        Pointer.fromFunction<_ProxyItemUseOnEntityCallbackNative>(
+            _onProxyItemUseOnEntity, _itemActionResultPassOrdinal);
+    ServerBridge.registerProxyItemUseOnEntityHandler(useOnEntityCallback);
+
+    print('Events: Proxy item handlers registered');
+  }
+
+  /// Register custom goal handlers for Dart-defined AI goals.
+  ///
+  /// This is called automatically during mod initialization.
+  /// It routes custom goal callbacks to CustomGoalRegistry which dispatches
+  /// to the appropriate CustomGoal instances.
+  static void registerCustomGoalHandlers() {
+    if (_customGoalHandlersRegistered) return;
+    _customGoalHandlersRegistered = true;
+
+    // Skip FFI registration in datagen mode
+    if (ServerBridge.isDatagenMode) return;
+
+    // canUse callback - default: false (goal cannot be used)
+    final canUseCallback =
+        Pointer.fromFunction<_CustomGoalCanUseCallbackNative>(
+            _onCustomGoalCanUse, false);
+    ServerBridge.registerCustomGoalCanUseHandler(canUseCallback);
+
+    // canContinueToUse callback - default: false (goal should stop)
+    final canContinueToUseCallback =
+        Pointer.fromFunction<_CustomGoalCanContinueToUseCallbackNative>(
+            _onCustomGoalCanContinueToUse, false);
+    ServerBridge.registerCustomGoalCanContinueToUseHandler(
+        canContinueToUseCallback);
+
+    // start callback (void return)
+    final startCallback =
+        Pointer.fromFunction<_CustomGoalStartCallbackNative>(
+            _onCustomGoalStart);
+    ServerBridge.registerCustomGoalStartHandler(startCallback);
+
+    // tick callback (void return)
+    final tickCallback =
+        Pointer.fromFunction<_CustomGoalTickCallbackNative>(
+            _onCustomGoalTick);
+    ServerBridge.registerCustomGoalTickHandler(tickCallback);
+
+    // stop callback (void return)
+    final stopCallback =
+        Pointer.fromFunction<_CustomGoalStopCallbackNative>(
+            _onCustomGoalStop);
+    ServerBridge.registerCustomGoalStopHandler(stopCallback);
+
+    print('Events: Custom goal handlers registered');
+  }
+
+  // ==========================================================================
+  // Player Connection Events
+  // ==========================================================================
+
+  /// Register a handler for player join events.
+  ///
+  /// Called when a player joins the server.
+  static void onPlayerJoin(void Function(Player player) handler) {
+    _playerJoinHandler = handler;
+    final callback =
+        Pointer.fromFunction<_PlayerJoinCallbackNative>(_onPlayerJoin);
+    ServerBridge.registerPlayerJoinHandler(callback);
+  }
+
+  /// Register a handler for player leave events.
+  ///
+  /// Called when a player disconnects from the server.
+  static void onPlayerLeave(void Function(Player player) handler) {
+    _playerLeaveHandler = handler;
+    final callback =
+        Pointer.fromFunction<_PlayerLeaveCallbackNative>(_onPlayerLeave);
+    ServerBridge.registerPlayerLeaveHandler(callback);
+  }
+
+  /// Register a handler for player respawn events.
+  ///
+  /// Called when a player respawns after dying.
+  /// [endConquered] is true if the player defeated the ender dragon.
+  static void onPlayerRespawn(
+      void Function(Player player, bool endConquered) handler) {
+    _playerRespawnHandler = handler;
+    final callback =
+        Pointer.fromFunction<_PlayerRespawnCallbackNative>(_onPlayerRespawn);
+    ServerBridge.registerPlayerRespawnHandler(callback);
+  }
+
+  // ==========================================================================
+  // Player Death/Damage Events
+  // ==========================================================================
+
+  /// Set a handler for player death events.
+  ///
+  /// Return a custom death message, or null for the default message.
+  static set onPlayerDeath(
+      String? Function(Player player, String damageSource)? handler) {
+    _playerDeathHandler = handler;
+    if (handler != null) {
+      final callback =
+          Pointer.fromFunction<_PlayerDeathCallbackNative>(_onPlayerDeath);
+      ServerBridge.registerPlayerDeathHandler(callback);
+    }
+  }
+
+  /// Set a handler for entity damage events.
+  ///
+  /// Return false to cancel the damage, true to allow it.
+  static set onEntityDamage(
+      bool Function(Entity entity, String damageSource, double amount)?
+          handler) {
+    _entityDamageHandler = handler;
+    if (handler != null) {
+      final callback = Pointer.fromFunction<_EntityDamageCallbackNative>(
+          _onEntityDamage, true);
+      ServerBridge.registerEntityDamageHandler(callback);
+    }
+  }
+
+  /// Register a handler for entity death events.
+  static void onEntityDeath(
+      void Function(Entity entity, String damageSource) handler) {
+    _entityDeathHandler = handler;
+    final callback =
+        Pointer.fromFunction<_EntityDeathCallbackNative>(_onEntityDeath);
+    ServerBridge.registerEntityDeathHandler(callback);
+  }
+
+  // ==========================================================================
+  // Combat Events
+  // ==========================================================================
+
+  /// Set a handler for player attack entity events.
+  ///
+  /// Return false to cancel the attack, true to allow it.
+  static set onPlayerAttackEntity(
+      bool Function(Player player, Entity target)? handler) {
+    _playerAttackEntityHandler = handler;
+    if (handler != null) {
+      final callback =
+          Pointer.fromFunction<_PlayerAttackEntityCallbackNative>(
+              _onPlayerAttackEntity, true);
+      ServerBridge.registerPlayerAttackEntityHandler(callback);
+    }
+  }
+
+  // ==========================================================================
+  // Chat & Command Events
+  // ==========================================================================
+
+  /// Set a handler for player chat events.
+  ///
+  /// Return the modified message, the original message to pass through,
+  /// or null to cancel the message.
+  static set onPlayerChat(
+      String? Function(Player player, String message)? handler) {
+    _playerChatHandler = handler;
+    if (handler != null) {
+      final callback =
+          Pointer.fromFunction<_PlayerChatCallbackNative>(_onPlayerChat);
+      ServerBridge.registerPlayerChatHandler(callback);
+    }
+  }
+
+  /// Set a handler for player command events.
+  ///
+  /// Return false to cancel the command, true to allow it.
+  static set onPlayerCommand(
+      bool Function(Player player, String command)? handler) {
+    _playerCommandHandler = handler;
+    if (handler != null) {
+      final callback = Pointer.fromFunction<_PlayerCommandCallbackNative>(
+          _onPlayerCommand, true);
+      ServerBridge.registerPlayerCommandHandler(callback);
+    }
+  }
+
+  // ==========================================================================
+  // Item Use Events
+  // ==========================================================================
+
+  /// Set a handler for item use events (right-click with item).
+  ///
+  /// Return false to cancel the use, true to allow it.
+  static set onItemUse(
+      bool Function(Player player, ItemStack item, Hand hand)? handler) {
+    _itemUseHandler = handler;
+    if (handler != null) {
+      final callback =
+          Pointer.fromFunction<_ItemUseCallbackNative>(_onItemUse, true);
+      ServerBridge.registerItemUseHandler(callback);
+    }
+  }
+
+  /// Set a handler for item use on block events.
+  ///
+  /// Return EventResult to control the interaction.
+  static set onItemUseOnBlock(
+      EventResult Function(Player player, ItemStack item, Hand hand,
+              BlockPos pos, Direction face)?
+          handler) {
+    _itemUseOnBlockHandler = handler;
+    if (handler != null) {
+      final callback = Pointer.fromFunction<_ItemUseOnBlockCallbackNative>(
+          _onItemUseOnBlock, 1);
+      ServerBridge.registerItemUseOnBlockHandler(callback);
+    }
+  }
+
+  /// Set a handler for item use on entity events.
+  ///
+  /// Return EventResult to control the interaction.
+  static set onItemUseOnEntity(
+      EventResult Function(Player player, ItemStack item, Hand hand,
+              Entity target)?
+          handler) {
+    _itemUseOnEntityHandler = handler;
+    if (handler != null) {
+      final callback = Pointer.fromFunction<_ItemUseOnEntityCallbackNative>(
+          _onItemUseOnEntity, 1);
+      ServerBridge.registerItemUseOnEntityHandler(callback);
+    }
+  }
+
+  // ==========================================================================
+  // Block Place Event
+  // ==========================================================================
+
+  /// Set a handler for block place events.
+  ///
+  /// Return false to cancel the placement, true to allow it.
+  static set onBlockPlace(
+      bool Function(Player player, BlockPos pos, String blockId)? handler) {
+    _blockPlaceHandler = handler;
+    if (handler != null) {
+      final callback = Pointer.fromFunction<_BlockPlaceCallbackNative>(
+          _onBlockPlace, true);
+      ServerBridge.registerBlockPlaceHandler(callback);
+    }
+  }
+
+  // ==========================================================================
+  // Item Pickup/Drop Events
+  // ==========================================================================
+
+  /// Set a handler for player pickup item events.
+  ///
+  /// Return false to cancel the pickup, true to allow it.
+  static set onPlayerPickupItem(
+      bool Function(Player player, ItemEntity item)? handler) {
+    _playerPickupItemHandler = handler;
+    if (handler != null) {
+      final callback =
+          Pointer.fromFunction<_PlayerPickupItemCallbackNative>(
+              _onPlayerPickupItem, true);
+      ServerBridge.registerPlayerPickupItemHandler(callback);
+    }
+  }
+
+  /// Set a handler for player drop item events.
+  ///
+  /// Return false to cancel the drop, true to allow it.
+  static set onPlayerDropItem(
+      bool Function(Player player, ItemStack item)? handler) {
+    _playerDropItemHandler = handler;
+    if (handler != null) {
+      final callback = Pointer.fromFunction<_PlayerDropItemCallbackNative>(
+          _onPlayerDropItem, true);
+      ServerBridge.registerPlayerDropItemHandler(callback);
+    }
+  }
+
+  // ==========================================================================
+  // Server Lifecycle Events
+  // ==========================================================================
+
+  /// Register a handler for server starting event.
+  ///
+  /// Called synchronously when the server begins starting.
+  static void onServerStarting(void Function() handler) {
+    _serverStartingHandler = handler;
+    final callback = Pointer.fromFunction<_ServerLifecycleCallbackNative>(
+      _onServerStarting,
+    );
+    ServerBridge.registerServerStartingHandler(callback);
+  }
+
+  /// Register a handler for server started event.
+  ///
+  /// Called synchronously when the server has finished starting.
+  static void onServerStarted(void Function() handler) {
+    _serverStartedHandler = handler;
+    final callback = Pointer.fromFunction<_ServerLifecycleCallbackNative>(
+      _onServerStarted,
+    );
+    ServerBridge.registerServerStartedHandler(callback);
+  }
+
+  /// Register a handler for server stopping event.
+  ///
+  /// Called synchronously when the server begins stopping.
+  static void onServerStopping(void Function() handler) {
+    _serverStoppingHandler = handler;
+    final callback = Pointer.fromFunction<_ServerLifecycleCallbackNative>(
+      _onServerStopping,
+    );
+    ServerBridge.registerServerStoppingHandler(callback);
+  }
+}
