@@ -679,6 +679,11 @@ public class FlutterScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        // Process Flutter tasks every frame for responsive input handling.
+        // This pumps Flutter's event loop at 60 FPS (or whatever Minecraft's framerate is)
+        // instead of only 20 TPS via the client tick event.
+        DartBridgeClient.safeProcessClientTasks();
+
         // Call super.render() first - this renders the Minecraft background
         // (dark gradient overlay because isInGameUi() returns true)
         super.render(guiGraphics, mouseX, mouseY, partialTick);

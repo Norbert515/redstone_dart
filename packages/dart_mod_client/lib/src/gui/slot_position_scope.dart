@@ -1,6 +1,8 @@
 import 'package:dart_mod_common/dart_mod_common.dart';
 import 'package:flutter/widgets.dart';
 
+import 'gui_route.dart';
+import 'slot_definition.dart';
 import 'slot_position_registry.dart';
 
 /// InheritedWidget that provides SlotPositionRegistry to descendants.
@@ -14,10 +16,15 @@ class SlotPositionScope extends StatefulWidget {
   /// The child widget tree containing SlotReporter widgets.
   final Widget child;
 
+  /// Optional route key for caching positions.
+  /// If provided, positions will be cached after first layout.
+  final String? cacheKey;
+
   const SlotPositionScope({
     super.key,
     required this.menuId,
     required this.child,
+    this.cacheKey,
   });
 
   /// Get the registry from context, or null if not in a SlotPositionScope.
@@ -66,7 +73,6 @@ class _SlotPositionScopeState extends State<SlotPositionScope> {
   void _onPositionsChanged(int menuId, Map<int, Rect> positions) {
     // Send positions to Java via JNI
     // Build comma-separated string: slotIndex,x,y,width,height,...
-    print('[SlotPositionScope] _onPositionsChanged called: menuId=$menuId, positions=${positions.length}');
 
     if (positions.isEmpty) {
       GenericJniBridge.callStaticVoidMethod(
@@ -76,6 +82,21 @@ class _SlotPositionScopeState extends State<SlotPositionScope> {
         [menuId, ''],
       );
       return;
+    }
+
+    // Cache positions if cacheKey is provided
+    final cacheKey = widget.cacheKey;
+    if (cacheKey != null && cacheKey.isNotEmpty) {
+      final slots = positions.entries
+          .map((e) => SlotDefinition(
+                index: e.key,
+                x: e.value.left,
+                y: e.value.top,
+                width: e.value.width,
+                height: e.value.height,
+              ))
+          .toList();
+      setCachedSlotPositions(cacheKey, slots);
     }
 
     final buffer = StringBuffer();
@@ -95,7 +116,6 @@ class _SlotPositionScopeState extends State<SlotPositionScope> {
     }
 
     final dataStr = buffer.toString();
-    print('[SlotPositionScope] Sending slot positions via JNI: ${dataStr.length} chars');
 
     GenericJniBridge.callStaticVoidMethod(
       'com/redstone/DartBridgeClient',

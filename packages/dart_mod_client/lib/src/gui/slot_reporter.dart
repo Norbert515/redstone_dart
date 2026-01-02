@@ -20,11 +20,9 @@ class SlotReporter extends SingleChildRenderObjectWidget {
 
   @override
   RenderObject createRenderObject(BuildContext context) {
-    final registry = SlotPositionScope.maybeOf(context);
-    print('[SlotReporter] createRenderObject slot=$slotIndex, registry=${registry != null ? "found" : "null"}');
     return RenderSlotReporter(
       slotIndex: slotIndex,
-      registry: registry,
+      registry: SlotPositionScope.maybeOf(context),
     );
   }
 
@@ -48,7 +46,16 @@ class RenderSlotReporter extends RenderProxyBox {
     required int slotIndex,
     SlotPositionRegistry? registry,
   })  : _slotIndex = slotIndex,
-        _registry = registry;
+        _registry = registry {
+    // Schedule position report after first layout
+    if (_registry != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (attached && hasSize) {
+          _reportPosition();
+        }
+      });
+    }
+  }
 
   int get slotIndex => _slotIndex;
   set slotIndex(int value) {
@@ -72,8 +79,13 @@ class RenderSlotReporter extends RenderProxyBox {
       // Force re-report to new registry
       _lastPosition = null;
       _lastSize = null;
-      if (hasSize) {
-        _reportPosition();
+      // Schedule a post-frame callback to report position after layout
+      if (attached && hasSize) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (attached) {
+            _reportPosition();
+          }
+        });
       }
     }
   }

@@ -92,7 +92,7 @@ typedef bool (*ContainerMayPlaceCallback)(int64_t menu_id, int32_t slot_index, c
 typedef bool (*ContainerMayPickupCallback)(int64_t menu_id, int32_t slot_index);
 
 // Container lifecycle event callbacks (for event-driven container open/close)
-typedef void (*ContainerOpenCallback)(int32_t menu_id, int32_t slot_count);
+typedef void (*ContainerOpenCallback)(int32_t menu_id, int32_t slot_count, const char* container_id, const char* title);
 typedef void (*ContainerCloseCallback)(int32_t menu_id);
 
 // ==========================================================================
@@ -159,7 +159,7 @@ bool client_dispatch_container_may_place(int64_t menu_id, int32_t slot_index, co
 bool client_dispatch_container_may_pickup(int64_t menu_id, int32_t slot_index);
 
 // Container lifecycle event dispatch (for event-driven container open/close)
-void client_dispatch_container_open(int32_t menu_id, int32_t slot_count);
+void client_dispatch_container_open(int32_t menu_id, int32_t slot_count, const char* container_id, const char* title);
 void client_dispatch_container_close(int32_t menu_id);
 
 // ==========================================================================

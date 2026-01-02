@@ -477,14 +477,25 @@ JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_captureClassloader
 /*
  * Class:     com_redstone_DartBridgeClient
  * Method:    dispatchContainerScreenOpen
- * Signature: (II)V
+ * Signature: (IILjava/lang/String;Ljava/lang/String;)V
  *
  * Dispatch container open event to Dart.
  * Called from FlutterContainerScreen.init().
  */
 JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_dispatchContainerScreenOpen(
-    JNIEnv* /* env */, jclass /* cls */, jint menuId, jint slotCount) {
-    client_dispatch_container_open(static_cast<int32_t>(menuId), static_cast<int32_t>(slotCount));
+    JNIEnv* env, jclass /* cls */, jint menuId, jint slotCount, jstring containerId, jstring title) {
+    const char* containerIdStr = containerId ? env->GetStringUTFChars(containerId, nullptr) : "";
+    const char* titleStr = title ? env->GetStringUTFChars(title, nullptr) : "";
+
+    client_dispatch_container_open(
+        static_cast<int32_t>(menuId),
+        static_cast<int32_t>(slotCount),
+        containerIdStr,
+        titleStr
+    );
+
+    if (containerId && containerIdStr) env->ReleaseStringUTFChars(containerId, containerIdStr);
+    if (title && titleStr) env->ReleaseStringUTFChars(title, titleStr);
 }
 
 /*

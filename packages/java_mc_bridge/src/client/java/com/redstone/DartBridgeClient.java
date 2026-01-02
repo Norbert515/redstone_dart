@@ -203,6 +203,13 @@ public class DartBridgeClient {
             LOGGER.info("ICU data path: {}", icuDataPath);
             LOGGER.info("AOT library path: {}", aotLibraryPath != null && !aotLibraryPath.isEmpty() ? aotLibraryPath : "(JIT mode)");
 
+            // Force software rendering on macOS until Metal compositor is ready
+            // This avoids the Metal→OpenGL IOSurface sharing issues on Apple Silicon
+            if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+                LOGGER.info("macOS detected - forcing software rendering to avoid Metal/OpenGL compatibility issues");
+                setOpenGLEnabled(false);
+            }
+
             boolean success = initClient(
                 assetsPath,
                 icuDataPath,
@@ -710,8 +717,10 @@ public class DartBridgeClient {
      *
      * @param menuId The container menu ID
      * @param slotCount The number of slots in the container
+     * @param containerId The container type ID (e.g., "mymod:custom_chest")
+     * @param title The container title
      */
-    public static native void dispatchContainerScreenOpen(int menuId, int slotCount);
+    public static native void dispatchContainerScreenOpen(int menuId, int slotCount, String containerId, String title);
 
     /**
      * Dispatch container screen close event to Dart.

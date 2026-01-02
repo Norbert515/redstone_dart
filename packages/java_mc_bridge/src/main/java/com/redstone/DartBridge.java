@@ -976,6 +976,28 @@ public class DartBridge {
         return containerDefinitions.keySet();
     }
 
+    /**
+     * Look up a container type ID by its title.
+     *
+     * This is a workaround for client-side lookups where the containerTypeId
+     * isn't synced via Minecraft's networking. Returns the first matching
+     * containerId, or empty string if not found.
+     *
+     * @param title The container title to look up
+     * @return The container type ID, or empty string if not found
+     */
+    public static String getContainerIdByTitle(String title) {
+        if (title == null || title.isEmpty()) {
+            return "";
+        }
+        for (Map.Entry<String, ContainerDef> entry : containerDefinitions.entrySet()) {
+            if (title.equals(entry.getValue().title)) {
+                return entry.getKey();
+            }
+        }
+        return "";
+    }
+
     // ==========================================================================
     // World Block Manipulation APIs
     // ==========================================================================

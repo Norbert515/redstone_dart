@@ -273,8 +273,8 @@ public:
     }
 
     // Container lifecycle event dispatch (for event-driven container open/close)
-    void dispatchContainerOpen(int32_t menu_id, int32_t slot_count) {
-        if (container_open_handler_) container_open_handler_(menu_id, slot_count);
+    void dispatchContainerOpen(int32_t menu_id, int32_t slot_count, const char* container_id, const char* title) {
+        if (container_open_handler_) container_open_handler_(menu_id, slot_count, container_id, title);
     }
 
     void dispatchContainerClose(int32_t menu_id) {
@@ -1086,13 +1086,38 @@ bool client_dispatch_container_may_pickup(int64_t menu_id, int32_t slot_index) {
 }
 
 // Container lifecycle event dispatch (for event-driven container open/close)
-void client_dispatch_container_open(int32_t menu_id, int32_t slot_count) {
+// Uses NativeCallable.listener on Dart side. Strings are allocated with malloc()
+// and passed to the callback - Dart side is responsible for freeing them.
+void client_dispatch_container_open(int32_t menu_id, int32_t slot_count, const char* container_id, const char* title) {
     CLIENT_DISPATCH_CHECK();
-    dart_mc_bridge::ClientCallbackRegistry::instance().dispatchContainerOpen(menu_id, slot_count);
+
+    // Allocate persistent copies of strings using malloc (Dart will free them)
+    // The JNI strings are released after this call returns, so we need our own copies
+    char* container_id_copy = nullptr;
+    char* title_copy = nullptr;
+
+    if (container_id && container_id[0] != '\0') {
+        size_t len = strlen(container_id) + 1;
+        container_id_copy = (char*)malloc(len);
+        if (container_id_copy) memcpy(container_id_copy, container_id, len);
+    }
+
+    if (title && title[0] != '\0') {
+        size_t len = strlen(title) + 1;
+        title_copy = (char*)malloc(len);
+        if (title_copy) memcpy(title_copy, title, len);
+    }
+
+    // Call the callback directly - NativeCallable.listener handles thread safety
+    // Dart callback will receive these malloc'd pointers and must free them
+    dart_mc_bridge::ClientCallbackRegistry::instance().dispatchContainerOpen(
+        menu_id, slot_count, container_id_copy, title_copy);
 }
 
 void client_dispatch_container_close(int32_t menu_id) {
     CLIENT_DISPATCH_CHECK();
+
+    // Close event has no strings, so direct dispatch is safe
     dart_mc_bridge::ClientCallbackRegistry::instance().dispatchContainerClose(menu_id);
 }
 

@@ -2,12 +2,10 @@
 //
 // This file handles ONLY the Flutter UI:
 // - Flutter app initialization
-// - The MinecraftFlutterApp widget
+// - GUI routing for different container types
 //
 // It runs on the Render thread using the Flutter embedder.
 // The Flutter widget tree IS the screen content - no callbacks needed.
-
-import 'dart:async';
 
 // Flutter imports for UI rendering
 import 'package:dart_mod_client/dart_mod_client.dart';
@@ -26,11 +24,6 @@ void main() {
   // Initialize the JNI bridge for calling Java methods from Dart
   GenericJniBridge.init();
 
-  // Note: ContainerEvents infrastructure is available but not used yet.
-  // Event-driven approach hit "Cannot invoke native callback outside an isolate"
-  // error - FFI callbacks can't be invoked from Java's thread context.
-  // Using polling approach for now until task queue solution is implemented.
-
   // Start the Flutter app for UI rendering
   // The Flutter embedder will capture frames from this app and display
   // them in Minecraft's FlutterScreen when invoked
@@ -43,6 +36,8 @@ void main() {
 ///
 /// This widget tree provides frames to the Flutter embedder, which are then
 /// displayed by the Minecraft FlutterScreen when invoked.
+///
+/// Uses [GuiRouter] to declaratively map container types to screen widgets.
 class MinecraftGuiApp extends StatelessWidget {
   const MinecraftGuiApp({super.key});
 
@@ -51,65 +46,40 @@ class MinecraftGuiApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(scaffoldBackgroundColor: Colors.transparent),
-      home: const McTheme(
+      home: McTheme(
         guiScale: 1.0, // Use 1.0 - Java already scales to framebuffer pixels
-        // Show the furnace screen for block entity containers
-        child: ContainerAwareScreen(),
+        child: GuiRouter(
+          routes: [
+            // Test chest container
+            GuiRoute(
+              containerId: 'example_mod:test_chest',
+              builder: (context, info) => TestChestScreen(menuId: info.menuId),
+            ),
+            // Furnace-style block entity container (match by title since block entity
+            // containers don't have a registered container type ID)
+            GuiRoute(
+              title: 'Example Furnace',
+              builder: (context, info) => ExampleFurnaceScreen(menuId: info.menuId),
+              cacheSlotPositions: true, // Pre-compute slot positions for instant item rendering
+            ),
+          ],
+          // Show nothing when no container is open
+          background: const SizedBox.shrink(),
+          // Fallback for unknown container types - show a generic screen
+          fallback: (context, info) {
+            print('[GuiRouter] Unknown container: ${info.containerId}');
+            return Center(
+              child: McPanel(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: McText.label('Unknown container: ${info.containerId}'),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
-  }
-}
-
-/// A screen that dynamically shows the appropriate container UI.
-///
-/// Uses polling to detect when containers are opened/closed.
-/// Polls [ClientContainerView.menuId] at 20Hz (every 50ms) to detect changes.
-class ContainerAwareScreen extends StatefulWidget {
-  const ContainerAwareScreen({super.key});
-
-  @override
-  State<ContainerAwareScreen> createState() => _ContainerAwareScreenState();
-}
-
-class _ContainerAwareScreenState extends State<ContainerAwareScreen> {
-  final _containerView = const ClientContainerView();
-  late Timer _pollTimer;
-  int _lastMenuId = -1;
-
-  @override
-  void initState() {
-    super.initState();
-    // Poll menu state at 20Hz (every 50ms) to detect container open/close
-    _pollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
-      final menuId = _containerView.menuId;
-      if (menuId != _lastMenuId) {
-        print('[ContainerAwareScreen] menuId CHANGED: $_lastMenuId -> $menuId');
-        setState(() {
-          _lastMenuId = menuId;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _pollTimer.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final menuId = _containerView.menuId;
-    print('[ContainerAwareScreen] build() called, menuId=$menuId');
-
-    // If a container is open, show the furnace screen
-    if (menuId >= 0) {
-      print('[ContainerAwareScreen] Showing ExampleFurnaceScreen for menuId=$menuId');
-      return ExampleFurnaceScreen(menuId: menuId);
-    }
-
-    // No container open - show empty/transparent
-    return const SizedBox.shrink();
   }
 }
 

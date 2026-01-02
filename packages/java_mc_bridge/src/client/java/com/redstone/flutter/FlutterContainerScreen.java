@@ -1,6 +1,8 @@
 package com.redstone.flutter;
 
+import com.redstone.DartBridge;
 import com.redstone.DartBridgeClient;
+import com.redstone.DartContainerMenu;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.gui.GuiGraphics;
@@ -37,6 +39,7 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
     private static final Identifier SLOT_HIGHLIGHT_FRONT_SPRITE = Identifier.withDefaultNamespace("container/slot_highlight_front");
 
     protected final T menu;
+    private final Component screenTitle;
     private final Map<Integer, SlotRect> slotPositions = new HashMap<>();
     private int hoveredSlotIndex = -1;
 
@@ -50,6 +53,7 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
     public FlutterContainerScreen(T menu, net.minecraft.world.entity.player.Inventory playerInventory, Component title) {
         super(title);
         this.menu = menu;
+        this.screenTitle = title;
         // playerInventory is available via menu.slots but we don't need it directly
     }
 
@@ -67,10 +71,29 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
             }
         });
 
-        LOGGER.info("[FlutterContainerScreen] Initialized with menu containerId={}", menu.containerId);
+        // Get title as string
+        String titleStr = screenTitle != null ? screenTitle.getString() : "";
+
+        // Get container type ID from DartContainerMenu if available
+        // Otherwise, fall back to looking up by title (workaround for client-side)
+        String containerId = "";
+        if (menu instanceof DartContainerMenu dartMenu) {
+            containerId = dartMenu.getContainerTypeId();
+            if (containerId == null) {
+                containerId = "";
+            }
+        }
+
+        // Fallback: look up containerId by title if not available from menu
+        if (containerId.isEmpty() && !titleStr.isEmpty()) {
+            containerId = DartBridge.getContainerIdByTitle(titleStr);
+        }
+
+        LOGGER.info("[FlutterContainerScreen] Initialized with menu containerId={}, typeId={}, title={}",
+            menu.containerId, containerId, titleStr);
 
         // Notify Dart that container is opening
-        DartBridgeClient.dispatchContainerScreenOpen(menu.containerId, menu.slots.size());
+        DartBridgeClient.dispatchContainerScreenOpen(menu.containerId, menu.slots.size(), containerId, titleStr);
     }
 
     private void updateSlotPositions(int menuId, int[] data) {
