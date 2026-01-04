@@ -68,7 +68,7 @@ class _ExampleFurnaceScreenState extends State<ExampleFurnaceScreen> {
         body: Center(
           child: McPanel(
             width: 176,
-            padding: const EdgeInsets.all(70),
+            padding: const EdgeInsets.all(7),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
