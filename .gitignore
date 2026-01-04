@@ -97,7 +97,17 @@ dart_mc_bridge/native/deps/
 *.local
 secrets/
 credentials/
-# Flutter embedder framework (downloaded dynamically)
+# Flutter embedder framework (downloaded dynamically or custom-built)
 packages/flutter_embedder_poc/deps/FlutterEmbedder.framework/
 packages/flutter_embedder_poc/deps/FlutterEmbedder.framework.zip
 packages/native_mc_bridge/deps/flutter_embedder/
+
+# Custom engine builds (large, user-specific)
+engine_build/
+
+# FVM (Flutter Version Manager)
+.fvm/
+.fvmrc
+
+# Compiled kernel blobs (generated at runtime)
+*.dill
