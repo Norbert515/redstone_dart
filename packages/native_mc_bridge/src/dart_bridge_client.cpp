@@ -688,11 +688,14 @@ bool dart_client_init(const char* assets_path, const char* icu_data_path, const 
     args.icu_data_path = icu_data_path;
 
     // Enable VM service for hot reload in debug mode
+    // Port 0 lets the system choose an available port
     const char* vm_args[] = {
         "--enable-dart-profiling",
         "--enable-asserts",
+        "--enable-vm-service=0",
+        "--disable-service-auth-codes",
     };
-    args.command_line_argc = 2;
+    args.command_line_argc = 4;
     args.command_line_argv = vm_args;
 
     args.vsync_callback = OnClientVsync;

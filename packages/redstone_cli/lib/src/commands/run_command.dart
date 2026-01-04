@@ -378,33 +378,10 @@ class RunCommand extends Command<int> {
         ? project.clientEntry
         : project.entryPoint;
 
+    // 5. Start frontend_server and compile initial kernel
+    // Using frontend_server for BOTH initial compile and hot reload ensures
+    // incremental deltas are compatible with the loaded kernel
     Logger.step('Compiling Dart code to Flutter kernel...');
-    final compiler = ModCompiler(flutterSdk: _flutterSdk!);
-    final result = await compiler.compileToAssets(
-      entryPoint: clientEntryPoint,
-      assetsDir: project.flutterAssetsDir,
-      packagesPath: project.packagesConfigPath,
-    );
-
-    if (!result.success) {
-      Logger.error('Failed to compile mod:');
-      if (result.errors.isNotEmpty) {
-        Logger.error(result.errors);
-      }
-      return false;
-    }
-    Logger.success('Compiled to ${result.outputPath}');
-
-    // 5. In dual-runtime mode, copy server sources for dart_dll runtime
-    if (dualRuntime) {
-      final serverResult = await _compileServerKernel(project);
-      if (!serverResult) {
-        return false;
-      }
-    }
-
-    // 6. Start frontend_server for incremental compilation (hot reload)
-    Logger.step('Starting frontend server for hot reload...');
     _frontendServer = FrontendServerManager(
       flutterSdk: _flutterSdk!,
       entryPoint: clientEntryPoint,
@@ -412,19 +389,40 @@ class RunCommand extends Command<int> {
       packagesPath: project.packagesConfigPath,
     );
 
+    String? initialKernelPath;
     try {
-      await _frontendServer!.start().timeout(
-        const Duration(seconds: 30),
+      initialKernelPath = await _frontendServer!.start().timeout(
+        const Duration(seconds: 60),  // Longer timeout for initial compile
         onTimeout: () {
-          throw TimeoutException('Frontend server startup timed out');
+          throw TimeoutException('Frontend server compilation timed out');
         },
       );
-      Logger.success('Frontend server ready for incremental compilation');
     } catch (e) {
-      Logger.warning('Failed to start frontend server: $e');
-      Logger.info('Hot reload will use full recompilation');
+      Logger.error('Failed to compile Flutter kernel: $e');
       await _frontendServer?.stop();
       _frontendServer = null;
+      return false;
+    }
+
+    // Copy the initial kernel to kernel_blob.bin for the embedder
+    // This ensures hot reload deltas are compatible with the loaded kernel
+    final kernelBlobPath = p.join(project.flutterAssetsDir, 'kernel_blob.bin');
+    try {
+      await File(initialKernelPath).copy(kernelBlobPath);
+      Logger.success('Compiled to $kernelBlobPath');
+    } catch (e) {
+      Logger.error('Failed to copy kernel to assets: $e');
+      return false;
+    }
+
+    Logger.success('Frontend server ready for incremental compilation');
+
+    // 6. In dual-runtime mode, copy server sources for dart_dll runtime
+    if (dualRuntime) {
+      final serverResult = await _compileServerKernel(project);
+      if (!serverResult) {
+        return false;
+      }
     }
 
     // 7. Copy Flutter dependencies to natives directory

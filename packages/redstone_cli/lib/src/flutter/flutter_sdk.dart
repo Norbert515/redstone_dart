@@ -8,27 +8,46 @@ import '../util/platform.dart';
 class FlutterSdk {
   final String path;
 
-  FlutterSdk(this.path);
+  /// Optional path to a custom engine build output directory.
+  ///
+  /// When set, the SDK will use artifacts from this directory:
+  /// - dart-sdk/bin/dartaotruntime
+  /// - dart-sdk/bin/snapshots/frontend_server_aot.dart.snapshot
+  /// - flutter_patched_sdk/
+  ///
+  /// This is used for debug engine builds that support JIT/hot reload.
+  /// All three components must come from the same engine build to ensure
+  /// the kernel SDK hash matches.
+  final String? customEnginePath;
+
+  FlutterSdk(this.path, {this.customEnginePath});
 
   /// Find Flutter SDK from environment or standard locations
+  ///
+  /// Environment variables:
+  /// - FLUTTER_ROOT: Path to Flutter SDK (framework, build tools)
+  /// - FLUTTER_ENGINE_PATH: Path to custom engine build (only for embedder runtime)
   static FlutterSdk? locate() {
+    // Check for custom engine path (e.g., from local engine build)
+    final customEnginePath = Platform.environment['FLUTTER_ENGINE_PATH'];
+
     // Check FLUTTER_ROOT environment variable
     final flutterRoot = Platform.environment['FLUTTER_ROOT'];
     if (flutterRoot != null && _isValidFlutterSdk(flutterRoot)) {
-      return FlutterSdk(flutterRoot);
+      return FlutterSdk(flutterRoot, customEnginePath: customEnginePath);
     }
 
     // Check PATH for flutter command
     final flutterFromPath = _findFlutterInPath();
     if (flutterFromPath != null) {
-      return FlutterSdk(flutterFromPath);
+      return FlutterSdk(flutterFromPath, customEnginePath: customEnginePath);
     }
 
     // Check standard install locations
     final standardLocations = _getStandardLocations();
     for (final location in standardLocations) {
       if (_isValidFlutterSdk(location)) {
-        return FlutterSdk(location);
+        return FlutterSdk(location, customEnginePath: customEnginePath);
       }
     }
 
@@ -134,9 +153,20 @@ class FlutterSdk {
 
   /// Path to the Dart AOT runtime within Flutter SDK
   ///
-  /// Used for running AOT-compiled snapshots like frontend_server_aot.dart.snapshot
+  /// Used for running AOT-compiled snapshots like frontend_server_aot.dart.snapshot.
+  /// When using a custom engine, uses that engine's dartaotruntime to ensure
+  /// compatibility with the engine's frontend_server and flutter_patched_sdk.
   String get dartAotRuntimePath {
     final exe = Platform.isWindows ? 'dartaotruntime.exe' : 'dartaotruntime';
+
+    // Use custom engine's dartaotruntime if available
+    if (customEnginePath != null) {
+      final customPath = p.join(customEnginePath!, 'dart-sdk', 'bin', exe);
+      if (File(customPath).existsSync()) {
+        return customPath;
+      }
+    }
+
     return p.join(path, 'bin', 'cache', 'dart-sdk', 'bin', exe);
   }
 
@@ -171,7 +201,24 @@ class FlutterSdk {
   }
 
   /// Get the best available frontend_server path
+  ///
+  /// When using a custom engine, uses that engine's frontend_server to ensure
+  /// compatibility with the engine's dartaotruntime and flutter_patched_sdk.
   String get bestFrontendServerPath {
+    // Use custom engine's frontend_server if available
+    if (customEnginePath != null) {
+      final customPath = p.join(
+        customEnginePath!,
+        'dart-sdk',
+        'bin',
+        'snapshots',
+        'frontend_server_aot.dart.snapshot',
+      );
+      if (File(customPath).existsSync()) {
+        return customPath;
+      }
+    }
+
     // Prefer the engine version as it's more closely matched to Flutter
     if (File(frontendServerPath).existsSync()) {
       return frontendServerPath;
@@ -187,8 +234,19 @@ class FlutterSdk {
   /// Path to Flutter's patched SDK
   ///
   /// This is the SDK root that should be passed to frontend_server.
+  /// When using a custom engine (FLUTTER_ENGINE_PATH), uses that engine's
+  /// flutter_patched_sdk to ensure the kernel SDK hash matches the engine.
   /// Flutter SDK: bin/cache/artifacts/engine/common/flutter_patched_sdk/
   String get sdkRoot {
+    // Use custom engine's flutter_patched_sdk if available
+    // The kernel SDK hash must match what the FlutterEmbedder expects
+    if (customEnginePath != null) {
+      final customPath = p.join(customEnginePath!, 'flutter_patched_sdk');
+      if (Directory(customPath).existsSync()) {
+        return customPath;
+      }
+    }
+
     return p.join(
       path,
       'bin',
@@ -253,6 +311,9 @@ class FlutterSdk {
   }
 
   /// Path to Dart SDK within Flutter
+  ///
+  /// Note: Always uses Flutter SDK's prebuilt dart-sdk, not from custom engine,
+  /// as it must match the other build tools.
   String get dartSdkPath {
     return p.join(path, 'bin', 'cache', 'dart-sdk');
   }
@@ -337,6 +398,14 @@ class FlutterSdk {
         File(icuDataPath).existsSync();
   }
 
+  /// Whether using a custom engine path
+  bool get hasCustomEngine => customEnginePath != null;
+
   @override
-  String toString() => 'FlutterSdk(path: $path)';
+  String toString() {
+    if (customEnginePath != null) {
+      return 'FlutterSdk(path: $path, customEnginePath: $customEnginePath)';
+    }
+    return 'FlutterSdk(path: $path)';
+  }
 }

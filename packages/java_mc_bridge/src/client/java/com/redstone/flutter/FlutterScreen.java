@@ -113,6 +113,7 @@ public class FlutterScreen extends Screen {
 
     private long currentButtons = 0;
     private boolean pointerAdded = false;
+    private boolean pointerDown = false;  // Track if a DOWN event was sent
 
     public FlutterScreen(Component title) {
         super(title);
@@ -1047,6 +1048,7 @@ public class FlutterScreen extends Screen {
             }
 
             DartBridgeClient.sendPointerEvent(PHASE_DOWN, mouseX, mouseY, currentButtons);
+            pointerDown = true;
             return true; // Consume the event - Flutter handled it
         }
         return super.mouseClicked(event, bl);
@@ -1055,7 +1057,7 @@ public class FlutterScreen extends Screen {
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
         LOGGER.debug("[FlutterScreen] mouseReleased: x={}, y={}, button={}", event.x(), event.y(), event.button());
-        if (flutterInitialized) {
+        if (flutterInitialized && pointerDown) {
             // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
             double mouseX = event.x();
             double mouseY = event.y();
@@ -1063,6 +1065,11 @@ public class FlutterScreen extends Screen {
 
             currentButtons &= ~getButtonMask(button);
             DartBridgeClient.sendPointerEvent(PHASE_UP, mouseX, mouseY, currentButtons);
+
+            // Reset pointerDown when all buttons are released
+            if (currentButtons == 0) {
+                pointerDown = false;
+            }
             return true; // Consume the event - Flutter handled it
         }
         return super.mouseReleased(event);
@@ -1135,6 +1142,7 @@ public class FlutterScreen extends Screen {
         if (flutterInitialized && pointerAdded) {
             DartBridgeClient.sendPointerEvent(PHASE_REMOVE, 0, 0, 0);
             pointerAdded = false;
+            pointerDown = false;
         }
 
         // Clean up texture

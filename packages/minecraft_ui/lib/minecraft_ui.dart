@@ -20,6 +20,7 @@ export 'src/widgets/mc_tooltip.dart';
 export 'src/widgets/mc_progress_bar.dart';
 export 'src/widgets/mc_scrollbar.dart';
 export 'src/widgets/mc_tab_bar.dart';
+export 'src/widgets/mc_pixel_art.dart';
 
 // Layout widgets
 export 'src/widgets/mc_container_screen.dart';

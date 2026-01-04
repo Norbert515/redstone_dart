@@ -519,13 +519,13 @@ class MinecraftRunner {
   /// Server Dart VM prints: "The Dart VM service is listening on http://127.0.0.1:5858/..."
   /// Note: No "flutter:" prefix for server dart_dll runtime.
   static final _serverVmServiceRegex = RegExp(
-    r'(?<!flutter:\s*)The Dart VM service is listening on (http://[\d\.]+:\d+/[^\s]+)',
+    r'(?<!flutter:\s*)The Dart VM service is listening on (http://[\d\.]+:\d+/[^\s]*)',
   );
 
   /// Regular expression to detect Flutter/Client VM service URL from output.
   /// Flutter prints: "flutter: The Dart VM service is listening on http://127.0.0.1:XXXX/..."
   static final _clientVmServiceRegex = RegExp(
-    r'flutter:\s*The Dart VM service is listening on (http://[\d\.]+:\d+/[^\s]+)',
+    r'flutter:\s*The Dart VM service is listening on (http://[\d\.]+:\d+/[^\s]*)',
   );
 
   /// Detect world name from Minecraft log output

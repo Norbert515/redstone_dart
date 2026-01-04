@@ -3,8 +3,10 @@ description: Shared types for Example Mod (client/server agnostic)
 version: 1.0.0
 publish_to: none
 
+resolution: workspace
+
 environment:
-  sdk: ^3.0.0
+  sdk: ^3.5.0
 
 dependencies:
   dart_mod_common:

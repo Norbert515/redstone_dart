@@ -294,23 +294,24 @@ class HotReloadClient {
     }
 
     try {
-      // If we have frontend_server and changed files, do incremental compile
-      // (only for client runtime with Flutter)
+      // If we have frontend_server, do incremental compile for Flutter client
+      // If no specific files provided, use the entry point to trigger a full reload
       String? deltaPath;
-      if (useFlutterReassemble &&
-          _frontendServer != null &&
-          changedFiles != null &&
-          changedFiles.isNotEmpty) {
-        Logger.debug(
-            'Performing incremental compilation for ${changedFiles.length} files');
-        final result = await _frontendServer!.recompile(changedFiles);
+      if (useFlutterReassemble && _frontendServer != null) {
+        final filesToRecompile = (changedFiles != null && changedFiles.isNotEmpty)
+            ? changedFiles
+            : [_frontendServer!.entryPoint];
+
+        Logger.step(
+            '[${connection.name}] Compiling ${filesToRecompile.length} file(s)...');
+        final result = await _frontendServer!.recompile(filesToRecompile);
         if (!result.success) {
           Logger.error(
               'Compilation failed: ${result.errorMessage ?? result.errors.join('\n')}');
           return false;
         }
         deltaPath = result.outputPath;
-        Logger.debug('Incremental compile succeeded: $deltaPath');
+        Logger.step('[${connection.name}] Compilation succeeded');
       }
 
       final vm = await connection.service!.getVM();
@@ -320,13 +321,17 @@ class HotReloadClient {
         if (isolateId == null) continue;
 
         try {
+          // Convert filesystem path to file URI for reloadSources
+          final deltaUri = deltaPath != null ? Uri.file(deltaPath).toString() : null;
+
           final report = await connection.service!.reloadSources(
             isolateId,
-            rootLibUri: deltaPath,
+            rootLibUri: deltaUri,
+            force: true,  // Force reload to apply changes even without file timestamp tracking
           );
 
           if (report.success == true) {
-            Logger.debug(
+            Logger.step(
                 '[${connection.name}] Reloaded isolate: ${isolateRef.name}');
 
             // Call Flutter reassemble if this is the client runtime
@@ -403,9 +408,13 @@ class HotReloadClient {
         if (isolateId == null) continue;
 
         try {
+          // Convert filesystem path to file URI for reloadSources
+          final deltaUri = deltaPath != null ? Uri.file(deltaPath).toString() : null;
+
           final report = await _service!.reloadSources(
             isolateId,
-            rootLibUri: deltaPath, // Pass the delta.dill path if available
+            rootLibUri: deltaUri,
+            force: true,  // Force reload to apply changes even without file timestamp tracking
           );
 
           if (report.success == true) {
@@ -443,11 +452,21 @@ class HotReloadClient {
         'ext.flutter.reassemble',
         isolateId: isolateId,
       );
-      Logger.debug('Flutter reassemble completed');
+      Logger.step('[Client] Flutter reassemble completed');
+
+      // Schedule a frame to force visual update
+      try {
+        await service.callServiceExtension(
+          'ext.redstone.scheduleFrame',
+          isolateId: isolateId,
+        );
+        Logger.step('[Client] Frame scheduled');
+      } catch (e) {
+        Logger.debug('[Client] Could not schedule frame: $e');
+      }
     } catch (e) {
       // Flutter reassemble may not be available on server
-      // This is expected, just log at debug level
-      Logger.debug('Flutter reassemble not available: $e');
+      Logger.warning('[Client] Flutter reassemble failed: $e');
     }
   }
 

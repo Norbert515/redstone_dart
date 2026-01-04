@@ -8,8 +8,11 @@
 // The Flutter widget tree IS the screen content - no callbacks needed.
 
 // Flutter imports for UI rendering
+import 'dart:developer' as developer;
+
 import 'package:dart_mod_client/dart_mod_client.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:minecraft_ui/minecraft_ui.dart';
 
 import 'screens/furnace_screen.dart';
@@ -28,6 +31,12 @@ void main() {
   // The Flutter embedder will capture frames from this app and display
   // them in Minecraft's FlutterScreen when invoked
   runApp(const MinecraftGuiApp());
+
+  // Register service extension for hot reload frame scheduling
+  developer.registerExtension('ext.redstone.scheduleFrame', (method, params) async {
+    SchedulerBinding.instance.scheduleFrame();
+    return developer.ServiceExtensionResponse.result('{}');
+  });
 
   print('Client mod ready! Flutter UI initialized.');
 }

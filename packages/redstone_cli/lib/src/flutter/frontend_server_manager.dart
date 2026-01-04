@@ -128,6 +128,12 @@ class FrontendServerManager {
       '--target=flutter',
       '--packages=$packagesPath',
       '--output-dill=$initialOutputPath',
+      // Debug mode flags - these are CRITICAL for hot reload support
+      // Without these, the kernel is compiled as profile/release mode
+      // which uses AOT and doesn't support hot reload
+      '-Ddart.vm.profile=false',
+      '-Ddart.vm.product=false',
+      '--enable-asserts',
     ];
 
     if (trackWidgetCreation) {
@@ -169,9 +175,12 @@ class FrontendServerManager {
     _process!.exitCode.then((code) {
       Logger.debug('Frontend server exited with code: $code');
       _process = null;
-      _currentCompile?.completeError(
-        Exception('Frontend server exited unexpectedly with code: $code'),
-      );
+      // Only complete with error if not already completed
+      if (_currentCompile != null && !_currentCompile!.isCompleted) {
+        _currentCompile!.completeError(
+          Exception('Frontend server exited unexpectedly with code: $code'),
+        );
+      }
     });
 
     // Perform initial compilation
@@ -210,13 +219,20 @@ class FrontendServerManager {
     _currentCompile = Completer<IncrementalCompileResult>();
     _isInitialCompile = false;
 
-    // Send recompile command with boundary key
-    Logger.debug('Sending recompile command for ${invalidatedFiles.length} files');
-    _process!.stdin.writeln('recompile $_boundaryKey');
+    // Convert entry point to file URI
+    final entryUri = Uri.file(entryPoint).toString();
 
-    // Send each invalidated file
+    // Send recompile command with entry point and boundary key
+    // Format: recompile <entryPoint> <boundaryKey>
+    Logger.debug('Sending recompile command for ${invalidatedFiles.length} files');
+    Logger.debug('Entry point URI: $entryUri');
+    _process!.stdin.writeln('recompile $entryUri $_boundaryKey');
+
+    // Send each invalidated file as file:// URI
     for (final file in invalidatedFiles) {
-      _process!.stdin.writeln(file);
+      final fileUri = Uri.file(file).toString();
+      Logger.debug('Invalidated file: $fileUri');
+      _process!.stdin.writeln(fileUri);
     }
 
     // End with boundary key
