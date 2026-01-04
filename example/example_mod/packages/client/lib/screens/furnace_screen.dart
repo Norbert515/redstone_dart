@@ -55,100 +55,107 @@ class _ExampleFurnaceScreenState extends State<ExampleFurnaceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // DEBUG: This print will show if hot reload actually loaded new code
+    print('🔥🔥🔥 FURNACE BUILD - VERSION 999 🔥🔥🔥');
+
     // Note: GuiRouter already wraps us with SlotPositionScope, so we don't
     // need to create our own. Just use SlotReporter widgets for each slot.
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Center(
-        child: McPanel(
-          width: 176,
-          padding: const EdgeInsets.all(7),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Title
-              const McText.title('Example Furnace'),
+    return Banner(
+      message: 'VERSION 000',
+      location: BannerLocation.topStart,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Center(
+          child: McPanel(
+            width: 176,
+            padding: const EdgeInsets.all(70),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title
+                const McText.title('Example 0000'),
 
-              const SizedBox(height: 8),
+                const SizedBox(height: 8),
 
-              // Furnace slots and progress indicators
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Input and fuel column
-                  Column(
+                // Furnace slots and progress indicators
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Input and fuel column
+                    Column(
+                      children: [
+                        // Input slot (index 0)
+                        SlotReporter(
+                          slotIndex: 0,
+                          child: const McSlot(),
+                        ),
+                        const SizedBox(height: 4),
+                        // Flame indicator (fuel remaining)
+                        McFurnaceFlame(
+                          progress: _litProgress,
+                          isLit: _isLit,
+                        ),
+                        const SizedBox(height: 4),
+                        // Fuel slot (index 1)
+                        SlotReporter(
+                          slotIndex: 1,
+                          child: const McSlot(),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(width: 24),
+
+                    // Arrow progress indicator
+                    McFurnaceArrow(progress: _burnProgress),
+
+                    const SizedBox(width: 24),
+
+                    // Output slot (index 2)
+                    SlotReporter(
+                      slotIndex: 2,
+                      child: const McSlot(),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+
+                // Player inventory label
+                const McText.label('Inventory'),
+                const SizedBox(height: 2),
+
+                // Player inventory (3 rows x 9 columns)
+                // Slots 3-29 are player main inventory
+                for (int row = 0; row < 3; row++)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Input slot (index 0)
-                      SlotReporter(
-                        slotIndex: 0,
-                        child: const McSlot(),
-                      ),
-                      const SizedBox(height: 4),
-                      // Flame indicator (fuel remaining)
-                      McFurnaceFlame(
-                        progress: _litProgress,
-                        isLit: _isLit,
-                      ),
-                      const SizedBox(height: 4),
-                      // Fuel slot (index 1)
-                      SlotReporter(
-                        slotIndex: 1,
-                        child: const McSlot(),
-                      ),
+                      for (int col = 0; col < 9; col++)
+                        SlotReporter(
+                          slotIndex: 3 + row * 9 + col,
+                          child: const McSlot(),
+                        ),
                     ],
                   ),
 
-                  const SizedBox(width: 24),
+                const SizedBox(height: 4),
 
-                  // Arrow progress indicator
-                  McFurnaceArrow(progress: _burnProgress),
-
-                  const SizedBox(width: 24),
-
-                  // Output slot (index 2)
-                  SlotReporter(
-                    slotIndex: 2,
-                    child: const McSlot(),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 14),
-
-              // Player inventory label
-              const McText.label('Inventory'),
-              const SizedBox(height: 2),
-
-              // Player inventory (3 rows x 9 columns)
-              // Slots 3-29 are player main inventory
-              for (int row = 0; row < 3; row++)
+                // Player hotbar (1 row x 9 columns)
+                // Slots 30-38 are hotbar
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     for (int col = 0; col < 9; col++)
                       SlotReporter(
-                        slotIndex: 3 + row * 9 + col,
+                        slotIndex: 30 + col,
                         child: const McSlot(),
                       ),
                   ],
                 ),
-
-              const SizedBox(height: 4),
-
-              // Player hotbar (1 row x 9 columns)
-              // Slots 30-38 are hotbar
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (int col = 0; col < 9; col++)
-                    SlotReporter(
-                      slotIndex: 30 + col,
-                      child: const McSlot(),
-                    ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -173,78 +180,48 @@ class McFurnaceFlame extends StatelessWidget {
     this.isLit = true,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    final scale = McTheme.scaleOf(context);
-    return CustomPaint(
-      painter: _FlamePainter(
-        progress: progress.clamp(0.0, 1.0),
-        isLit: isLit,
-      ),
-      size: Size(14 * scale, 14 * scale),
-    );
-  }
-}
-
-class _FlamePainter extends CustomPainter {
-  final double progress;
-  final bool isLit;
+  // Flame shape (14x14 pixels) - diamond-like shape
+  static const String _flameShape = '''
+......XX......
+......XX......
+.....XXXX.....
+.....XXXX.....
+....XXXXXX....
+....XXXXXX....
+...XXXXXXXX...
+...XXXXXXXX...
+...XXXXXXXX...
+...XXXXXXXX...
+....XXXXXX....
+....XXXXXX....
+.....XXXX.....
+.....XXXX.....''';
 
   static const Color _emptyColor = Color(0xFF373737);
   static const Color _litColor = Color(0xFFD87B26);
 
-  // Vanilla Minecraft flame shape (14x14)
-  // Each row lists which X columns have pixels, from top (row 0) to bottom (row 13)
-  static const List<List<int>> _flameShape = [
-    [6, 7], // row 0 (top tip)
-    [6, 7],
-    [5, 6, 7, 8],
-    [5, 6, 7, 8],
-    [4, 5, 6, 7, 8, 9],
-    [4, 5, 6, 7, 8, 9],
-    [3, 4, 5, 6, 7, 8, 9, 10],
-    [3, 4, 5, 6, 7, 8, 9, 10],
-    [3, 4, 5, 6, 7, 8, 9, 10],
-    [3, 4, 5, 6, 7, 8, 9, 10],
-    [4, 5, 6, 7, 8, 9],
-    [4, 5, 6, 7, 8, 9],
-    [5, 6, 7, 8],
-    [5, 6, 7, 8], // row 13 (bottom)
-  ];
-
-  _FlamePainter({required this.progress, required this.isLit});
-
   @override
-  void paint(Canvas canvas, Size size) {
-    final pixelSize = size.width / 14;
-    final totalRows = _flameShape.length;
+  Widget build(BuildContext context) {
+    final clampedProgress = progress.clamp(0.0, 1.0);
 
-    // Calculate how many rows from the bottom should be lit
-    // progress 1.0 = all rows lit, 0.0 = no rows lit
-    final litRows = (totalRows * progress).round();
-    // The cutoff row index (rows >= this are empty/dark)
-    final cutoffRow = totalRows - litRows;
-
-    final emptyPaint = Paint()..color = _emptyColor;
-    final litPaint = Paint()..color = _litColor;
-
-    for (int row = 0; row < totalRows; row++) {
-      final y = row * pixelSize;
-      final isLitRow = isLit && row >= cutoffRow;
-      final paint = isLitRow ? litPaint : emptyPaint;
-
-      for (final x in _flameShape[row]) {
-        canvas.drawRect(
-          Rect.fromLTWH(x * pixelSize, y, pixelSize, pixelSize),
-          paint,
-        );
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_FlamePainter oldDelegate) {
-    return progress != oldDelegate.progress || isLit != oldDelegate.isLit;
+    return Stack(
+      children: [
+        // Background: full flame in empty color
+        McPixelArt(
+          data: _flameShape,
+          palette: const {'X': _emptyColor},
+        ),
+        // Foreground: lit flame clipped from bottom based on progress
+        if (isLit && clampedProgress > 0)
+          ClipRect(
+            clipper: _VerticalProgressClipper(clampedProgress),
+            child: McPixelArt(
+              data: _flameShape,
+              palette: const {'X': _litColor},
+            ),
+          ),
+      ],
+    );
   }
 }
 
@@ -261,78 +238,82 @@ class McFurnaceArrow extends StatelessWidget {
     required this.progress,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    final scale = McTheme.scaleOf(context);
-    return CustomPaint(
-      painter: _ArrowPainter(progress: progress.clamp(0.0, 1.0)),
-      size: Size(22 * scale, 16 * scale),
-    );
-  }
-}
-
-class _ArrowPainter extends CustomPainter {
-  final double progress;
+  // Arrow shape (24x17 pixels) - shaft with arrowhead pointing right
+  // Vanilla Minecraft style: horizontal shaft + triangular arrowhead with tip
+  static const String _arrowShape = '''
+......................X.
+.....................XX.
+....................XXX.
+...................XXXX.
+..................XXXXX.
+.................XXXXXX.
+................XXXXXXX.
+...............XXXXXXXX.
+XXXXXXXXXXXXXXXXXXXXXXXX
+...............XXXXXXXX.
+................XXXXXXX.
+.................XXXXXX.
+..................XXXXX.
+...................XXXX.
+....................XXX.
+.....................XX.
+......................X.''';
 
   static const Color _emptyColor = Color(0xFF8B8B8B);
   static const Color _fillColor = Color(0xFFFFFFFF);
 
-  // Vanilla Minecraft arrow shape (22x16)
-  // Each row lists [startX, endX] for the arrow shape
-  // Shaft is ~5px tall in center, arrowhead is triangle on right
-  static const List<List<int>> _arrowShape = [
-    [17, 18], // row 0 - arrowhead top
-    [16, 19], // row 1
-    [16, 20], // row 2
-    [15, 21], // row 3
-    [15, 22], // row 4
-    [0, 22], // row 5 - shaft + arrowhead (shaft starts)
-    [0, 22], // row 6
-    [0, 22], // row 7 - middle
-    [0, 22], // row 8
-    [0, 22], // row 9 - shaft + arrowhead (shaft ends)
-    [15, 22], // row 10
-    [15, 21], // row 11
-    [16, 20], // row 12
-    [16, 19], // row 13
-    [17, 18], // row 14 - arrowhead bottom
-    [], // row 15 - empty
-  ];
+  @override
+  Widget build(BuildContext context) {
+    final clampedProgress = progress.clamp(0.0, 1.0);
 
-  _ArrowPainter({required this.progress});
+    return Stack(
+      children: [
+        // Background: full arrow in empty color
+        McPixelArt(
+          data: _arrowShape,
+          palette: const {'X': _emptyColor},
+        ),
+        // Foreground: filled arrow clipped from left based on progress
+        if (clampedProgress > 0)
+          ClipRect(
+            clipper: _HorizontalProgressClipper(clampedProgress),
+            child: McPixelArt(
+              data: _arrowShape,
+              palette: const {'X': _fillColor},
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Clips from bottom to top based on progress (for vertical fill animations).
+class _VerticalProgressClipper extends CustomClipper<Rect> {
+  final double progress; // 0.0 to 1.0
+
+  _VerticalProgressClipper(this.progress);
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final pixelW = size.width / 22;
-    final pixelH = size.height / 16;
-
-    final emptyPaint = Paint()..color = _emptyColor;
-    final fillPaint = Paint()..color = _fillColor;
-
-    // Calculate fill cutoff (in pixels from left)
-    final fillCutoff = 22 * progress;
-
-    for (int row = 0; row < _arrowShape.length; row++) {
-      final rowData = _arrowShape[row];
-      if (rowData.isEmpty) continue;
-
-      final startX = rowData[0];
-      final endX = rowData[1];
-      final y = row * pixelH;
-
-      // Draw each pixel in the row
-      for (int x = startX; x < endX; x++) {
-        final isFilled = x < fillCutoff;
-        canvas.drawRect(
-          Rect.fromLTWH(x * pixelW, y, pixelW, pixelH),
-          isFilled ? fillPaint : emptyPaint,
-        );
-      }
-    }
+  Rect getClip(Size size) {
+    final top = size.height * (1 - progress);
+    return Rect.fromLTRB(0, top, size.width, size.height);
   }
 
   @override
-  bool shouldRepaint(_ArrowPainter oldDelegate) {
-    return progress != oldDelegate.progress;
+  bool shouldReclip(_VerticalProgressClipper oldClipper) => progress != oldClipper.progress;
+}
+
+/// Clips from left to right based on progress (for horizontal fill animations).
+class _HorizontalProgressClipper extends CustomClipper<Rect> {
+  final double progress; // 0.0 to 1.0
+
+  _HorizontalProgressClipper(this.progress);
+
+  @override
+  Rect getClip(Size size) {
+    return Rect.fromLTRB(0, 0, size.width * progress, size.height);
   }
+
+  @override
+  bool shouldReclip(_HorizontalProgressClipper oldClipper) => progress != oldClipper.progress;
 }
