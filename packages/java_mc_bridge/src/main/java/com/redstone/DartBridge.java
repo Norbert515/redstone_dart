@@ -3339,4 +3339,82 @@ public class DartBridge {
             mob.setSpeed((float) speed);
         }
     }
+
+    // ==========================================================================
+    // Block Entity Inventory Access (for Dart to read/write Java inventories)
+    // ==========================================================================
+
+    /**
+     * Get an item from a block entity's inventory by position.
+     * @param dimension Dimension ID (e.g., "minecraft:overworld")
+     * @param x Block X coordinate
+     * @param y Block Y coordinate
+     * @param z Block Z coordinate
+     * @param slot Slot index
+     * @return JSON string: {"id":"minecraft:item_id","count":5} or {"id":"minecraft:air","count":0}
+     */
+    public static String getBlockEntitySlot(String dimension, int x, int y, int z, int slot) {
+        try {
+            if (serverInstance == null) return "{\"id\":\"minecraft:air\",\"count\":0}";
+
+            ServerLevel level = getServerLevel(dimension);
+            if (level == null) return "{\"id\":\"minecraft:air\",\"count\":0}";
+
+            BlockPos pos = new BlockPos(x, y, z);
+            net.minecraft.world.level.block.entity.BlockEntity be = level.getBlockEntity(pos);
+
+            if (be instanceof net.minecraft.world.Container container) {
+                if (slot >= 0 && slot < container.getContainerSize()) {
+                    ItemStack stack = container.getItem(slot);
+                    if (stack.isEmpty()) {
+                        return "{\"id\":\"minecraft:air\",\"count\":0}";
+                    }
+                    String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+                    return "{\"id\":\"" + itemId + "\",\"count\":" + stack.getCount() + "}";
+                }
+            }
+            return "{\"id\":\"minecraft:air\",\"count\":0}";
+        } catch (Exception e) {
+            LOGGER.error("Error getting block entity slot: {}", e.getMessage());
+            return "{\"id\":\"minecraft:air\",\"count\":0}";
+        }
+    }
+
+    /**
+     * Set an item in a block entity's inventory by position.
+     * @param dimension Dimension ID (e.g., "minecraft:overworld")
+     * @param x Block X coordinate
+     * @param y Block Y coordinate
+     * @param z Block Z coordinate
+     * @param slot Slot index
+     * @param itemId Item ID (e.g., "minecraft:iron_ingot")
+     * @param count Item count
+     */
+    public static void setBlockEntitySlot(String dimension, int x, int y, int z, int slot, String itemId, int count) {
+        try {
+            if (serverInstance == null) return;
+
+            ServerLevel level = getServerLevel(dimension);
+            if (level == null) return;
+
+            BlockPos pos = new BlockPos(x, y, z);
+            net.minecraft.world.level.block.entity.BlockEntity be = level.getBlockEntity(pos);
+
+            if (be instanceof net.minecraft.world.Container container) {
+                if (slot >= 0 && slot < container.getContainerSize()) {
+                    if (itemId.equals("minecraft:air") || count <= 0) {
+                        container.setItem(slot, ItemStack.EMPTY);
+                    } else {
+                        Optional<Item> itemOpt = BuiltInRegistries.ITEM.getOptional(Identifier.parse(itemId));
+                        if (itemOpt.isPresent()) {
+                            container.setItem(slot, new ItemStack(itemOpt.get(), count));
+                        }
+                    }
+                    be.setChanged(); // Mark the block entity as dirty so it saves
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error setting block entity slot: {}", e.getMessage());
+        }
+    }
 }

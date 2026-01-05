@@ -198,9 +198,9 @@ Future<void> main() async {
     });
   });
 
-  await group('ContainerDefinition', () async {
-    await testMinecraft('ContainerDefinition calculates slotCount correctly', (game) async {
-      final definition = ContainerDefinition(
+  await group('GridContainerDefinition', () async {
+    await testMinecraft('GridContainerDefinition calculates slotCount correctly', (game) async {
+      final definition = GridContainerDefinition(
         id: 'test:slot_count_test',
         title: 'Slot Count Test',
         rows: 3,
@@ -211,8 +211,8 @@ Future<void> main() async {
       expect(definition.slotCount, equals(27)); // Standard chest size
     });
 
-    await testMinecraft('ContainerDefinition with custom dimensions', (game) async {
-      final definition = ContainerDefinition(
+    await testMinecraft('GridContainerDefinition with custom dimensions', (game) async {
+      final definition = GridContainerDefinition(
         id: 'test:custom_size',
         title: 'Custom Size',
         rows: 6,
@@ -223,8 +223,8 @@ Future<void> main() async {
       expect(definition.slotCount, equals(54)); // Large chest size
     });
 
-    await testMinecraft('ContainerDefinition with single column', (game) async {
-      final definition = ContainerDefinition(
+    await testMinecraft('GridContainerDefinition with single column', (game) async {
+      final definition = GridContainerDefinition(
         id: 'test:single_column',
         title: 'Single Column',
         rows: 9,

@@ -11,6 +11,7 @@ import 'package:dart_mod_common/dart_mod_common.dart';
 import 'package:ffi/ffi.dart';
 
 import '../bridge.dart';
+import '../container/container_block_entity.dart';
 import 'block_entity_registry.dart';
 
 // =============================================================================
@@ -103,6 +104,8 @@ int _onBlockEntityGetDataSlot(int handlerId, int blockPosHash, int index) {
     final instance = BlockEntityRegistry.get(handlerId, blockPosHash);
     if (instance is ProcessingBlockEntity) {
       return instance.getDataSlot(index);
+    } else if (instance is ContainerBlockEntity) {
+      return instance.getDataSlot(index);
     }
     return 0;
   } catch (e, stack) {
@@ -117,6 +120,8 @@ void _onBlockEntitySetDataSlot(int handlerId, int blockPosHash, int index, int v
   try {
     final instance = BlockEntityRegistry.get(handlerId, blockPosHash);
     if (instance is ProcessingBlockEntity) {
+      instance.setDataSlot(index, value);
+    } else if (instance is ContainerBlockEntity) {
       instance.setDataSlot(index, value);
     }
   } catch (e, stack) {
@@ -200,6 +205,9 @@ void initBlockEntityCallbacks() {
       'server_register_block_entity_removed_handler');
   registerRemoved(Pointer.fromFunction<_BlockEntityRemovedCallbackNative>(_onBlockEntityRemoved));
 
+  // Enable JNI-based inventory access for block entities on the server
+  BlockEntityWithInventory.enableJniInventoryAccess();
+
   _initialized = true;
-  print('BlockEntityCallbacks: Initialized');
+  print('BlockEntityCallbacks: Initialized (JNI inventory access enabled)');
 }

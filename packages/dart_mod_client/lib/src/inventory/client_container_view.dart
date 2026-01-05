@@ -127,4 +127,26 @@ class ClientContainerView implements ContainerView {
       [],
     );
   }
+
+  /// Get a raw ContainerData slot value by index.
+  ///
+  /// This is a generic way to read synced data from any container that uses
+  /// ContainerData (like furnace-like block entity menus).
+  ///
+  /// Common ContainerData indices for furnace-like menus:
+  /// - 0: litTime (current fuel burn time remaining)
+  /// - 1: litDuration (total burn time of current fuel)
+  /// - 2: cookingProgress (current cooking progress)
+  /// - 3: cookingTotalTime (total time to cook current item)
+  ///
+  /// Returns 0 if the current container doesn't support ContainerData or
+  /// if the index is out of range.
+  int getContainerDataSlot(int dataIndex) {
+    return GenericJniBridge.callStaticIntMethod(
+      _dartBridgeClient,
+      'getContainerDataSlot',
+      '(I)I',
+      [dataIndex],
+    );
+  }
 }

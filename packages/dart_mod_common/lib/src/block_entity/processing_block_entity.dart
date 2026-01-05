@@ -37,16 +37,16 @@ abstract class ProcessingBlockEntity extends BlockEntityWithInventory {
   // Synced state (maps to ContainerData indices)
 
   /// Current burn time remaining (ticks).
-  final SyncedInt litTime = SyncedInt(0);
+  final SyncedInt litTime = SyncedInt.withIndex(0);
 
   /// Total burn time of current fuel (ticks).
-  final SyncedInt litDuration = SyncedInt(1);
+  final SyncedInt litDuration = SyncedInt.withIndex(1);
 
   /// Current cooking progress (ticks).
-  final SyncedInt cookingProgress = SyncedInt(2);
+  final SyncedInt cookingProgress = SyncedInt.withIndex(2);
 
   /// Total cooking time for the current recipe (ticks).
-  final SyncedInt cookingTotalTime = SyncedInt(3);
+  final SyncedInt cookingTotalTime = SyncedInt.withIndex(3);
 
   /// Creates a processing block entity with the given settings.
   ProcessingBlockEntity({required ProcessingSettings settings})

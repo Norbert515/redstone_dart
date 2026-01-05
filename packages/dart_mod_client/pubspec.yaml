@@ -9,6 +9,8 @@ environment:
 dependencies:
   dart_mod_common:
     path: ../dart_mod_common
+  minecraft_ui:
+    path: ../minecraft_ui
   flutter:
     sdk: flutter
   ffi: ^2.0.0

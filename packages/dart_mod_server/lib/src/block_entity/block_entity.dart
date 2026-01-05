@@ -5,3 +5,4 @@ library;
 
 export 'block_entity_registry.dart';
 export 'block_entity_callbacks.dart' show initBlockEntityCallbacks;
+export 'block_entity_jni.dart';

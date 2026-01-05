@@ -82,6 +82,15 @@ class MinecraftGuiApp extends StatelessWidget {
               builder: (context, info) => ExampleFurnaceScreen(menuId: info.menuId),
               cacheSlotPositions: true, // Pre-compute slot positions for instant item rendering
             ),
+            // SimpleFurnace - demonstrates the new Container API with reactive synced values
+            GuiRoute(
+              title: 'Simple Furnace',
+              builder: (context, info) => SimpleFurnaceScreen(
+                container: SimpleFurnaceContainer(),
+                menuId: info.menuId,
+              ),
+              cacheSlotPositions: true,
+            ),
           ],
           // Show nothing when no container is open
           background: const SizedBox.shrink(),

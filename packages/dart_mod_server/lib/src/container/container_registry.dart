@@ -6,11 +6,14 @@ import 'package:dart_mod_common/dart_mod_common.dart';
 import 'dart_container.dart';
 import 'container_manager.dart';
 
-/// Definition for a container type.
+/// Definition for a grid-based container type (chests, inventories).
 ///
-/// Defines the properties of a container that can be opened by blocks
-/// or other game elements.
-class ContainerDefinition {
+/// Defines the properties of a simple grid container that can be opened
+/// by blocks or other game elements.
+///
+/// For block entities with synced data (furnace-like), use
+/// [ContainerDefinition] from dart_mod_common instead with [ContainerBlockEntity].
+class GridContainerDefinition {
   /// Unique identifier for this container type (e.g., "mymod:diamond_chest").
   final String id;
 
@@ -26,14 +29,14 @@ class ContainerDefinition {
   /// Factory function to create container instances.
   final ContainerFactory factory;
 
-  /// Creates a container definition.
+  /// Creates a grid container definition.
   ///
   /// [id] Must be in the format "namespace:path" (e.g., "mymod:custom_chest")
   /// [title] Display title shown to the player
   /// [rows] Number of rows (default 3)
   /// [columns] Number of columns (default 9)
   /// [factory] Factory function that creates container instances
-  const ContainerDefinition({
+  const GridContainerDefinition({
     required this.id,
     required this.title,
     this.rows = 3,
@@ -62,7 +65,7 @@ class ContainerDefinition {
 /// }
 /// ```
 class ContainerRegistry {
-  static final Map<String, ContainerDefinition> _definitions = {};
+  static final Map<String, GridContainerDefinition> _definitions = {};
   static bool _initialized = false;
 
   ContainerRegistry._(); // Private constructor - all static
@@ -74,7 +77,7 @@ class ContainerRegistry {
   ///
   /// Throws [ArgumentError] if the ID format is invalid.
   /// Throws [StateError] if a container with this ID is already registered.
-  static void register(ContainerDefinition definition) {
+  static void register(GridContainerDefinition definition) {
     // Validate ID format
     final parts = definition.id.split(':');
     if (parts.length != 2) {
@@ -100,7 +103,7 @@ class ContainerRegistry {
   }
 
   /// Register container type with Java side.
-  static void _registerWithJava(ContainerDefinition definition) {
+  static void _registerWithJava(GridContainerDefinition definition) {
     try {
       GenericJniBridge.callStaticVoidMethod(
         'com/redstone/DartBridge',
@@ -114,9 +117,9 @@ class ContainerRegistry {
     }
   }
 
-  /// Convenience method to register a simple container.
+  /// Convenience method to register a simple grid container.
   ///
-  /// This is a shorthand for creating a [ContainerDefinition] and registering it.
+  /// This is a shorthand for creating a [GridContainerDefinition] and registering it.
   ///
   /// Example:
   /// ```dart
@@ -134,7 +137,7 @@ class ContainerRegistry {
     int columns = 9,
     required T Function(int menuId) factory,
   }) {
-    register(ContainerDefinition(
+    register(GridContainerDefinition(
       id: id,
       title: title,
       rows: rows,
@@ -143,10 +146,10 @@ class ContainerRegistry {
     ));
   }
 
-  /// Get a container definition by ID.
+  /// Get a grid container definition by ID.
   ///
   /// Returns null if no container type is registered with that ID.
-  static ContainerDefinition? getDefinition(String id) => _definitions[id];
+  static GridContainerDefinition? getDefinition(String id) => _definitions[id];
 
   /// Get all registered container type IDs.
   static List<String> get registeredIds => _definitions.keys.toList();
@@ -170,6 +173,6 @@ class ContainerRegistry {
     print('ContainerRegistry: Initialized');
   }
 
-  /// Get all registered container definitions.
-  static Iterable<ContainerDefinition> get allDefinitions => _definitions.values;
+  /// Get all registered grid container definitions.
+  static Iterable<GridContainerDefinition> get allDefinitions => _definitions.values;
 }

@@ -9,3 +9,6 @@ export 'container_callbacks.dart';
 export 'dart_container.dart';
 export 'container_manager.dart';
 export 'container_registry.dart';
+export 'container_block_entity.dart';
+export 'simple_furnace_entity.dart';
+export 'simple_furnace_block.dart';

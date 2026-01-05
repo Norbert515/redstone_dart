@@ -43,6 +43,12 @@ public class DartBridgeClient {
     private static volatile boolean cachedIsLit = false;
     private static volatile int cachedContainerMenuId = -1;
 
+    // Cached raw container data slot values (updated on render thread, read from any thread)
+    // Standard furnace-like menus use 4 slots: litTime, litDuration, cookingProgress, cookingTotalTime
+    private static final int MAX_CACHED_DATA_SLOTS = 8;  // Support up to 8 data slots
+    private static final int[] cachedContainerDataSlots = new int[MAX_CACHED_DATA_SLOTS];
+    private static volatile int cachedDataSlotCount = 0;
+
     // ==========================================================================
     // Client Runtime Native Methods (Flutter Engine)
     // ==========================================================================
@@ -837,6 +843,30 @@ public class DartBridgeClient {
     }
 
     /**
+     * Get a ContainerData slot value by index for the current container menu.
+     * This is a generic way to read synced data from any container.
+     *
+     * Only works when the current container is a DartBlockEntityMenu (or similar
+     * that supports ContainerData). Returns the raw int value at the specified index.
+     *
+     * Common ContainerData indices for furnace-like menus:
+     * - 0: litTime (current fuel burn time remaining)
+     * - 1: litDuration (total burn time of current fuel)
+     * - 2: cookingProgress (current cooking progress)
+     * - 3: cookingTotalTime (total time to cook current item)
+     *
+     * @param dataIndex The ContainerData slot index
+     * @return The value at that index, or 0 if not available
+     */
+    public static int getContainerDataSlot(int dataIndex) {
+        // Use cached values for thread-safety (updated on render thread)
+        if (dataIndex >= 0 && dataIndex < cachedDataSlotCount && dataIndex < MAX_CACHED_DATA_SLOTS) {
+            return cachedContainerDataSlots[dataIndex];
+        }
+        return 0;
+    }
+
+    /**
      * Update cached container progress values.
      * MUST be called from the render thread (e.g., during screen tick or render).
      * This allows Dart/Flutter to safely read progress values from any thread.
@@ -857,21 +887,39 @@ public class DartBridgeClient {
                     oldMenuId, cachedContainerMenuId, DartBridgeClient.class.getClassLoader());
             }
 
-            // Update progress values
+            // Update progress values and raw data slots
             if (mc.player.containerMenu instanceof DartBlockEntityMenu menu) {
                 cachedLitProgress = menu.getLitProgress();
                 cachedBurnProgress = menu.getBurnProgress();
                 cachedIsLit = menu.isLit();
+
+                // Update raw data slot values (for SyncedInt support)
+                // DartBlockEntityMenu has 4 data slots: litTime, litDuration, cookingProgress, cookingTotalTime
+                cachedDataSlotCount = 4;
+                for (int i = 0; i < cachedDataSlotCount && i < MAX_CACHED_DATA_SLOTS; i++) {
+                    int val = menu.getDataValue(i);
+                    cachedContainerDataSlots[i] = val;
+                    if (val != 0) {
+                        LOGGER.info("[DartBridgeClient] cachedDataSlot[{}] = {}", i, val);
+                    }
+                }
             } else {
+                // Log if menu is not DartBlockEntityMenu
+                if (oldMenuId != cachedContainerMenuId) {
+                    LOGGER.info("[DartBridgeClient] Menu is NOT DartBlockEntityMenu, it is: {}",
+                        mc.player.containerMenu != null ? mc.player.containerMenu.getClass().getName() : "null");
+                }
                 cachedLitProgress = 0.0f;
                 cachedBurnProgress = 0.0f;
                 cachedIsLit = false;
+                cachedDataSlotCount = 0;
             }
         } else {
             cachedContainerMenuId = -1;
             cachedLitProgress = 0.0f;
             cachedBurnProgress = 0.0f;
             cachedIsLit = false;
+            cachedDataSlotCount = 0;
         }
     }
 

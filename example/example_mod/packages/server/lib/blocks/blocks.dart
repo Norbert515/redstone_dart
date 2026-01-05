@@ -46,5 +46,7 @@ void registerBlocks() {
   BlockRegistry.register(EntityRadarBlock());
   BlockRegistry.register(TestChestBlock());
   BlockRegistry.register(ExampleFurnaceBlock());
+  // SimpleFurnace demonstrates the new Container API with reactive synced values
+  SimpleFurnaceBlock.register(); // Registers both block entity and block
   BlockRegistry.freeze();
 }
