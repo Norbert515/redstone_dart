@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:vm_service/vm_service.dart';
 import 'package:vm_service/vm_service_io.dart';
 
@@ -264,6 +266,19 @@ class HotReloadClient {
     }
 
     final results = await Future.wait(futures);
+
+    // In dual-runtime mode, consider success if client (Flutter) succeeds
+    // Server reload may fail since embedded Dart VM has different reload behavior
+    final serverIndex = _serverConnection?.connected == true ? 0 : -1;
+    final clientIndex = _clientConnection?.connected == true ?
+        (serverIndex >= 0 ? 1 : 0) : -1;
+
+    if (clientIndex >= 0 && results[clientIndex]) {
+      // Client succeeded, that's what matters for UI updates
+      return true;
+    }
+
+    // Fall back to requiring all to succeed
     return results.every((r) => r);
   }
 
@@ -295,12 +310,23 @@ class HotReloadClient {
 
     try {
       // If we have frontend_server, do incremental compile for Flutter client
-      // If no specific files provided, use the entry point to trigger a full reload
       String? deltaPath;
       if (useFlutterReassemble && _frontendServer != null) {
-        final filesToRecompile = (changedFiles != null && changedFiles.isNotEmpty)
-            ? changedFiles
-            : [_frontendServer!.entryPoint];
+        // The frontend_server needs to know which files have changed.
+        // If no specific files provided, we scan for recently modified .dart files
+        // in the project directory.
+        List<String> filesToRecompile;
+        if (changedFiles != null && changedFiles.isNotEmpty) {
+          filesToRecompile = changedFiles;
+        } else {
+          // Find all .dart files modified in the last few seconds
+          // This is a heuristic to catch files the user just edited
+          filesToRecompile = await _findRecentlyModifiedFiles(_frontendServer!.entryPoint);
+          if (filesToRecompile.isEmpty) {
+            // Fall back to entry point if no recent changes detected
+            filesToRecompile = [_frontendServer!.entryPoint];
+          }
+        }
 
         Logger.step(
             '[${connection.name}] Compiling ${filesToRecompile.length} file(s)...');
@@ -494,5 +520,44 @@ class HotReloadClient {
     _serverConnection = null;
     _clientConnection = null;
     _dualRuntimeMode = false;
+  }
+
+  /// Find .dart files that were modified recently (within last 10 seconds)
+  /// This is used to detect which files the user has edited for hot reload
+  Future<List<String>> _findRecentlyModifiedFiles(String entryPoint) async {
+    // entryPoint is like /path/to/packages/client/lib/main.dart
+    // We want to search in /path/to/packages/client/lib/
+    final libDir = Directory(p.dirname(entryPoint));
+    if (!await libDir.exists()) {
+      Logger.debug('lib directory not found: ${libDir.path}');
+      return [];
+    }
+    Logger.debug('Searching for modified files in: ${libDir.path}');
+
+    final cutoffTime = DateTime.now().subtract(const Duration(seconds: 10));
+    final modifiedFiles = <String>[];
+
+    // Search in the lib/ directory and its subdirectories
+    await for (final entity in libDir.list(recursive: true, followLinks: false)) {
+      if (entity is File && entity.path.endsWith('.dart')) {
+        // Skip generated files
+        if (entity.path.contains('.dart_tool') ||
+            entity.path.contains('.g.dart') ||
+            entity.path.contains('.freezed.dart')) {
+          continue;
+        }
+        try {
+          final stat = await entity.stat();
+          if (stat.modified.isAfter(cutoffTime)) {
+            modifiedFiles.add(entity.path);
+            Logger.debug('Found recently modified: ${entity.path}');
+          }
+        } catch (_) {
+          // Skip files we can't stat
+        }
+      }
+    }
+
+    return modifiedFiles;
   }
 }

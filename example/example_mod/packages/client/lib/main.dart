@@ -24,6 +24,17 @@ import 'screens/furnace_screen.dart';
 void main() {
   print('Client mod initialized!');
 
+  // Print VM service URL for hot reload detection
+  // The CLI looks for "flutter: The Dart VM service is listening on ..." pattern
+  // We explicitly add the "flutter:" prefix since the embedder doesn't add it
+  final serviceInfo = developer.Service.getInfo();
+  serviceInfo.then((info) {
+    if (info.serverUri != null) {
+      // ignore: avoid_print
+      print('flutter: The Dart VM service is listening on ${info.serverUri}');
+    }
+  });
+
   // Initialize the JNI bridge for calling Java methods from Dart
   GenericJniBridge.init();
 
