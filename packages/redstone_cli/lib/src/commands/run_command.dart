@@ -372,13 +372,21 @@ class RunCommand extends Command<int> {
       assetsDir.createSync(recursive: true);
     }
 
-    // 4. Build Flutter assets (compile mod to kernel_blob.bin)
+    // 4. Bundle Flutter assets (fonts, images, manifests)
+    // This generates FontManifest.json, AssetManifest.bin, fonts, etc.
+    // It also generates kernel_blob.bin which we overwrite in the next step
+    final clientDir = dualRuntime ? project.clientPackageDir : project.rootDir;
+    if (!await _bundleFlutterAssets(project, clientDir)) {
+      return false;
+    }
+
+    // 5. Build Flutter kernel (compile mod to kernel_blob.bin)
     // In dual-runtime mode, use the configured client entry point
     final clientEntryPoint = dualRuntime
         ? project.clientEntry
         : project.entryPoint;
 
-    // 5. Start frontend_server and compile initial kernel
+    // 6. Start frontend_server and compile initial kernel
     // Using frontend_server for BOTH initial compile and hot reload ensures
     // incremental deltas are compatible with the loaded kernel
     Logger.step('Compiling Dart code to Flutter kernel...');
@@ -417,7 +425,7 @@ class RunCommand extends Command<int> {
 
     Logger.success('Frontend server ready for incremental compilation');
 
-    // 6. In dual-runtime mode, copy server sources for dart_dll runtime
+    // 7. In dual-runtime mode, copy server sources for dart_dll runtime
     if (dualRuntime) {
       final serverResult = await _compileServerKernel(project);
       if (!serverResult) {
@@ -425,7 +433,7 @@ class RunCommand extends Command<int> {
       }
     }
 
-    // 7. Copy Flutter dependencies to natives directory
+    // 8. Copy Flutter dependencies to natives directory
     await _copyFlutterDependencies(project);
 
     return true;
@@ -589,6 +597,39 @@ class RunCommand extends Command<int> {
     }
 
     Logger.success('Flutter dependencies copied');
+  }
+
+  /// Bundles Flutter assets (fonts, images, manifests) for the client package.
+  ///
+  /// This runs `flutter build bundle` which generates:
+  /// - FontManifest.json
+  /// - AssetManifest.bin
+  /// - Font files and other assets
+  /// - kernel_blob.bin (which we overwrite later with frontend_server output)
+  Future<bool> _bundleFlutterAssets(
+    RedstoneProject project,
+    String clientPackageDir,
+  ) async {
+    Logger.step('Bundling Flutter assets...');
+
+    final result = await Process.run(
+      _flutterSdk!.flutterPath,
+      [
+        'build',
+        'bundle',
+        '--asset-dir=${project.flutterAssetsDir}',
+      ],
+      workingDirectory: clientPackageDir,
+    );
+
+    if (result.exitCode != 0) {
+      Logger.error('Asset bundling failed:');
+      Logger.error(result.stderr.toString());
+      return false;
+    }
+
+    Logger.success('Flutter assets bundled');
+    return true;
   }
 
   /// Recursively copy a directory
