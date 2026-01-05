@@ -297,7 +297,7 @@ class HotReloadClient {
     }
   }
 
-  /// Reload a specific runtime connection
+  /// Reload a specific runtime connection (dual-runtime mode)
   Future<bool> _reloadRuntime(
     RuntimeConnection connection, {
     List<String>? changedFiles,
@@ -316,96 +316,15 @@ class HotReloadClient {
       return true;  // Return success to not block client reload
     }
 
-    try {
-      // Only use frontend_server for Flutter client (useFlutterReassemble = true)
-      String? deltaPath;
-      if (_frontendServer != null) {
-        // Reset the compiler to produce a full kernel instead of incremental delta
-        // The embedded Flutter engine has issues with incremental hot reload
-        // where the second reload crashes with "class not loaded yet" errors
-        _frontendServer!.reset();
-
-        // The frontend_server needs to know which files have changed.
-        // If no specific files provided, we scan for recently modified .dart files
-        // in the project directory.
-        List<String> filesToRecompile;
-        if (changedFiles != null && changedFiles.isNotEmpty) {
-          filesToRecompile = changedFiles;
-        } else {
-          // Find all .dart files modified in the last few seconds
-          // This is a heuristic to catch files the user just edited
-          filesToRecompile = await _findRecentlyModifiedFiles(_frontendServer!.entryPoint);
-          if (filesToRecompile.isEmpty) {
-            // Fall back to entry point if no recent changes detected
-            filesToRecompile = [_frontendServer!.entryPoint];
-          }
-        }
-
-        Logger.step(
-            '[${connection.name}] Compiling ${filesToRecompile.length} file(s)...');
-        final result = await _frontendServer!.recompile(filesToRecompile);
-        if (!result.success) {
-          Logger.error(
-              'Compilation failed: ${result.errorMessage ?? result.errors.join('\n')}');
-          return false;
-        }
-        deltaPath = result.outputPath;
-        Logger.step('[${connection.name}] Compilation succeeded');
-      }
-
-      final vm = await connection.service!.getVM();
-
-      for (final isolateRef in vm.isolates ?? <IsolateRef>[]) {
-        final isolateId = isolateRef.id;
-        if (isolateId == null) continue;
-
-        try {
-          // Convert filesystem path to file URI for reloadSources
-          final deltaUri = deltaPath != null ? Uri.file(deltaPath).toString() : null;
-
-          // Pause the isolate during reload to prevent race conditions
-          final report = await connection.service!.reloadSources(
-            isolateId,
-            rootLibUri: deltaUri,
-            force: true,  // Force reload to apply changes even without file timestamp tracking
-            pause: true,  // Pause isolate during reload
-          );
-
-          if (report.success == true) {
-            Logger.step(
-                '[${connection.name}] Reloaded isolate: ${isolateRef.name}');
-
-            // Resume the isolate after successful reload
-            try {
-              await connection.service!.resume(isolateId);
-            } catch (e) {
-              Logger.debug('[${connection.name}] Could not resume isolate (may already be running): $e');
-            }
-
-            // Call Flutter reassemble to rebuild widgets
-            await _flutterReassemble(connection.service!, isolateId);
-          } else {
-            Logger.warning(
-                '[${connection.name}] Failed to reload isolate: ${isolateRef.name}');
-            _frontendServer?.reject();
-            return false;
-          }
-        } catch (e) {
-          // Some isolates can't be reloaded (system isolates)
-          Logger.debug(
-              '[${connection.name}] Skipping isolate ${isolateRef.name}: $e');
-        }
-      }
-
-      // Accept the compilation after successful reload
-      _frontendServer?.accept();
-
-      return true;
-    } catch (e) {
-      Logger.error('[${connection.name}] Hot reload failed: $e');
-      _frontendServer?.reject();
-      return false;
-    }
+    return _performReload(
+      service: connection.service!,
+      runtimeName: connection.name,
+      changedFiles: changedFiles,
+      // In dual-runtime mode, reset compiler and auto-discover files
+      resetCompiler: true,
+      autoDiscoverFiles: true,
+      pauseDuringReload: true,
+    );
   }
 
   /// Trigger a hot reload (legacy single-runtime support)
@@ -423,63 +342,127 @@ class HotReloadClient {
       return false;
     }
 
+    return _performReload(
+      service: _service!,
+      runtimeName: null,
+      changedFiles: changedFiles,
+      // Legacy single-runtime mode: no reset, no auto-discover, no pause
+      resetCompiler: false,
+      autoDiscoverFiles: false,
+      pauseDuringReload: false,
+    );
+  }
+
+  /// Core hot reload logic shared between single and dual runtime modes
+  ///
+  /// [service] - The VM service to use for reload
+  /// [runtimeName] - Optional name for logging (e.g., "Client", "Server")
+  /// [changedFiles] - List of files that changed (if known)
+  /// [resetCompiler] - Whether to reset frontend_server before recompile
+  ///   (needed for embedded Flutter to avoid "class not loaded yet" errors)
+  /// [autoDiscoverFiles] - Whether to scan for recently modified files if none provided
+  /// [pauseDuringReload] - Whether to pause isolates during reload
+  Future<bool> _performReload({
+    required VmService service,
+    required String? runtimeName,
+    List<String>? changedFiles,
+    required bool resetCompiler,
+    required bool autoDiscoverFiles,
+    required bool pauseDuringReload,
+  }) async {
+    final logPrefix = runtimeName != null ? '[$runtimeName] ' : '';
+
     try {
-      // If we have frontend_server and changed files, do incremental compile
       String? deltaPath;
-      if (_frontendServer != null &&
-          changedFiles != null &&
-          changedFiles.isNotEmpty) {
-        Logger.debug(
-            'Performing incremental compilation for ${changedFiles.length} files');
-        final result = await _frontendServer!.recompile(changedFiles);
-        if (!result.success) {
-          Logger.error(
-              'Compilation failed: ${result.errorMessage ?? result.errors.join('\n')}');
-          return false;
+      if (_frontendServer != null) {
+        // Reset compiler if requested (produces full kernel instead of delta)
+        if (resetCompiler) {
+          _frontendServer!.reset();
         }
-        deltaPath = result.outputPath;
-        Logger.debug('Incremental compile succeeded: $deltaPath');
+
+        // Determine which files to recompile
+        List<String>? filesToRecompile;
+        if (changedFiles != null && changedFiles.isNotEmpty) {
+          filesToRecompile = changedFiles;
+        } else if (autoDiscoverFiles) {
+          // Scan for recently modified .dart files
+          filesToRecompile = await _findRecentlyModifiedFiles(_frontendServer!.entryPoint);
+          if (filesToRecompile.isEmpty) {
+            filesToRecompile = [_frontendServer!.entryPoint];
+          }
+        }
+
+        // Only recompile if we have files to compile
+        if (filesToRecompile != null && filesToRecompile.isNotEmpty) {
+          if (runtimeName != null) {
+            Logger.step('${logPrefix}Compiling ${filesToRecompile.length} file(s)...');
+          } else {
+            Logger.debug('Performing incremental compilation for ${filesToRecompile.length} files');
+          }
+
+          final result = await _frontendServer!.recompile(filesToRecompile);
+          if (!result.success) {
+            Logger.error(
+                'Compilation failed: ${result.errorMessage ?? result.errors.join('\n')}');
+            return false;
+          }
+          deltaPath = result.outputPath;
+
+          if (runtimeName != null) {
+            Logger.step('${logPrefix}Compilation succeeded');
+          } else {
+            Logger.debug('Incremental compile succeeded: $deltaPath');
+          }
+        }
       }
 
-      final vm = await _service!.getVM();
+      final vm = await service.getVM();
 
       for (final isolateRef in vm.isolates ?? <IsolateRef>[]) {
         final isolateId = isolateRef.id;
         if (isolateId == null) continue;
 
         try {
-          // Convert filesystem path to file URI for reloadSources
           final deltaUri = deltaPath != null ? Uri.file(deltaPath).toString() : null;
 
-          final report = await _service!.reloadSources(
+          final report = await service.reloadSources(
             isolateId,
             rootLibUri: deltaUri,
-            force: true,  // Force reload to apply changes even without file timestamp tracking
+            force: true,
+            pause: pauseDuringReload,
           );
 
           if (report.success == true) {
-            Logger.debug('Reloaded isolate: ${isolateRef.name}');
+            if (runtimeName != null) {
+              Logger.step('${logPrefix}Reloaded isolate: ${isolateRef.name}');
+            } else {
+              Logger.debug('Reloaded isolate: ${isolateRef.name}');
+            }
 
-            // Call Flutter reassemble to rebuild widgets
-            await _flutterReassemble(_service!, isolateId);
+            // Resume isolate if we paused it
+            if (pauseDuringReload) {
+              try {
+                await service.resume(isolateId);
+              } catch (e) {
+                Logger.debug('${logPrefix}Could not resume isolate (may already be running): $e');
+              }
+            }
+
+            await _flutterReassemble(service, isolateId);
           } else {
-            Logger.warning('Failed to reload isolate: ${isolateRef.name}');
-            // Reject the compilation if reload failed
+            Logger.warning('${logPrefix}Failed to reload isolate: ${isolateRef.name}');
             _frontendServer?.reject();
             return false;
           }
         } catch (e) {
-          // Some isolates can't be reloaded (system isolates)
-          Logger.debug('Skipping isolate ${isolateRef.name}: $e');
+          Logger.debug('${logPrefix}Skipping isolate ${isolateRef.name}: $e');
         }
       }
 
-      // Accept the compilation after successful reload
       _frontendServer?.accept();
-
       return true;
     } catch (e) {
-      Logger.error('Hot reload failed: $e');
+      Logger.error('${logPrefix}Hot reload failed: $e');
       _frontendServer?.reject();
       return false;
     }

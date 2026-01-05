@@ -50,29 +50,17 @@ class FrontendServerManager {
   Process? _process;
   String _boundaryKey = '';
 
-  final StreamController<String> _stdoutController = StreamController<String>.broadcast();
-  final StreamController<String> _stderrController = StreamController<String>.broadcast();
-
   /// Buffer for collecting output between boundary markers
   final StringBuffer _outputBuffer = StringBuffer();
 
   /// Completer for the current compilation
   Completer<IncrementalCompileResult>? _currentCompile;
 
-  /// Whether we're waiting for an initial compile (no boundary key)
-  bool _isInitialCompile = false;
-
   /// Counter for incremental compilation to generate unique output paths
   int _incrementalCount = 0;
 
   /// Whether the server is currently running
   bool get isRunning => _process != null;
-
-  /// Stream of stdout output (for debugging)
-  Stream<String> get stdout => _stdoutController.stream;
-
-  /// Stream of stderr output (for debugging)
-  Stream<String> get stderr => _stderrController.stream;
 
   FrontendServerManager({
     required this.flutterSdk,
@@ -170,7 +158,6 @@ class FrontendServerManager {
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen((line) {
-      _stderrController.add(line);
       Logger.debug('[frontend_server stderr] $line');
     });
 
@@ -201,7 +188,6 @@ class FrontendServerManager {
   /// Perform the initial compilation (compile command)
   Future<IncrementalCompileResult> _compileInitial() async {
     _currentCompile = Completer<IncrementalCompileResult>();
-    _isInitialCompile = true;
 
     // Send compile command with entry point
     Logger.debug('Sending initial compile command: compile $entryPoint');
@@ -221,7 +207,6 @@ class FrontendServerManager {
     }
 
     _currentCompile = Completer<IncrementalCompileResult>();
-    _isInitialCompile = false;
     _incrementalCount++;
 
     // Convert entry point to file URI
@@ -319,13 +304,10 @@ class FrontendServerManager {
     }
 
     _process = null;
-    await _stdoutController.close();
-    await _stderrController.close();
   }
 
   /// Handle a line of stdout from the frontend_server
   void _handleStdoutLine(String line) {
-    _stdoutController.add(line);
     Logger.debug('[frontend_server stdout] $line');
 
     // Parse the output for compilation results
@@ -379,7 +361,6 @@ class FrontendServerManager {
             ));
           }
           _outputBuffer.clear();
-          _isInitialCompile = false;
           return;
         }
       }
