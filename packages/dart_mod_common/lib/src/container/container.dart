@@ -2,4 +2,3 @@
 library;
 
 export 'container_definition.dart';
-export 'simple_furnace_container.dart';

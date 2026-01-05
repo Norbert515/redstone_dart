@@ -1,8 +1,7 @@
 /// Container definition for a simple furnace block.
 library;
 
-import '../block_entity/synced_value.dart';
-import 'container_definition.dart';
+import 'package:dart_mod_common/dart_mod_common.dart';
 
 /// Container definition for a simple furnace block.
 ///

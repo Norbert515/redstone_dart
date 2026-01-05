@@ -899,9 +899,6 @@ public class DartBridgeClient {
                 for (int i = 0; i < cachedDataSlotCount && i < MAX_CACHED_DATA_SLOTS; i++) {
                     int val = menu.getDataValue(i);
                     cachedContainerDataSlots[i] = val;
-                    if (val != 0) {
-                        LOGGER.info("[DartBridgeClient] cachedDataSlot[{}] = {}", i, val);
-                    }
                 }
             } else {
                 // Log if menu is not DartBlockEntityMenu

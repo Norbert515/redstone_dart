@@ -89,9 +89,6 @@ class ContainerWatcher {
       if (dataIndex < 0) continue;
 
       final newValue = _getContainerDataSlot(dataIndex);
-      if (newValue != 0) {
-        print('[ContainerWatcher] Slot $dataIndex: $newValue');
-      }
       value.updateFromSync(newValue);
     }
   }

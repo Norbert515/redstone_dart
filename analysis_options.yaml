@@ -1,0 +1,4 @@
+analyzer:
+  exclude:
+    - engine_build/**
+    - minecraft/**

@@ -1,9 +1,8 @@
 /// Server-side furnace block entity with smelting logic.
 library;
 
-import 'package:dart_mod_common/dart_mod_common.dart';
-
-import 'container_block_entity.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
+import 'package:example_mod_common/example_mod_common.dart';
 
 /// Server-side furnace block entity with smelting logic.
 ///

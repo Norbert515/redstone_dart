@@ -11,11 +11,13 @@
 import 'dart:developer' as developer;
 
 import 'package:dart_mod_client/dart_mod_client.dart';
+import 'package:example_mod_common/example_mod_common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:minecraft_ui/minecraft_ui.dart';
 
 import 'screens/furnace_screen.dart';
+import 'screens/simple_furnace_screen.dart';
 
 /// Client-side entry point for the mod.
 ///

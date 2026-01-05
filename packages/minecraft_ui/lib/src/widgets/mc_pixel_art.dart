@@ -134,7 +134,9 @@ class _McPixelArtPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..filterQuality = FilterQuality.none;
+    final paint = Paint()
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
 
     for (var y = 0; y < rows.length; y++) {
       final row = rows[y];

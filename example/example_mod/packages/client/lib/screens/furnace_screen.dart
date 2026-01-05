@@ -55,107 +55,99 @@ class _ExampleFurnaceScreenState extends State<ExampleFurnaceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // DEBUG: This print will show if hot reload actually loaded new code
-    print('🔥🔥🔥 FURNACE BUILD - VERSION 999 🔥🔥🔥');
+    return Center(
+      child: Banner(
+        location: BannerLocation.topStart,
+        message: 'VERSION 000',
+        child: McPanel(
+          width: 176,
+          padding: const EdgeInsets.all(7),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Title
+              const McText.title('Example 10000'),
 
-    // Note: GuiRouter already wraps us with SlotPositionScope, so we don't
-    // need to create our own. Just use SlotReporter widgets for each slot.
-    return Banner(
-      message: 'VERSION 000',
-      location: BannerLocation.topStart,
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: Center(
-          child: McPanel(
-            width: 176,
-            padding: const EdgeInsets.all(7),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Title
-                const McText.title('Example 0000'),
+              const SizedBox(height: 8),
 
-                const SizedBox(height: 8),
-
-                // Furnace slots and progress indicators
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Input and fuel column
-                    Column(
-                      children: [
-                        // Input slot (index 0)
-                        SlotReporter(
-                          slotIndex: 0,
-                          child: const McSlot(),
-                        ),
-                        const SizedBox(height: 4),
-                        // Flame indicator (fuel remaining)
-                        McFurnaceFlame(
-                          progress: _litProgress,
-                          isLit: _isLit,
-                        ),
-                        const SizedBox(height: 4),
-                        // Fuel slot (index 1)
-                        SlotReporter(
-                          slotIndex: 1,
-                          child: const McSlot(),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(width: 24),
-
-                    // Arrow progress indicator
-                    McFurnaceArrow(progress: _burnProgress),
-
-                    const SizedBox(width: 24),
-
-                    // Output slot (index 2)
-                    SlotReporter(
-                      slotIndex: 2,
-                      child: const McSlot(),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 14),
-
-                // Player inventory label
-                const McText.label('Inventory'),
-                const SizedBox(height: 2),
-
-                // Player inventory (3 rows x 9 columns)
-                // Slots 3-29 are player main inventory
-                for (int row = 0; row < 3; row++)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+              // Furnace slots and progress indicators
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Input and fuel column
+                  Column(
                     children: [
-                      for (int col = 0; col < 9; col++)
-                        SlotReporter(
-                          slotIndex: 3 + row * 9 + col,
-                          child: const McSlot(),
-                        ),
+                      // Input slot (index 0)
+                      SlotReporter(
+                        slotIndex: 0,
+                        child: const McSlot(),
+                      ),
+                      const SizedBox(height: 4),
+                      // Flame indicator (fuel remaining)
+                      McFurnaceFlame(
+                        progress: _litProgress,
+                        isLit: _isLit,
+                      ),
+                      const SizedBox(height: 4),
+                      // Fuel slot (index 1)
+                      SlotReporter(
+                        slotIndex: 1,
+                        child: const McSlot(),
+                      ),
                     ],
                   ),
 
-                const SizedBox(height: 4),
+                  const SizedBox(width: 24),
 
-                // Player hotbar (1 row x 9 columns)
-                // Slots 30-38 are hotbar
+                  // Arrow progress indicator
+                  McFurnaceArrow(progress: _burnProgress),
+
+                  const SizedBox(width: 24),
+
+                  // Output slot (index 2)
+                  SlotReporter(
+                    slotIndex: 2,
+                    child: const McSlot(),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 14),
+
+              // Player inventory label
+              const McText.label('Inventory'),
+              const SizedBox(height: 2),
+
+              // Player inventory (3 rows x 9 columns)
+              // Slots 3-29 are player main inventory
+              for (int row = 0; row < 3; row++)
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     for (int col = 0; col < 9; col++)
                       SlotReporter(
-                        slotIndex: 30 + col,
+                        slotIndex: 3 + row * 9 + col,
                         child: const McSlot(),
                       ),
                   ],
                 ),
-              ],
-            ),
+
+              const SizedBox(height: 4),
+
+              // Player hotbar (1 row x 9 columns)
+              // Slots 30-38 are hotbar
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (int col = 0; col < 9; col++)
+                    SlotReporter(
+                      slotIndex: 30 + col,
+                      child: const McSlot(),
+                    ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

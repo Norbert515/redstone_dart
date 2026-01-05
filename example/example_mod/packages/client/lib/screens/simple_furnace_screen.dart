@@ -1,13 +1,10 @@
 /// Flutter screen for the SimpleFurnace container.
 library;
 
-import 'package:dart_mod_common/dart_mod_common.dart';
+import 'package:dart_mod_client/dart_mod_client.dart';
+import 'package:example_mod_common/example_mod_common.dart';
 import 'package:flutter/material.dart';
 import 'package:minecraft_ui/minecraft_ui.dart';
-
-import '../gui/slot_reporter.dart';
-import 'container_screen.dart';
-import 'watch.dart';
 
 /// Flutter screen for the SimpleFurnace container.
 ///
@@ -39,12 +36,10 @@ class SimpleFurnaceScreen extends ContainerScreen<SimpleFurnaceContainer> {
   });
 
   @override
-  ContainerScreenState<SimpleFurnaceContainer> createState() =>
-      _SimpleFurnaceScreenState();
+  ContainerScreenState<SimpleFurnaceContainer> createState() => _SimpleFurnaceScreenState();
 }
 
-class _SimpleFurnaceScreenState
-    extends ContainerScreenState<SimpleFurnaceContainer> {
+class _SimpleFurnaceScreenState extends ContainerScreenState<SimpleFurnaceContainer> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -80,8 +75,7 @@ class _SimpleFurnaceScreenState
                         container.litTime,
                         container.litDuration,
                         builder: (litTime, litDuration) {
-                          final progress =
-                              litDuration > 0 ? litTime / litDuration : 0.0;
+                          final progress = litDuration > 0 ? litTime / litDuration : 0.0;
                           return _FurnaceFlame(
                             progress: progress,
                             isLit: litTime > 0,
@@ -243,7 +237,7 @@ class _FurnaceArrow extends StatelessWidget {
 .................XXXXXX.
 ................XXXXXXX.
 ...............XXXXXXXX.
-XXXXXXXXXXXXXXXXXXXXXXXX
+................XXXXXXX.
 ...............XXXXXXXX.
 ................XXXXXXX.
 .................XXXXXX.
@@ -294,8 +288,7 @@ class _VerticalProgressClipper extends CustomClipper<Rect> {
   }
 
   @override
-  bool shouldReclip(_VerticalProgressClipper oldClipper) =>
-      progress != oldClipper.progress;
+  bool shouldReclip(_VerticalProgressClipper oldClipper) => progress != oldClipper.progress;
 }
 
 /// Clips from left to right based on progress (for horizontal fill animations).
@@ -310,6 +303,5 @@ class _HorizontalProgressClipper extends CustomClipper<Rect> {
   }
 
   @override
-  bool shouldReclip(_HorizontalProgressClipper oldClipper) =>
-      progress != oldClipper.progress;
+  bool shouldReclip(_HorizontalProgressClipper oldClipper) => progress != oldClipper.progress;
 }

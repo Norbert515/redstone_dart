@@ -5,9 +5,10 @@
 /// - Custom packet definitions
 /// - Shared data models
 /// - Constants
-///
-/// Currently empty - add shared types here as needed.
 library;
 
 // Re-export common types that both client and server might need
 export 'package:dart_mod_common/dart_mod_common.dart' show BlockPos, Vec3;
+
+// Container definitions shared between client and server
+export 'src/simple_furnace_container.dart';

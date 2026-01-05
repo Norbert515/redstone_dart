@@ -114,7 +114,10 @@ class _McProgressBarPainter extends CustomPainter {
     // Background
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.width, size.height),
-      Paint()..color = backgroundColor,
+      Paint()
+        ..color = backgroundColor
+        ..filterQuality = FilterQuality.none
+        ..isAntiAlias = false,
     );
 
     // Border
@@ -123,7 +126,9 @@ class _McProgressBarPainter extends CustomPainter {
       Paint()
         ..color = borderColor
         ..style = PaintingStyle.stroke
-        ..strokeWidth = borderWidth,
+        ..strokeWidth = borderWidth
+        ..filterQuality = FilterQuality.none
+        ..isAntiAlias = false,
     );
 
     // Fill
@@ -164,7 +169,13 @@ class _McProgressBarPainter extends CustomPainter {
           );
         }
       }
-      canvas.drawRect(fillRect, Paint()..color = fillColor);
+      canvas.drawRect(
+        fillRect,
+        Paint()
+          ..color = fillColor
+          ..filterQuality = FilterQuality.none
+          ..isAntiAlias = false,
+      );
     }
   }
 

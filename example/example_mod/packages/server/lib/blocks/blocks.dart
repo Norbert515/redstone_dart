@@ -15,6 +15,7 @@ export 'weather_control_block.dart';
 
 import 'package:dart_mod_server/dart_mod_server.dart';
 
+import '../containers/simple_furnace_block.dart';
 import 'entity_radar_block.dart';
 import 'example_furnace_block.dart';
 import 'hello_block.dart';

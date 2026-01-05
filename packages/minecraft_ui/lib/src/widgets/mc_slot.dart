@@ -93,6 +93,8 @@ class _McSlotState extends State<McSlot> {
                     child: Text(
                       widget.count.toString(),
                       style: TextStyle(
+                        fontFamily: 'Minecraft',
+                        package: 'minecraft_ui',
                         fontSize: McTypography.fontHeight * scale * 0.8,
                         color: McColors.white,
                         shadows: [
@@ -136,11 +138,17 @@ class _McSlotPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // Draw slot background with inset border (dark top-left, light bottom-right)
-    final bgPaint = Paint()..color = backgroundColor;
+    final bgPaint = Paint()
+      ..color = backgroundColor
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
 
     // Dark border (top and left) - creates inset look
-    final darkPaint = Paint()..color = McColors.slotBorderDark;
+    final darkPaint = Paint()
+      ..color = McColors.slotBorderDark
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
     // Top
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.width, borderWidth),
@@ -153,7 +161,10 @@ class _McSlotPainter extends CustomPainter {
     );
 
     // Light border (bottom and right)
-    final lightPaint = Paint()..color = McColors.slotBorderLight.withValues(alpha: 0.5);
+    final lightPaint = Paint()
+      ..color = McColors.slotBorderLight.withValues(alpha: 0.5)
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
     // Bottom
     canvas.drawRect(
       Rect.fromLTWH(0, size.height - borderWidth, size.width, borderWidth),

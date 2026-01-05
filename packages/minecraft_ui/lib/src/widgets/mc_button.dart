@@ -173,7 +173,10 @@ class _McButtonPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final borderPaint = Paint()..color = borderColor;
+    final borderPaint = Paint()
+      ..color = borderColor
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
 
     // Draw outer border
     canvas.drawRect(
@@ -195,20 +198,27 @@ class _McButtonPainter extends CustomPainter {
       colors: [topColor, bottomColor],
     );
 
-    final gradientPaint = Paint()..shader = gradient.createShader(gradientRect);
+    final gradientPaint = Paint()
+      ..shader = gradient.createShader(gradientRect)
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
     canvas.drawRect(gradientRect, gradientPaint);
 
     // Draw 3D edge highlights
     if (!isPressed) {
+      final highlightPaint = Paint()
+        ..color = McColors.white.withValues(alpha: 0.2)
+        ..filterQuality = FilterQuality.none
+        ..isAntiAlias = false;
       // Light top edge
       canvas.drawRect(
         Rect.fromLTWH(borderWidth, borderWidth, size.width - borderWidth * 2, 1),
-        Paint()..color = McColors.white.withValues(alpha: 0.2),
+        highlightPaint,
       );
       // Light left edge
       canvas.drawRect(
         Rect.fromLTWH(borderWidth, borderWidth, 1, size.height - borderWidth * 2),
-        Paint()..color = McColors.white.withValues(alpha: 0.2),
+        highlightPaint,
       );
     }
   }

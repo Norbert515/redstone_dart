@@ -1,5 +1,7 @@
 // Barrel export file for all containers
 export 'test_chest_container.dart';
+export 'simple_furnace_block.dart';
+export 'simple_furnace_entity.dart';
 
 import 'package:dart_mod_server/dart_mod_server.dart';
 

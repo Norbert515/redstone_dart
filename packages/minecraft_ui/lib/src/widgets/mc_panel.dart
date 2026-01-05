@@ -99,9 +99,18 @@ class _McPanelPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final bgPaint = Paint()..color = backgroundColor;
-    final darkPaint = Paint()..color = borderDarkColor;
-    final lightPaint = Paint()..color = borderLightColor;
+    final bgPaint = Paint()
+      ..color = backgroundColor
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
+    final darkPaint = Paint()
+      ..color = borderDarkColor
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
+    final lightPaint = Paint()
+      ..color = borderLightColor
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
 
     // Draw background
     canvas.drawRect(
@@ -142,15 +151,19 @@ class _McPanelPainter extends CustomPainter {
     // Inner border (creates the beveled look)
     if (borderWidth > 1) {
       final innerBorder = borderWidth / 2;
+      final innerPaint = Paint()
+        ..color = topLeftPaint.color.withValues(alpha: 0.5)
+        ..filterQuality = FilterQuality.none
+        ..isAntiAlias = false;
 
       // Inner top-left highlight
       canvas.drawRect(
         Rect.fromLTWH(innerBorder, innerBorder, size.width - innerBorder * 2, innerBorder),
-        Paint()..color = topLeftPaint.color.withValues(alpha: 0.5),
+        innerPaint,
       );
       canvas.drawRect(
         Rect.fromLTWH(innerBorder, innerBorder, innerBorder, size.height - innerBorder * 2),
-        Paint()..color = topLeftPaint.color.withValues(alpha: 0.5),
+        innerPaint,
       );
     }
   }

@@ -1,10 +1,8 @@
 /// Simple furnace block implementation.
 library;
 
-import 'package:dart_mod_common/dart_mod_common.dart';
+import 'package:dart_mod_server/dart_mod_server.dart';
 
-import '../block_entity/block_entity_registry.dart';
-import '../registries.dart' show BlockRegistry;
 import 'simple_furnace_entity.dart';
 
 /// A simple furnace block that demonstrates the Container API.
