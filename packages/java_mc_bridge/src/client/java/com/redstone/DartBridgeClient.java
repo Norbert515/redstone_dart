@@ -105,6 +105,12 @@ public class DartBridgeClient {
      */
     public static native boolean hasNewFrame();
 
+    /**
+     * Schedule Flutter to render a frame immediately.
+     * Used to pre-warm Flutter before opening screens.
+     */
+    public static native void scheduleFrame();
+
     // ==========================================================================
     // OpenGL Rendering Native Methods
     // ==========================================================================
@@ -203,12 +209,12 @@ public class DartBridgeClient {
             LOGGER.info("ICU data path: {}", icuDataPath);
             LOGGER.info("AOT library path: {}", aotLibraryPath != null && !aotLibraryPath.isEmpty() ? aotLibraryPath : "(JIT mode)");
 
-            // Force software rendering on macOS until Metal compositor is ready
-            // This avoids the Metal→OpenGL IOSurface sharing issues on Apple Silicon
-            if (System.getProperty("os.name").toLowerCase().contains("mac")) {
-                LOGGER.info("macOS detected - forcing software rendering to avoid Metal/OpenGL compatibility issues");
-                setOpenGLEnabled(false);
-            }
+            // Metal rendering on macOS - re-enabled for testing
+            // Previously disabled due to Metal→OpenGL IOSurface sharing issues on Apple Silicon
+            // if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+            //     LOGGER.info("macOS detected - forcing software rendering to avoid Metal/OpenGL compatibility issues");
+            //     setOpenGLEnabled(false);
+            // }
 
             boolean success = initClient(
                 assetsPath,
@@ -228,6 +234,18 @@ public class DartBridgeClient {
                     LOGGER.info("Classloader captured successfully for cross-thread JNI access");
                 } else {
                     LOGGER.warn("Failed to capture classloader - JNI calls from Flutter thread may fail");
+                }
+
+                // Send window metrics at startup so Flutter knows the size immediately
+                // This saves time when screens open since Flutter doesn't need to wait for metrics
+                Minecraft mc = Minecraft.getInstance();
+                if (mc != null && mc.getWindow() != null) {
+                    var window = mc.getWindow();
+                    int guiScale = (int) window.getGuiScale();
+                    int fbWidth = window.getGuiScaledWidth() * guiScale;
+                    int fbHeight = window.getGuiScaledHeight() * guiScale;
+                    LOGGER.info("Sending initial window metrics: {}x{}, scale={}", fbWidth, fbHeight, guiScale);
+                    sendWindowMetrics(fbWidth, fbHeight, (double) guiScale);
                 }
             } else {
                 LOGGER.error("Flutter client runtime initialization returned false");

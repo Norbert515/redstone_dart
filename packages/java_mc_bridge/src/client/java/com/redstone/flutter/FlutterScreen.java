@@ -1,6 +1,12 @@
 package com.redstone.flutter;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.blaze3d.textures.TextureFormat;
 import com.redstone.DartBridgeClient;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -87,6 +93,14 @@ public class FlutterScreen extends Screen {
         """;
 
     // ==========================================================================
+    // GpuTexture-based rendering (for Minecraft 1.21+ GPU abstraction)
+    // ==========================================================================
+    private static GpuTexture gpuFlutterTexture = null;
+    private static GpuTextureView gpuFlutterTextureView = null;
+    private static int gpuTextureWidth = 0;
+    private static int gpuTextureHeight = 0;
+
+    // ==========================================================================
     // FBO resources for GPU-only IOSurface → GL_TEXTURE_2D copy
     // Uses shader-based rendering (RECT texture -> FBO with 2D texture attachment)
     // ==========================================================================
@@ -112,11 +126,13 @@ public class FlutterScreen extends Screen {
     private static final long BUTTON_MIDDLE = 4;
 
     private long currentButtons = 0;
+    private long buttonsDownInFlutter = 0;  // Track which buttons we sent DOWN events for
     private boolean pointerAdded = false;
     private boolean pointerDown = false;  // Track if a DOWN event was sent
 
     public FlutterScreen(Component title) {
         super(title);
+        // Note: Pre-warming moved to init() after sendWindowMetrics() so Flutter knows the screen size
     }
 
     // ==========================================================================
@@ -272,6 +288,30 @@ public class FlutterScreen extends Screen {
      * directly to the screen using a shader. NO CPU INVOLVED.
      */
     private void renderMetalTextureWithPBO(GuiGraphics guiGraphics) {
+        // Get texture dimensions to check if Metal has rendered a valid frame
+        int texWidth = DartBridgeClient.getFlutterTextureWidth();
+        int texHeight = DartBridgeClient.getFlutterTextureHeight();
+
+        // Check if we have valid dimensions matching our expected screen size
+        var window = this.minecraft.getWindow();
+        int expectedWidth = this.width * window.getGuiScale();
+        int expectedHeight = this.height * window.getGuiScale();
+
+        // Only proceed if texture dimensions match what we expect
+        // This prevents using stale textures from previous sessions
+        if (texWidth != expectedWidth || texHeight != expectedHeight) {
+            // Pump tasks to help Flutter catch up
+            DartBridgeClient.safeProcessClientTasks();
+            guiGraphics.drawCenteredString(
+                this.font,
+                "Waiting for Flutter frame...",
+                this.width / 2,
+                this.height / 2,
+                0xFFFFFF
+            );
+            return;
+        }
+
         // Get the GL_TEXTURE_RECTANGLE ID from native (bound to IOSurface)
         int rectTextureId = DartBridgeClient.getFlutterTextureId();
         if (rectTextureId <= 0) {
@@ -285,15 +325,113 @@ public class FlutterScreen extends Screen {
             return;
         }
 
-        int texWidth = DartBridgeClient.getFlutterTextureWidth();
-        int texHeight = DartBridgeClient.getFlutterTextureHeight();
-
         if (texWidth <= 0 || texHeight <= 0) {
             return;
         }
 
-        // Render RECT texture directly to screen
-        renderRectTextureDirectly(rectTextureId, texWidth, texHeight);
+        // On Apple Silicon with Minecraft 1.21+, CGLTexImageIOSurface2D with
+        // GL_TEXTURE_RECTANGLE causes "unloadable" texture errors. The root cause
+        // is likely sampler type mismatch (sampler2D vs sampler2DRect).
+        //
+        // For now, use software fallback (CPU readback from IOSurface).
+        // This works reliably. GPU copy path needs more investigation.
+        renderSoftwareFallback(guiGraphics);
+    }
+
+    /**
+     * Render Flutter content using Minecraft's GpuTexture API.
+     * This reads pixels from the IOSurface (via native code) and uploads
+     * them to a GpuTexture, then blits to the main render target.
+     */
+    private void renderWithGpuTexture(GuiGraphics guiGraphics, int texWidth, int texHeight) {
+        // Get pixels from IOSurface (native code reads from Metal's IOSurface)
+        ByteBuffer pixels = DartBridgeClient.getFramePixels();
+        if (pixels == null) {
+            guiGraphics.drawCenteredString(
+                this.font,
+                "Waiting for Flutter frame...",
+                this.width / 2,
+                this.height / 2,
+                0xFFFFFF
+            );
+            return;
+        }
+
+        int frameWidth = DartBridgeClient.getFrameWidth();
+        int frameHeight = DartBridgeClient.getFrameHeight();
+        if (frameWidth <= 0 || frameHeight <= 0) {
+            return;
+        }
+
+        try {
+            // Create or resize GpuTexture if needed
+            if (gpuFlutterTexture == null || gpuTextureWidth != frameWidth || gpuTextureHeight != frameHeight) {
+                cleanupGpuTexture();
+
+                // Create GpuTexture with COPY_DST (for uploads) and TEXTURE_BINDING (for sampling)
+                gpuFlutterTexture = RenderSystem.getDevice().createTexture(
+                    "Flutter Screen",
+                    GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING,
+                    TextureFormat.RGBA8,
+                    frameWidth,
+                    frameHeight,
+                    1, // depth/layers
+                    1  // mip levels
+                );
+                gpuFlutterTextureView = RenderSystem.getDevice().createTextureView(gpuFlutterTexture);
+                gpuTextureWidth = frameWidth;
+                gpuTextureHeight = frameHeight;
+                LOGGER.info("[FlutterScreen] Created GpuTexture: {}x{}", frameWidth, frameHeight);
+            }
+
+            // Upload pixel data to the GpuTexture
+            // The pixels are already in RGBA format (converted in native code)
+            RenderSystem.getDevice().createCommandEncoder().writeToTexture(
+                gpuFlutterTexture,
+                pixels,
+                NativeImage.Format.RGBA,
+                0, 0,  // x, y offset
+                frameWidth, frameHeight,  // width, height
+                0,  // mip level
+                0   // array layer
+            );
+
+            // Blit to the main render target using the ENTITY_OUTLINE_BLIT pipeline
+            // (same approach as RenderTarget.blitAndBlendToTexture)
+            var mainTarget = this.minecraft.getMainRenderTarget();
+            var targetView = mainTarget.getColorTextureView();
+            if (targetView != null) {
+                try (RenderPass renderPass = RenderSystem.getDevice()
+                        .createCommandEncoder()
+                        .createRenderPass(() -> "Flutter blit", targetView, java.util.OptionalInt.empty())) {
+                    renderPass.setPipeline(RenderPipelines.ENTITY_OUTLINE_BLIT);
+                    RenderSystem.bindDefaultUniforms(renderPass);
+                    renderPass.bindTexture("InSampler", gpuFlutterTextureView,
+                        RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+                    renderPass.draw(0, 3);
+                }
+            }
+
+        } catch (Exception e) {
+            LOGGER.error("[FlutterScreen] GpuTexture rendering failed, falling back to software", e);
+            renderSoftwareFallback(guiGraphics);
+        }
+    }
+
+    /**
+     * Cleanup GpuTexture resources.
+     */
+    private static void cleanupGpuTexture() {
+        if (gpuFlutterTextureView != null) {
+            gpuFlutterTextureView.close();
+            gpuFlutterTextureView = null;
+        }
+        if (gpuFlutterTexture != null) {
+            gpuFlutterTexture.close();
+            gpuFlutterTexture = null;
+        }
+        gpuTextureWidth = 0;
+        gpuTextureHeight = 0;
     }
 
     /**
@@ -399,6 +537,231 @@ public class FlutterScreen extends Screen {
         }
     }
 
+    // Source FBO for RECT texture (separate from destination)
+    private static int fboSrc = 0;
+    private static boolean fboSrcFailed = false;
+
+    /**
+     * Copy GL_TEXTURE_RECTANGLE to GL_TEXTURE_2D using glBlitFramebuffer.
+     * This is a GPU-only operation that doesn't involve shader sampling,
+     * avoiding the "unloadable" texture issue on Apple Silicon.
+     */
+    private boolean copyRectToTexture2D(int rectTextureId, int width, int height) {
+        // Initialize destination FBO and texture
+        if (!initFboBlitResources(rectTextureId, width, height)) {
+            return false;
+        }
+
+        try {
+            // Create source FBO if needed (for the RECT texture)
+            if (fboSrc == 0 && !fboSrcFailed) {
+                fboSrc = GL30.glGenFramebuffers();
+            }
+            if (fboSrc == 0) {
+                return false;
+            }
+
+            // Save state
+            int prevReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+            int prevDrawFbo = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+
+            // Attach RECT texture to source FBO
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, fboSrc);
+            // Use glFramebufferTexture2D with GL_TEXTURE_RECTANGLE_ARB
+            GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0,
+                                        ARBTextureRectangle.GL_TEXTURE_RECTANGLE_ARB, rectTextureId, 0);
+
+            // Check source FBO completeness
+            int srcStatus = GL30.glCheckFramebufferStatus(GL30.GL_READ_FRAMEBUFFER);
+            if (srcStatus != GL30.GL_FRAMEBUFFER_COMPLETE) {
+                LOGGER.warn("[FlutterScreen] Source FBO incomplete: {} - falling back", srcStatus);
+                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+                fboSrcFailed = true;
+                return false;
+            }
+
+            // Bind destination FBO for drawing
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, fboDst);
+
+            // Blit from source (RECT) to destination (2D)
+            // Note: Y is flipped because Flutter renders Y-down
+            GL30.glBlitFramebuffer(
+                0, height, width, 0,  // src: flip Y (top-left to bottom-right becomes bottom-left to top-right)
+                0, 0, width, height,  // dst: normal orientation
+                GL11.GL_COLOR_BUFFER_BIT,
+                GL11.GL_NEAREST
+            );
+
+            // Detach RECT texture from source FBO (avoid keeping reference)
+            GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0,
+                                        ARBTextureRectangle.GL_TEXTURE_RECTANGLE_ARB, 0, 0);
+
+            // Restore state
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
+
+            return true;
+
+        } catch (Exception e) {
+            LOGGER.error("[FlutterScreen] GPU copy failed", e);
+            return false;
+        }
+    }
+
+    // Separate GL_TEXTURE_2D for the copy (not attached to any FBO during sampling)
+    private static int copyTexture2D = 0;
+    private static int copyTexWidth = 0;
+    private static int copyTexHeight = 0;
+
+    /**
+     * Copy GL_TEXTURE_RECTANGLE to a fresh GL_TEXTURE_2D using glCopyTexSubImage2D.
+     * This reads from the framebuffer (not the texture), which may avoid the
+     * "unloadable" issue on Apple Silicon.
+     */
+    private boolean copyRectViaReadPixels(int rectTextureId, int width, int height) {
+        try {
+            // Create source FBO if needed
+            if (fboSrc == 0 && !fboSrcFailed) {
+                fboSrc = GL30.glGenFramebuffers();
+            }
+            if (fboSrc == 0) {
+                return false;
+            }
+
+            // Save state
+            int prevReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+            int prevTexture2D = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+
+            // Attach RECT texture to source FBO
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, fboSrc);
+            GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0,
+                                        ARBTextureRectangle.GL_TEXTURE_RECTANGLE_ARB, rectTextureId, 0);
+
+            // Check FBO completeness
+            int status = GL30.glCheckFramebufferStatus(GL30.GL_READ_FRAMEBUFFER);
+            if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
+                LOGGER.warn("[FlutterScreen] Source FBO incomplete: {}", status);
+                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+                fboSrcFailed = true;
+                return false;
+            }
+
+            // Create or resize destination texture (fresh GL_TEXTURE_2D, not IOSurface-backed)
+            if (copyTexture2D == 0 || copyTexWidth != width || copyTexHeight != height) {
+                if (copyTexture2D != 0) {
+                    GL11.glDeleteTextures(copyTexture2D);
+                }
+                copyTexture2D = GL11.glGenTextures();
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, copyTexture2D);
+                // Allocate storage
+                GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, width, height, 0,
+                                  GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, (java.nio.ByteBuffer) null);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+                copyTexWidth = width;
+                copyTexHeight = height;
+                LOGGER.info("[FlutterScreen] Created copy texture: {}x{}", width, height);
+            } else {
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, copyTexture2D);
+            }
+
+            // Set read buffer to the color attachment
+            GL11.glReadBuffer(GL30.GL_COLOR_ATTACHMENT0);
+
+            // Copy from framebuffer to texture
+            // glCopyTexSubImage2D reads from the current READ_FRAMEBUFFER
+            GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+
+            // Check for errors
+            int error = GL11.glGetError();
+            if (error != GL11.GL_NO_ERROR) {
+                LOGGER.warn("[FlutterScreen] GL error after copy: {}", error);
+            }
+
+            // Detach RECT texture
+            GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0,
+                                        ARBTextureRectangle.GL_TEXTURE_RECTANGLE_ARB, 0, 0);
+
+            // Restore state
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTexture2D);
+
+            return true;
+
+        } catch (Exception e) {
+            LOGGER.error("[FlutterScreen] copyRectViaReadPixels failed", e);
+            return false;
+        }
+    }
+
+    /**
+     * Render the copied GL_TEXTURE_2D to the screen.
+     */
+    private void renderCopiedTexture(GuiGraphics guiGraphics, int texWidth, int texHeight) {
+        if (copyTexture2D == 0) return;
+
+        // Save state
+        int prevProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        int prevVao = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
+        int prevActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
+        boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+
+        try {
+            // Initialize simple 2D shader if needed
+            if (!initFboShader()) {
+                LOGGER.warn("[FlutterScreen] FBO shader init failed");
+                return;
+            }
+
+            // Clear any pending GL errors
+            while (GL11.glGetError() != GL11.GL_NO_ERROR) {}
+
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+
+            // Use texture unit 0 (simpler, just need to make sure state is correct)
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, copyTexture2D);
+            GL20.glUseProgram(fboShaderProgram);
+            GL20.glUniform1i(fboUniformTex, 0);
+
+            // Ensure texture is complete (verify it has data)
+            int actualWidth = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_WIDTH);
+            int actualHeight = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_HEIGHT);
+            if (actualWidth <= 0 || actualHeight <= 0) {
+                LOGGER.warn("[FlutterScreen] Copy texture has no data: {}x{}", actualWidth, actualHeight);
+                return;
+            }
+
+            GL30.glBindVertexArray(fboVao);
+
+            // Check for errors before draw
+            int err = GL11.glGetError();
+            if (err != GL11.GL_NO_ERROR) {
+                LOGGER.warn("[FlutterScreen] GL error before draw: {}", err);
+            }
+
+            GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 6);
+
+            // Check for errors after draw
+            err = GL11.glGetError();
+            if (err != GL11.GL_NO_ERROR) {
+                LOGGER.warn("[FlutterScreen] GL error after draw: {}", err);
+            }
+
+        } finally {
+            GL30.glBindVertexArray(prevVao);
+            GL13.glActiveTexture(prevActiveTexture);
+            GL20.glUseProgram(prevProgram);
+            if (!blendEnabled) GL11.glDisable(GL11.GL_BLEND);
+            if (depthEnabled) GL11.glEnable(GL11.GL_DEPTH_TEST);
+        }
+    }
+
     /**
      * Perform the GPU-to-GPU copy from GL_TEXTURE_RECTANGLE to GL_TEXTURE_2D.
      * Uses shader-based rendering instead of glBlitFramebuffer (which doesn't work
@@ -483,7 +846,9 @@ public class FlutterScreen extends Screen {
         in vec2 fragTexCoord;
         out vec4 fragColor;
         void main() {
-            fragColor = texture(tex, fragTexCoord);
+            // Flip Y: Flutter renders Y-down, OpenGL expects Y-up
+            vec2 flippedCoord = vec2(fragTexCoord.x, 1.0 - fragTexCoord.y);
+            fragColor = texture(tex, flippedCoord);
         }
         """;
 
@@ -607,6 +972,10 @@ public class FlutterScreen extends Screen {
      * Cleanup FBO resources.
      */
     private static void cleanupFboResources() {
+        if (fboSrc != 0) {
+            GL30.glDeleteFramebuffers(fboSrc);
+            fboSrc = 0;
+        }
         if (fboDst != 0) {
             GL30.glDeleteFramebuffers(fboDst);
             fboDst = 0;
@@ -615,9 +984,16 @@ public class FlutterScreen extends Screen {
             GL11.glDeleteTextures(fboDstTexture);
             fboDstTexture = 0;
         }
+        if (copyTexture2D != 0) {
+            GL11.glDeleteTextures(copyTexture2D);
+            copyTexture2D = 0;
+        }
         fboWidth = 0;
         fboHeight = 0;
+        copyTexWidth = 0;
+        copyTexHeight = 0;
         fboInitialized = false;
+        fboSrcFailed = false;
     }
 
     /**
@@ -661,6 +1037,11 @@ public class FlutterScreen extends Screen {
             int fbHeight = this.height * guiScale;
             LOGGER.info("[FlutterScreen] Sending window metrics: {}x{} (framebuffer), pixel_ratio={}", fbWidth, fbHeight, guiScale);
             DartBridgeClient.sendWindowMetrics(fbWidth, fbHeight, (double) guiScale);
+
+            // Schedule a frame to kick off rendering
+            // Note: We can't synchronously wait for the frame - Flutter's rendering is async
+            // The first frame will be ready after a few render() calls
+            DartBridgeClient.scheduleFrame();
         }
     }
 
@@ -781,6 +1162,9 @@ public class FlutterScreen extends Screen {
         nativeImage = null;
         textureWidth = 0;
         textureHeight = 0;
+
+        // Also cleanup GpuTexture resources
+        cleanupGpuTexture();
     }
 
     private void renderFlutterTexture(GuiGraphics guiGraphics) {
@@ -1039,8 +1423,9 @@ public class FlutterScreen extends Screen {
             double mouseX = event.x();
             double mouseY = event.y();
             int button = event.button();
+            long buttonMask = getButtonMask(button);
 
-            currentButtons |= getButtonMask(button);
+            currentButtons |= buttonMask;
 
             if (!pointerAdded) {
                 DartBridgeClient.sendPointerEvent(PHASE_ADD, mouseX, mouseY, 0);
@@ -1048,6 +1433,7 @@ public class FlutterScreen extends Screen {
             }
 
             DartBridgeClient.sendPointerEvent(PHASE_DOWN, mouseX, mouseY, currentButtons);
+            buttonsDownInFlutter |= buttonMask;  // Track that we sent DOWN for this button
             pointerDown = true;
             return true; // Consume the event - Flutter handled it
         }
@@ -1057,17 +1443,24 @@ public class FlutterScreen extends Screen {
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
         LOGGER.debug("[FlutterScreen] mouseReleased: x={}, y={}, button={}", event.x(), event.y(), event.button());
-        if (flutterInitialized && pointerDown) {
+        if (flutterInitialized) {
             // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
             double mouseX = event.x();
             double mouseY = event.y();
             int button = event.button();
+            long buttonMask = getButtonMask(button);
 
-            currentButtons &= ~getButtonMask(button);
-            DartBridgeClient.sendPointerEvent(PHASE_UP, mouseX, mouseY, currentButtons);
+            currentButtons &= ~buttonMask;
 
-            // Reset pointerDown when all buttons are released
-            if (currentButtons == 0) {
+            // IMPORTANT: Only send UP if we actually sent DOWN for this button
+            // This prevents crashes when GUI opens while button is already held
+            if ((buttonsDownInFlutter & buttonMask) != 0) {
+                DartBridgeClient.sendPointerEvent(PHASE_UP, mouseX, mouseY, currentButtons);
+                buttonsDownInFlutter &= ~buttonMask;  // Clear the tracking for this button
+            }
+
+            // Reset pointerDown when all tracked buttons are released
+            if (buttonsDownInFlutter == 0) {
                 pointerDown = false;
             }
             return true; // Consume the event - Flutter handled it
@@ -1088,8 +1481,10 @@ public class FlutterScreen extends Screen {
                 return;
             }
 
-            if (currentButtons != 0) {
-                DartBridgeClient.sendPointerEvent(PHASE_MOVE, mouseX, mouseY, currentButtons);
+            // IMPORTANT: Only send MOVE if we actually sent DOWN for buttons that Flutter knows about
+            // This prevents crashes when GUI opens while button is already held
+            if (buttonsDownInFlutter != 0) {
+                DartBridgeClient.sendPointerEvent(PHASE_MOVE, mouseX, mouseY, buttonsDownInFlutter);
             } else {
                 DartBridgeClient.sendPointerEvent(PHASE_HOVER, mouseX, mouseY, 0);
             }
@@ -1101,8 +1496,13 @@ public class FlutterScreen extends Screen {
     public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
         if (flutterInitialized) {
             // Mouse coordinates are in GUI pixels - Flutter handles scaling via pixel_ratio
-            DartBridgeClient.sendPointerEvent(PHASE_MOVE, event.x(), event.y(), currentButtons);
-            return true; // Consume the event - Flutter handled it
+            // IMPORTANT: Only send MOVE if we actually sent DOWN for buttons that Flutter knows about
+            // This prevents crashes when GUI opens while button is already held
+            if (buttonsDownInFlutter != 0) {
+                DartBridgeClient.sendPointerEvent(PHASE_MOVE, event.x(), event.y(), buttonsDownInFlutter);
+            }
+            // Even if we don't send MOVE, we should consume the event since Flutter is handling the screen
+            return true;
         }
         return super.mouseDragged(event, dragX, dragY);
     }
@@ -1143,6 +1543,8 @@ public class FlutterScreen extends Screen {
             DartBridgeClient.sendPointerEvent(PHASE_REMOVE, 0, 0, 0);
             pointerAdded = false;
             pointerDown = false;
+            buttonsDownInFlutter = 0;
+            currentButtons = 0;
         }
 
         // Clean up texture

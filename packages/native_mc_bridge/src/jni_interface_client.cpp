@@ -511,4 +511,17 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_dispatchContainerScree
     client_dispatch_container_close(static_cast<int32_t>(menuId));
 }
 
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    scheduleFrame
+ * Signature: ()V
+ *
+ * Schedule Flutter to render a frame immediately.
+ * Used to pre-warm Flutter before opening screens.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_scheduleFrame(
+    JNIEnv* /* env */, jclass /* cls */) {
+    dart_client_schedule_frame();
+}
+
 } // extern "C"

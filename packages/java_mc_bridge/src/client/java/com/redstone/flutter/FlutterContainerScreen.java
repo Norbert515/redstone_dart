@@ -55,6 +55,7 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
         this.menu = menu;
         this.screenTitle = title;
         // playerInventory is available via menu.slots but we don't need it directly
+        // Note: Pre-warming is done in FlutterScreen.init() after sendWindowMetrics() so Flutter knows the screen size
     }
 
     @Override
@@ -202,6 +203,9 @@ public class FlutterContainerScreen<T extends AbstractContainerMenu> extends Flu
         int slotIndex = findSlotAt(event.x(), event.y());
 
         if (slotIndex >= 0) {
+            // Still update Flutter's pointer state so UP events are consistent
+            super.mouseClicked(event, bl);
+
             // Handle slot click via container menu
             // Use minecraft.hasShiftDown() to check for shift key
             ClickType clickType = minecraft.hasShiftDown() ? ClickType.QUICK_MOVE : ClickType.PICKUP;

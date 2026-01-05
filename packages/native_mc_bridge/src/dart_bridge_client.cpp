@@ -587,8 +587,9 @@ static void OnClientVsync(void* user_data, intptr_t baton) {
         return;
     }
     uint64_t now = FlutterEngineGetCurrentTime();
-    uint64_t frame_interval = 16666667;  // ~60fps in nanoseconds
-    FlutterEngineOnVsync(g_client_engine, baton, now, now + frame_interval);
+    // Render immediately - don't wait for vsync interval
+    // This is appropriate for software rendering where we control the frame timing
+    FlutterEngineOnVsync(g_client_engine, baton, now, now + 1);
 }
 
 static void OnClientRootIsolateCreate(void* user_data) {
@@ -1588,9 +1589,11 @@ void* dart_client_get_frame_pixels() {
         // Get pixel data
         void* baseAddress = IOSurfaceGetBaseAddress(ioSurface);
         size_t bytesPerRow = IOSurfaceGetBytesPerRow(ioSurface);
+        size_t tightBytesPerRow = (size_t)width * 4; // 4 bytes per pixel (BGRA)
 
-        // Ensure our buffer is big enough
-        size_t requiredSize = bytesPerRow * height;
+        // Ensure our buffer is big enough for tightly-packed pixels
+        // Java expects width * height * 4 bytes with no padding
+        size_t requiredSize = tightBytesPerRow * height;
         if (g_metal_readback_buffer_size < requiredSize) {
             if (g_metal_readback_buffer) {
                 free(g_metal_readback_buffer);
@@ -1599,9 +1602,27 @@ void* dart_client_get_frame_pixels() {
             g_metal_readback_buffer_size = requiredSize;
         }
 
-        // Copy the pixels
+        // Copy the pixels, handling potential row stride padding
+        // Also convert BGRA (IOSurface/Metal format) to RGBA (NativeImage format)
         if (g_metal_readback_buffer && baseAddress) {
-            memcpy(g_metal_readback_buffer, baseAddress, requiredSize);
+            uint8_t* src = (uint8_t*)baseAddress;
+            uint8_t* dst = (uint8_t*)g_metal_readback_buffer;
+
+            for (int32_t y = 0; y < height; y++) {
+                // Convert BGRA to RGBA for each pixel in this row
+                for (int32_t x = 0; x < width; x++) {
+                    uint8_t b = src[x * 4 + 0];
+                    uint8_t g = src[x * 4 + 1];
+                    uint8_t r = src[x * 4 + 2];
+                    uint8_t a = src[x * 4 + 3];
+                    dst[x * 4 + 0] = r;
+                    dst[x * 4 + 1] = g;
+                    dst[x * 4 + 2] = b;
+                    dst[x * 4 + 3] = a;
+                }
+                src += bytesPerRow;
+                dst += tightBytesPerRow;
+            }
         }
 
         // Update dimensions
@@ -1637,6 +1658,11 @@ int32_t dart_client_get_frame_height() {
 #endif
     // Software path - JNI layer tracks this itself
     return 0;
+}
+
+void dart_client_schedule_frame() {
+    if (!g_client_initialized || g_client_engine == nullptr) return;
+    FlutterEngineScheduleFrame(g_client_engine);
 }
 
 } // extern "C"

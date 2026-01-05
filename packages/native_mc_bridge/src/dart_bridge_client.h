@@ -238,4 +238,8 @@ int32_t dart_client_get_frame_width();
 // Get the frame height (works for both software and hardware paths)
 int32_t dart_client_get_frame_height();
 
+// Schedule Flutter to render a frame immediately.
+// Used to pre-warm Flutter before opening screens.
+void dart_client_schedule_frame();
+
 } // extern "C"
