@@ -308,10 +308,23 @@ class HotReloadClient {
       return false;
     }
 
+    // Skip server reload - the server Dart VM doesn't have Flutter libraries
+    // and cannot load Flutter kernel deltas. Server-side Dart code is minimal
+    // and hot reload for server is not currently supported.
+    if (!useFlutterReassemble) {
+      Logger.debug('[${connection.name}] Skipping reload (server runtime not supported)');
+      return true;  // Return success to not block client reload
+    }
+
     try {
-      // If we have frontend_server, do incremental compile for Flutter client
+      // Only use frontend_server for Flutter client (useFlutterReassemble = true)
       String? deltaPath;
-      if (useFlutterReassemble && _frontendServer != null) {
+      if (_frontendServer != null) {
+        // Reset the compiler to produce a full kernel instead of incremental delta
+        // The embedded Flutter engine has issues with incremental hot reload
+        // where the second reload crashes with "class not loaded yet" errors
+        _frontendServer!.reset();
+
         // The frontend_server needs to know which files have changed.
         // If no specific files provided, we scan for recently modified .dart files
         // in the project directory.
@@ -350,26 +363,31 @@ class HotReloadClient {
           // Convert filesystem path to file URI for reloadSources
           final deltaUri = deltaPath != null ? Uri.file(deltaPath).toString() : null;
 
+          // Pause the isolate during reload to prevent race conditions
           final report = await connection.service!.reloadSources(
             isolateId,
             rootLibUri: deltaUri,
             force: true,  // Force reload to apply changes even without file timestamp tracking
+            pause: true,  // Pause isolate during reload
           );
 
           if (report.success == true) {
             Logger.step(
                 '[${connection.name}] Reloaded isolate: ${isolateRef.name}');
 
-            // Call Flutter reassemble if this is the client runtime
-            if (useFlutterReassemble) {
-              await _flutterReassemble(connection.service!, isolateId);
+            // Resume the isolate after successful reload
+            try {
+              await connection.service!.resume(isolateId);
+            } catch (e) {
+              Logger.debug('[${connection.name}] Could not resume isolate (may already be running): $e');
             }
+
+            // Call Flutter reassemble to rebuild widgets
+            await _flutterReassemble(connection.service!, isolateId);
           } else {
             Logger.warning(
                 '[${connection.name}] Failed to reload isolate: ${isolateRef.name}');
-            if (useFlutterReassemble) {
-              _frontendServer?.reject();
-            }
+            _frontendServer?.reject();
             return false;
           }
         } catch (e) {
@@ -380,16 +398,12 @@ class HotReloadClient {
       }
 
       // Accept the compilation after successful reload
-      if (useFlutterReassemble) {
-        _frontendServer?.accept();
-      }
+      _frontendServer?.accept();
 
       return true;
     } catch (e) {
       Logger.error('[${connection.name}] Hot reload failed: $e');
-      if (useFlutterReassemble) {
-        _frontendServer?.reject();
-      }
+      _frontendServer?.reject();
       return false;
     }
   }

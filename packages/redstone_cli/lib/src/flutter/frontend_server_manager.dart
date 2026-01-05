@@ -62,6 +62,9 @@ class FrontendServerManager {
   /// Whether we're waiting for an initial compile (no boundary key)
   bool _isInitialCompile = false;
 
+  /// Counter for incremental compilation to generate unique output paths
+  int _incrementalCount = 0;
+
   /// Whether the server is currently running
   bool get isRunning => _process != null;
 
@@ -211,6 +214,7 @@ class FrontendServerManager {
   ///
   /// [invalidatedFiles] - List of file paths that have changed since last compile.
   /// Returns the path to the delta .dill file containing only the changes.
+  /// The returned path is a copy of the delta that won't be overwritten.
   Future<IncrementalCompileResult> recompile(List<String> invalidatedFiles) async {
     if (_process == null) {
       throw StateError('Frontend server is not running');
@@ -218,6 +222,7 @@ class FrontendServerManager {
 
     _currentCompile = Completer<IncrementalCompileResult>();
     _isInitialCompile = false;
+    _incrementalCount++;
 
     // Convert entry point to file URI
     final entryUri = Uri.file(entryPoint).toString();
@@ -238,7 +243,28 @@ class FrontendServerManager {
     // End with boundary key
     _process!.stdin.writeln(_boundaryKey);
 
-    return _currentCompile!.future;
+    // Wait for result, then copy to unique path
+    final result = await _currentCompile!.future;
+    if (result.success && result.outputPath != null) {
+      // Copy the delta to a unique path so it doesn't get overwritten
+      // by the next recompile before the VM finishes reading it
+      final uniquePath = p.join(
+        outputDir,
+        'kernel.dill.incremental.$_incrementalCount.dill',
+      );
+      try {
+        await File(result.outputPath!).copy(uniquePath);
+        Logger.debug('Copied delta to unique path: $uniquePath');
+        return IncrementalCompileResult(
+          success: true,
+          outputPath: uniquePath,
+        );
+      } catch (e) {
+        Logger.debug('Failed to copy delta, using original: $e');
+        // Fall back to original path if copy fails
+      }
+    }
+    return result;
   }
 
   /// Accept the last compilation
@@ -259,6 +285,16 @@ class FrontendServerManager {
     if (_process == null) return;
     Logger.debug('Rejecting last compilation');
     _process!.stdin.writeln('reject');
+  }
+
+  /// Reset the compiler state
+  ///
+  /// This tells the frontend server to reset its incremental state,
+  /// so the next compilation will produce a full kernel instead of a delta.
+  void reset() {
+    if (_process == null) return;
+    Logger.debug('Resetting compiler state');
+    _process!.stdin.writeln('reset');
   }
 
   /// Stop the frontend_server
