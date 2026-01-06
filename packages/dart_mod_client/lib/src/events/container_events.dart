@@ -133,8 +133,6 @@ class ContainerEvents {
           malloc.free(titlePtr);
         }
 
-        print('[ContainerEvents] Container OPENED: menuId=$menuId, '
-            'slotCount=$slotCount, containerId=$containerId, title=$title');
         _openController
             .add(ContainerOpenEvent(menuId, slotCount, containerId, title));
       },
@@ -142,7 +140,6 @@ class ContainerEvents {
 
     _closeCallable = NativeCallable<_ContainerCloseCallbackNative>.listener(
       (int menuId) {
-        print('[ContainerEvents] Container CLOSED: menuId=$menuId');
         _closeController.add(menuId);
       },
     );
@@ -152,7 +149,6 @@ class ContainerEvents {
     registerCloseHandler(_closeCallable!.nativeFunction);
 
     _initialized = true;
-    print('[ContainerEvents] Container event callbacks registered');
   }
 
   /// Dispose of resources.

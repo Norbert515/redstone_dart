@@ -161,6 +161,32 @@ public class DartBlockEntityMenu extends AbstractContainerMenu {
         return this.container.stillValid(player);
     }
 
+    /**
+     * Called when ContainerData changes are synced to the client.
+     * We override this to push the changes to Dart via DartBridgeClient.
+     */
+    @Override
+    public void setData(int index, int value) {
+        super.setData(index, value);
+
+        // Only push to Dart on client side
+        if (this.level.isClientSide()) {
+            LOGGER.debug("setData called: index={}, value={}, containerId={}", index, value, this.containerId);
+            // Call DartBridgeClient via reflection to avoid compile-time dependency
+            // on client-only code. DartBridgeClient is in src/client/ and not available on server.
+            try {
+                Class<?> clientBridge = Class.forName("com.redstone.DartBridgeClient");
+                java.lang.reflect.Method dispatchMethod = clientBridge.getMethod(
+                    "dispatchContainerDataChanged", int.class, int.class, int.class);
+                dispatchMethod.invoke(null, this.containerId, index, value);
+            } catch (ClassNotFoundException e) {
+                // Expected on server - DartBridgeClient doesn't exist there
+            } catch (Exception e) {
+                LOGGER.warn("Failed to dispatch container data changed to Dart: {}", e.getMessage());
+            }
+        }
+    }
+
     @Override
     public ItemStack quickMoveStack(Player player, int slotIndex) {
         ItemStack result = ItemStack.EMPTY;

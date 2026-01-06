@@ -16,7 +16,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:minecraft_ui/minecraft_ui.dart';
 
-import 'screens/furnace_screen.dart';
 import 'screens/simple_furnace_screen.dart';
 
 /// Client-side entry point for the mod.
@@ -77,20 +76,11 @@ class MinecraftGuiApp extends StatelessWidget {
               containerId: 'example_mod:test_chest',
               builder: (context, info) => TestChestScreen(menuId: info.menuId),
             ),
-            // Furnace-style block entity container (match by title since block entity
-            // containers don't have a registered container type ID)
-            GuiRoute(
-              title: 'Example Furnace',
-              builder: (context, info) => ExampleFurnaceScreen(menuId: info.menuId),
-              cacheSlotPositions: true, // Pre-compute slot positions for instant item rendering
-            ),
             // SimpleFurnace - demonstrates the new Container API with reactive synced values
             GuiRoute(
               title: 'Simple Furnace',
-              builder: (context, info) => SimpleFurnaceScreen(
-                container: SimpleFurnaceContainer(),
-                menuId: info.menuId,
-              ),
+              containerBuilder: () => SimpleFurnaceContainer(),
+              screenBuilder: (context) => const SimpleFurnaceScreen(),
               cacheSlotPositions: true,
             ),
           ],

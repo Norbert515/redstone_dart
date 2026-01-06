@@ -6,6 +6,8 @@ import 'dart:async';
 import 'package:dart_mod_common/dart_mod_common.dart';
 import 'package:flutter/widgets.dart';
 
+import '../container/container_scope.dart';
+import '../events/container_data_events.dart';
 import '../events/container_events.dart';
 import '../inventory/client_container_view.dart';
 import 'container_info.dart';
@@ -103,17 +105,15 @@ class _GuiRouterState extends State<GuiRouter> {
     // Try to use event-driven approach first
     try {
       ContainerEvents.initialize();
+      ContainerDataEvents.initialize();
 
       _openSubscription = ContainerEvents.onOpen.listen(_onContainerOpen);
       _closeSubscription = ContainerEvents.onClose.listen(_onContainerClose);
-
-      print('[GuiRouter] Using event-driven container detection');
 
       // Check if a container is already open (e.g., if we initialized late)
       _checkCurrentContainer();
     } catch (e) {
       // Fall back to polling if events aren't available
-      print('[GuiRouter] Events not available, falling back to polling: $e');
       _startPolling();
     }
   }
@@ -144,10 +144,6 @@ class _GuiRouterState extends State<GuiRouter> {
   }
 
   void _onContainerOpen(ContainerOpenEvent event) {
-    print('[GuiRouter] Container opened: menuId=${event.menuId}, '
-        'slotCount=${event.slotCount}, containerId=${event.containerId}, '
-        'title=${event.title}');
-
     // Use containerId from event (passed from Java)
     final containerId = event.containerId;
 
@@ -183,8 +179,6 @@ class _GuiRouterState extends State<GuiRouter> {
   }
 
   void _onContainerClose(int menuId) {
-    print('[GuiRouter] Container closed: menuId=$menuId');
-
     if (_currentContainer?.menuId == menuId) {
       setState(() {
         _currentContainer = null;
@@ -263,32 +257,57 @@ class _GuiRouterState extends State<GuiRouter> {
     }
 
     final info = _currentContainer!;
-
-    // Find the builder to use
-    Widget Function(BuildContext, ContainerInfo)? builder;
-
-    if (_currentRoute != null) {
-      builder = _currentRoute!.builder;
-    } else if (widget.fallback != null) {
-      builder = widget.fallback!;
-    }
-
-    // No matching route and no fallback - show nothing
-    if (builder == null) {
-      return widget.background ?? const SizedBox.shrink();
-    }
+    final route = _currentRoute;
 
     // Wrap with SlotPositionScope to enable dynamic slot tracking
     // (for any slots not pre-registered)
     // Pass cacheKey if the route wants position caching
-    final cacheKey = _currentRoute?.cacheSlotPositions == true
-        ? _currentRoute!.routeKey
+    final cacheKey = route?.cacheSlotPositions == true
+        ? route!.routeKey
         : null;
+
+    // Build the screen widget
+    final screenWidget = _buildScreen(route, info, context);
+    if (screenWidget == null) {
+      return widget.background ?? const SizedBox.shrink();
+    }
 
     return SlotPositionScope(
       menuId: info.menuId,
       cacheKey: cacheKey,
-      child: builder(context, info),
+      child: screenWidget,
     );
+  }
+
+  /// Builds the screen widget for the current route.
+  ///
+  /// If the route has [containerBuilder] + [screenBuilder], wraps with [ContainerScope]
+  /// for automatic container lifecycle management.
+  /// Otherwise, falls back to the legacy [builder] pattern.
+  Widget? _buildScreen(GuiRoute? route, ContainerInfo info, BuildContext context) {
+    // New pattern: containerBuilder + screenBuilder with ContainerScope
+    if (route != null && route.containerBuilder != null && route.screenBuilder != null) {
+      final container = route.containerBuilder!();
+      return ContainerScope(
+        container: container,
+        menuId: info.menuId,
+        child: Builder(
+          builder: (context) => route.screenBuilder!(context),
+        ),
+      );
+    }
+
+    // Legacy pattern: builder with direct ContainerInfo access
+    if (route != null && route.builder != null) {
+      return route.builder!(context, info);
+    }
+
+    // No matching route - try fallback
+    if (widget.fallback != null) {
+      return widget.fallback!(context, info);
+    }
+
+    // No route and no fallback - return null to show background
+    return null;
   }
 }

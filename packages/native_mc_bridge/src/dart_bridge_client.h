@@ -95,6 +95,9 @@ typedef bool (*ContainerMayPickupCallback)(int64_t menu_id, int32_t slot_index);
 typedef void (*ContainerOpenCallback)(int32_t menu_id, int32_t slot_count, const char* container_id, const char* title);
 typedef void (*ContainerCloseCallback)(int32_t menu_id);
 
+// Container data changed callback (for push-based container data updates)
+typedef void (*ContainerDataChangedCallback)(int32_t menu_id, int32_t slot_index, int32_t value);
+
 // ==========================================================================
 // Callback Registration (called from Dart via FFI)
 // ==========================================================================
@@ -126,6 +129,9 @@ void client_register_container_may_pickup_handler(ContainerMayPickupCallback cb)
 // Container lifecycle event callbacks (for event-driven container open/close)
 void client_register_container_open_handler(ContainerOpenCallback cb);
 void client_register_container_close_handler(ContainerCloseCallback cb);
+
+// Container data changed callback registration (for push-based updates)
+void client_register_container_data_changed_handler(ContainerDataChangedCallback cb);
 
 // ==========================================================================
 // Event Dispatch (called from Java via JNI)
@@ -161,6 +167,9 @@ bool client_dispatch_container_may_pickup(int64_t menu_id, int32_t slot_index);
 // Container lifecycle event dispatch (for event-driven container open/close)
 void client_dispatch_container_open(int32_t menu_id, int32_t slot_count, const char* container_id, const char* title);
 void client_dispatch_container_close(int32_t menu_id);
+
+// Container data changed dispatch (for push-based updates from Java)
+void client_dispatch_container_data_changed(int32_t menu_id, int32_t slot_index, int32_t value);
 
 // ==========================================================================
 // Network Packet Functions (Client-side)

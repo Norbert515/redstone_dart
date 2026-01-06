@@ -16,32 +16,34 @@ import 'package:minecraft_ui/minecraft_ui.dart';
 /// - Arrow showing cooking progress
 /// - Player inventory at the bottom
 ///
-/// Uses [Watch2] to reactively rebuild progress indicators when synced values
-/// change from the server.
+/// Uses [ContainerScope] to access the container and automatically rebuild
+/// when synced values change from the server.
 ///
 /// Example usage:
 /// ```dart
-/// GuiRegistry.register<SimpleFurnaceContainer>(
-///   (container, menuId) => SimpleFurnaceScreen(
-///     container: container,
-///     menuId: menuId,
-///   ),
-/// );
+/// GuiRoute(
+///   title: 'Simple Furnace',
+///   containerBuilder: () => SimpleFurnaceContainer(),
+///   screenBuilder: (context) => const SimpleFurnaceScreen(),
+/// )
 /// ```
-class SimpleFurnaceScreen extends ContainerScreen<SimpleFurnaceContainer> {
-  const SimpleFurnaceScreen({
-    super.key,
-    required super.container,
-    required super.menuId,
-  });
+class SimpleFurnaceScreen extends StatelessWidget {
+  const SimpleFurnaceScreen({super.key});
 
-  @override
-  ContainerScreenState<SimpleFurnaceContainer> createState() => _SimpleFurnaceScreenState();
-}
-
-class _SimpleFurnaceScreenState extends ContainerScreenState<SimpleFurnaceContainer> {
   @override
   Widget build(BuildContext context) {
+    final container = ContainerScope.of<SimpleFurnaceContainer>(context);
+
+    // Access synced values directly - widget rebuilds automatically when they change
+    final litTime = container.litTime.value;
+    final litDuration = container.litDuration.value;
+    final cookingProgress = container.cookingProgress.value;
+    final cookingTotalTime = container.cookingTotalTime.value;
+
+    // Calculate progress values
+    final fuelProgress = litDuration > 0 ? litTime / litDuration : 0.0;
+    final cookProgress = cookingTotalTime > 0 ? cookingProgress / cookingTotalTime : 0.0;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Center(
@@ -71,16 +73,9 @@ class _SimpleFurnaceScreenState extends ContainerScreenState<SimpleFurnaceContai
                       ),
                       const SizedBox(height: 4),
                       // Flame indicator (fuel remaining)
-                      Watch2(
-                        container.litTime,
-                        container.litDuration,
-                        builder: (litTime, litDuration) {
-                          final progress = litDuration > 0 ? litTime / litDuration : 0.0;
-                          return _FurnaceFlame(
-                            progress: progress,
-                            isLit: litTime > 0,
-                          );
-                        },
+                      _FurnaceFlame(
+                        progress: fuelProgress,
+                        isLit: litTime > 0,
                       ),
                       const SizedBox(height: 4),
                       // Fuel slot (index 1)
@@ -94,14 +89,7 @@ class _SimpleFurnaceScreenState extends ContainerScreenState<SimpleFurnaceContai
                   const SizedBox(width: 24),
 
                   // Arrow progress indicator
-                  Watch2(
-                    container.cookingProgress,
-                    container.cookingTotalTime,
-                    builder: (progress, total) {
-                      final cookProgress = total > 0 ? progress / total : 0.0;
-                      return _FurnaceArrow(progress: cookProgress);
-                    },
-                  ),
+                  _FurnaceArrow(progress: cookProgress),
 
                   const SizedBox(width: 24),
 

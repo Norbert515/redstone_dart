@@ -170,6 +170,9 @@ public:
     void setContainerOpenHandler(ContainerOpenCallback cb) { container_open_handler_ = cb; }
     void setContainerCloseHandler(ContainerCloseCallback cb) { container_close_handler_ = cb; }
 
+    // Container data changed handler (for push-based updates)
+    void setContainerDataChangedHandler(ContainerDataChangedCallback cb) { container_data_changed_handler_ = cb; }
+
     // Network packet handler
     void setPacketReceivedHandler(ClientPacketReceivedCallback cb) { packet_received_handler_ = cb; }
 
@@ -281,6 +284,10 @@ public:
         if (container_close_handler_) container_close_handler_(menu_id);
     }
 
+    void dispatchContainerDataChanged(int32_t menu_id, int32_t slot_index, int32_t value) {
+        if (container_data_changed_handler_) container_data_changed_handler_(menu_id, slot_index, value);
+    }
+
     void clear() {
         screen_init_handler_ = nullptr;
         screen_tick_handler_ = nullptr;
@@ -304,6 +311,7 @@ public:
         container_may_pickup_handler_ = nullptr;
         container_open_handler_ = nullptr;
         container_close_handler_ = nullptr;
+        container_data_changed_handler_ = nullptr;
         packet_received_handler_ = nullptr;
     }
 
@@ -333,6 +341,7 @@ private:
     ContainerMayPickupCallback container_may_pickup_handler_ = nullptr;
     ContainerOpenCallback container_open_handler_ = nullptr;
     ContainerCloseCallback container_close_handler_ = nullptr;
+    ContainerDataChangedCallback container_data_changed_handler_ = nullptr;
     ClientPacketReceivedCallback packet_received_handler_ = nullptr;
 };
 
@@ -977,6 +986,9 @@ void client_register_container_may_pickup_handler(ContainerMayPickupCallback cb)
 void client_register_container_open_handler(ContainerOpenCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setContainerOpenHandler(cb); }
 void client_register_container_close_handler(ContainerCloseCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setContainerCloseHandler(cb); }
 
+// Container data changed callback registration (for push-based updates)
+void client_register_container_data_changed_handler(ContainerDataChangedCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setContainerDataChangedHandler(cb); }
+
 // ==========================================================================
 // Event Dispatch (called from Java via JNI)
 // Client-side uses direct FFI calls (single thread, no isolate switching)
@@ -1123,6 +1135,13 @@ void client_dispatch_container_close(int32_t menu_id) {
 
     // Close event has no strings, so direct dispatch is safe
     dart_mc_bridge::ClientCallbackRegistry::instance().dispatchContainerClose(menu_id);
+}
+
+void client_dispatch_container_data_changed(int32_t menu_id, int32_t slot_index, int32_t value) {
+    CLIENT_DISPATCH_CHECK();
+
+    // Dispatch container data change to Dart
+    dart_mc_bridge::ClientCallbackRegistry::instance().dispatchContainerDataChanged(menu_id, slot_index, value);
 }
 
 // ==========================================================================

@@ -1,20 +1,28 @@
-/// Base class for container screens with automatic data syncing.
+/// Base class for container screens.
 library;
 
 import 'package:dart_mod_common/dart_mod_common.dart';
 import 'package:flutter/widgets.dart';
 
-import 'container_watcher.dart';
-
-/// Base class for container screens with automatic data syncing.
+/// Base class for container screens.
 ///
-/// This widget provides automatic lifecycle management for [ContainerWatcher],
-/// starting the watcher when the screen is shown and stopping it when disposed.
+/// This provides a simple base for screens that display container data.
+/// Container data synchronization is handled automatically by [ContainerScope],
+/// which wraps screens when using the `containerBuilder` + `screenBuilder`
+/// pattern in [GuiRoute].
 ///
-/// Subclass this to create container screens that automatically sync
-/// [SyncedInt] values from the Java side.
+/// Example using ContainerScope (recommended):
+/// ```dart
+/// class FurnaceScreen extends StatelessWidget {
+///   @override
+///   Widget build(BuildContext context) {
+///     final container = ContainerScope.of<SimpleFurnaceContainer>(context);
+///     return Text('Progress: ${container.cookProgress.value}');
+///   }
+/// }
+/// ```
 ///
-/// Example:
+/// Example using ContainerScreen base class (for legacy compatibility):
 /// ```dart
 /// class FurnaceScreen extends ContainerScreen<SimpleFurnaceContainer> {
 ///   const FurnaceScreen({
@@ -30,10 +38,7 @@ import 'container_watcher.dart';
 /// class _FurnaceScreenState extends ContainerScreenState<SimpleFurnaceContainer> {
 ///   @override
 ///   Widget build(BuildContext context) {
-///     return Watch(
-///       value: container.cookProgress,
-///       builder: (context, progress) => Text('Progress: $progress'),
-///     );
+///     return Text('Progress: ${container.cookProgress.value}');
 ///   }
 /// }
 /// ```
@@ -55,31 +60,13 @@ abstract class ContainerScreen<T extends ContainerDefinition>
 
 /// Base state class for [ContainerScreen].
 ///
-/// Manages the [ContainerWatcher] lifecycle automatically.
-/// Access the container via [container] and menu ID via [menuId].
+/// Provides convenient access to [container] and [menuId].
+/// Data synchronization is handled by [ContainerScope] in the widget tree.
 abstract class ContainerScreenState<T extends ContainerDefinition>
     extends State<ContainerScreen<T>> {
-  late final ContainerWatcher _watcher;
-
   /// The container definition with synced values.
   T get container => widget.container;
 
   /// The menu ID from Java for this container instance.
   int get menuId => widget.menuId;
-
-  @override
-  void initState() {
-    super.initState();
-    _watcher = ContainerWatcher(
-      container: container,
-      menuId: menuId,
-    );
-    _watcher.start();
-  }
-
-  @override
-  void dispose() {
-    _watcher.stop();
-    super.dispose();
-  }
 }

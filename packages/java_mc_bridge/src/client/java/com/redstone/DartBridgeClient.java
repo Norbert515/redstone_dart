@@ -754,6 +754,31 @@ public class DartBridgeClient {
      */
     public static native void dispatchContainerScreenClose(int menuId);
 
+    /**
+     * Native method to dispatch container data changed event to Dart.
+     * Called from DartBlockEntityMenu.setData() when ContainerData values change.
+     *
+     * @param menuId The container menu ID
+     * @param slotIndex The data slot index that changed
+     * @param value The new value
+     */
+    private static native void nativeDispatchContainerDataChanged(int menuId, int slotIndex, int value);
+
+    /**
+     * Dispatch container data changed event to Dart.
+     * Called from DartBlockEntityMenu.setData() when ContainerData values change.
+     *
+     * @param menuId The container menu ID
+     * @param slotIndex The data slot index that changed
+     * @param value The new value
+     */
+    public static void dispatchContainerDataChanged(int menuId, int slotIndex, int value) {
+        if (!clientInitialized.get()) {
+            return; // Skip if client not initialized
+        }
+        nativeDispatchContainerDataChanged(menuId, slotIndex, value);
+    }
+
     // ==========================================================================
     // Client-side Container Menu Query Methods
     // ==========================================================================

@@ -524,4 +524,21 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_scheduleFrame(
     dart_client_schedule_frame();
 }
 
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    nativeDispatchContainerDataChanged
+ * Signature: (III)V
+ *
+ * Dispatch container data change event to Dart.
+ * Called from DartBlockEntityMenu.setData() when ContainerData changes.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_nativeDispatchContainerDataChanged(
+    JNIEnv* /* env */, jclass /* cls */, jint menuId, jint slotIndex, jint value) {
+    client_dispatch_container_data_changed(
+        static_cast<int32_t>(menuId),
+        static_cast<int32_t>(slotIndex),
+        static_cast<int32_t>(value)
+    );
+}
+
 } // extern "C"
