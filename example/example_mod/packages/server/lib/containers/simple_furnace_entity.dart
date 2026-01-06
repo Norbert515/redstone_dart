@@ -29,20 +29,12 @@ class SimpleFurnaceEntity
 
   @override
   void serverTick() {
-    // Debug: print tick every 100 ticks
     _tickCount++;
 
     // Check if we can smelt
     final input = getSlot(SimpleFurnaceContainer.inputSlot);
     final fuel = getSlot(SimpleFurnaceContainer.fuelSlot);
     final output = getSlot(SimpleFurnaceContainer.outputSlot);
-
-    if (_tickCount % 100 == 0) {
-      print('[SimpleFurnaceEntity] serverTick #$_tickCount');
-      print('  litTime=${container.litTime.value}, cookingProgress=${container.cookingProgress.value}');
-      print('  input=${input.item.id}:${input.count}, fuel=${fuel.item.id}:${fuel.count}, output=${output.item.id}:${output.count}');
-      print('  isLit=${container.isLit}, canSmelt=${input.isNotEmpty && canSmelt(input)}, isFuel=${fuel.isNotEmpty && isFuel(fuel)}');
-    }
 
     final wasLit = container.isLit;
     var changed = false;
