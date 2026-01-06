@@ -111,61 +111,62 @@ class _McPanelPainter extends CustomPainter {
       ..color = borderLightColor
       ..filterQuality = FilterQuality.none
       ..isAntiAlias = false;
+    final blackPaint = Paint()
+      ..color = const Color(0xFF000000)
+      ..filterQuality = FilterQuality.none
+      ..isAntiAlias = false;
 
-    // Draw background
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      bgPaint,
-    );
+    // Real Minecraft panel structure (from outside to inside):
+    // 1. Black outline (1px) with CORNER PIXELS CUT OFF for pixel-rounded look
+    // 2. Light/white inner edge (borderWidth) on TOP and LEFT
+    // 3. Dark inner edge (borderWidth) on BOTTOM and RIGHT
+    // 4. Background fill
 
-    // Draw 3D beveled border
-    // For normal panels: light on top-left, dark on bottom-right
-    // For inset panels: reversed (dark on top-left, light on bottom-right)
+    // For inset panels: light and dark are swapped
     final topLeftPaint = inset ? darkPaint : lightPaint;
     final bottomRightPaint = inset ? lightPaint : darkPaint;
 
-    // Top edge
+    // p = 1 scaled pixel (black outline thickness)
+    // We use borderWidth/2 as the pixel size since borderWidth is typically 2
+    final p = borderWidth / 2;
+    final bw = borderWidth; // Inner border width
+
+    // 1. Black outline with corners cut off (pixel-rounded)
+    // Top edge - skip first and last pixel
+    canvas.drawRect(Rect.fromLTWH(p, 0, size.width - 2 * p, p), blackPaint);
+    // Bottom edge - skip first and last pixel
     canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, borderWidth),
-      topLeftPaint,
-    );
-
-    // Left edge
+        Rect.fromLTWH(p, size.height - p, size.width - 2 * p, p), blackPaint);
+    // Left edge - skip first and last pixel
+    canvas.drawRect(Rect.fromLTWH(0, p, p, size.height - 2 * p), blackPaint);
+    // Right edge - skip first and last pixel
     canvas.drawRect(
-      Rect.fromLTWH(0, 0, borderWidth, size.height),
-      topLeftPaint,
-    );
+        Rect.fromLTWH(size.width - p, p, p, size.height - 2 * p), blackPaint);
 
-    // Bottom edge
+    // 2. Light edges (inside black outline, top and left)
+    // These create the "raised" look - light comes from top-left
+    // Top light - full inner width
     canvas.drawRect(
-      Rect.fromLTWH(0, size.height - borderWidth, size.width, borderWidth),
-      bottomRightPaint,
-    );
-
-    // Right edge
+        Rect.fromLTWH(p, p, size.width - 2 * p, bw), topLeftPaint);
+    // Left light - below top light, don't overlap
     canvas.drawRect(
-      Rect.fromLTWH(size.width - borderWidth, 0, borderWidth, size.height),
-      bottomRightPaint,
-    );
+        Rect.fromLTWH(p, p + bw, bw, size.height - 2 * p - bw), topLeftPaint);
 
-    // Inner border (creates the beveled look)
-    if (borderWidth > 1) {
-      final innerBorder = borderWidth / 2;
-      final innerPaint = Paint()
-        ..color = topLeftPaint.color.withValues(alpha: 0.5)
-        ..filterQuality = FilterQuality.none
-        ..isAntiAlias = false;
+    // 3. Dark edges (inside black outline, bottom and right)
+    // Bottom dark - full inner width
+    canvas.drawRect(
+        Rect.fromLTWH(p, size.height - p - bw, size.width - 2 * p, bw),
+        bottomRightPaint);
+    // Right dark - above bottom dark, don't overlap
+    canvas.drawRect(
+        Rect.fromLTWH(size.width - p - bw, p, bw, size.height - 2 * p - bw),
+        bottomRightPaint);
 
-      // Inner top-left highlight
-      canvas.drawRect(
-        Rect.fromLTWH(innerBorder, innerBorder, size.width - innerBorder * 2, innerBorder),
-        innerPaint,
-      );
-      canvas.drawRect(
-        Rect.fromLTWH(innerBorder, innerBorder, innerBorder, size.height - innerBorder * 2),
-        innerPaint,
-      );
-    }
+    // 4. Background fill
+    canvas.drawRect(
+        Rect.fromLTWH(
+            p + bw, p + bw, size.width - 2 * p - 2 * bw, size.height - 2 * p - 2 * bw),
+        bgPaint);
   }
 
   @override
