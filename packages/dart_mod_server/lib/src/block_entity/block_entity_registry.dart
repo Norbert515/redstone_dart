@@ -7,6 +7,7 @@ library;
 import 'package:dart_mod_common/dart_mod_common.dart';
 
 import '../bridge.dart';
+import '../container/container_block_entity.dart';
 
 /// Factory function for creating block entity instances.
 typedef BlockEntityFactory = BlockEntity Function();
@@ -62,6 +63,7 @@ class BlockEntityRegistry {
   /// - [inventorySize]: Number of inventory slots (default 0 for no inventory)
   /// - [containerTitle]: Display title for the container UI
   /// - [ticks]: Whether this block entity should receive tick callbacks
+  /// - [dataSlotCount]: Number of data slots for ContainerData synchronization
   ///
   /// Returns the assigned handler ID.
   static int registerType(
@@ -70,6 +72,7 @@ class BlockEntityRegistry {
     int inventorySize = 0,
     String containerTitle = '',
     bool ticks = true,
+    int dataSlotCount = 0,
   }) {
     // Queue the registration with the native bridge
     final handlerId = ServerBridge.queueBlockEntityRegistration(
@@ -77,13 +80,14 @@ class BlockEntityRegistry {
       inventorySize: inventorySize,
       containerTitle: containerTitle,
       ticks: ticks,
+      dataSlotCount: dataSlotCount,
     );
 
     _factories[handlerId] = factory;
     _instances[handlerId] = {};
     _typeToHandler[blockId] = handlerId;
 
-    print('BlockEntityRegistry: Registered $blockId with handler ID $handlerId');
+    print('BlockEntityRegistry: Registered $blockId with handler ID $handlerId (dataSlotCount=$dataSlotCount)');
     return handlerId;
   }
 
@@ -98,9 +102,10 @@ class BlockEntityRegistry {
     final tempInstance = factory();
     final blockId = tempInstance.id;
 
-    // Determine inventory size and container title from settings
+    // Determine inventory size, container title, and data slot count from settings
     int inventorySize = 0;
     String containerTitle = blockId;
+    int dataSlotCount = 0;
 
     if (tempInstance.settings is ProcessingSettings) {
       final ps = tempInstance.settings as ProcessingSettings;
@@ -112,12 +117,18 @@ class BlockEntityRegistry {
           .join(' ');
     }
 
+    // Extract dataSlotCount from ContainerBlockEntity
+    if (tempInstance is ContainerBlockEntity) {
+      dataSlotCount = tempInstance.dataSlotCount;
+    }
+
     return registerType(
       blockId,
       factory,
       inventorySize: inventorySize,
       containerTitle: containerTitle,
       ticks: true,
+      dataSlotCount: dataSlotCount,
     );
   }
 

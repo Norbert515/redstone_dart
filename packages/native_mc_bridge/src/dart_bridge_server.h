@@ -401,13 +401,15 @@ bool server_get_next_entity_registration(
  * @param inventory_size Number of inventory slots (0 for no inventory)
  * @param container_title Display title for the container UI
  * @param ticks Whether this block entity should tick
+ * @param data_slot_count Number of data slots for ContainerData synchronization
  * @return Handler ID assigned to this block entity type
  */
 int32_t server_queue_block_entity_registration(
     const char* block_id,
     int32_t inventory_size,
     const char* container_title,
-    bool ticks);
+    bool ticks,
+    int32_t data_slot_count);
 
 /**
  * Check if there are pending block entity registrations.
@@ -423,6 +425,7 @@ bool server_get_next_block_entity_registration(
     char* out_block_id, size_t block_id_len,
     int32_t* out_inventory_size,
     char* out_container_title, size_t container_title_len,
-    bool* out_ticks);
+    bool* out_ticks,
+    int32_t* out_data_slot_count);
 
 } // extern "C"

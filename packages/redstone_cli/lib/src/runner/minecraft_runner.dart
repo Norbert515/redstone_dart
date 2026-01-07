@@ -64,6 +64,9 @@ class MinecraftRunner {
   void Function(VmServiceInfo)? onServerVmServiceDetected;
   void Function(VmServiceInfo)? onClientVmServiceDetected;
 
+  /// Callback for critical errors (e.g., Flutter kernel version mismatch)
+  void Function(String error)? onCriticalError;
+
   MinecraftRunner(
     this.project, {
     this.testMode = false,
@@ -198,6 +201,8 @@ class MinecraftRunner {
         _detectWorldName(line);
         // Detect VM service URLs for hot reload
         _detectVmServiceUrl(line);
+        // Detect critical errors (e.g., Flutter kernel version mismatch)
+        _detectCriticalError(line);
       });
       _stderrSubscription = _process!.stderr
           .transform(const SystemEncoding().decoder)
@@ -207,6 +212,8 @@ class MinecraftRunner {
         _outputMonitor?.add(line);
         // Also check stderr for VM service URLs (some runtimes print there)
         _detectVmServiceUrl(line);
+        // Detect critical errors
+        _detectCriticalError(line);
       });
     }
 
@@ -534,6 +541,67 @@ class MinecraftRunner {
     if (match != null) {
       _currentWorldName = match.group(1)?.trim();
       Logger.info('Detected world name: $_currentWorldName');
+    }
+  }
+
+  /// Detect critical errors in output (e.g., Flutter kernel version mismatch)
+  void _detectCriticalError(String line) {
+    // Flutter kernel version mismatch
+    if (line.contains('Invalid kernel binary format version')) {
+      final match = RegExp(r'expected (\d+), found (\d+)').firstMatch(line);
+      if (match != null) {
+        final expected = match.group(1);
+        final found = match.group(2);
+        final error = '''
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ FLUTTER KERNEL VERSION MISMATCH                                              ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║ Expected kernel version: $expected
+║ Found kernel version: $found
+║                                                                              ║
+║ The Flutter SDK used to compile doesn't match the embedded Flutter engine.  ║
+║ Make sure FLUTTER_ROOT and FLUTTER_ENGINE_PATH point to matching builds.    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+''';
+        Logger.error(error);
+        onCriticalError?.call(error);
+      }
+    }
+
+    // Invalid SDK hash (Flutter SDK and engine hash mismatch)
+    if (line.contains('Invalid SDK hash')) {
+      final error = '''
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ FLUTTER SDK HASH MISMATCH                                                    ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║ The Flutter SDK hash doesn't match the embedded Flutter engine.             ║
+║                                                                              ║
+║ This means the kernel was compiled with a different Flutter build than the  ║
+║ engine embedded in the Java mod.                                            ║
+║                                                                              ║
+║ Solutions:                                                                   ║
+║ 1. Rebuild the native engine from your custom Flutter build                 ║
+║ 2. Or ensure FLUTTER_ENGINE_PATH points to the correct engine build         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+''';
+        Logger.error(error);
+        onCriticalError?.call(error);
+    }
+
+    // Flutter engine failed to launch
+    if (line.contains('Could not launch engine with configuration')) {
+      final error = '''
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ FLUTTER ENGINE FAILED TO LAUNCH                                              ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║ The Flutter engine could not start. Check the errors above for details.     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+''';
+        Logger.error(error);
+        onCriticalError?.call(error);
     }
   }
 

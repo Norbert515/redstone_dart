@@ -46,98 +46,113 @@ class SimpleFurnaceScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Center(
-        child: McPanel(
-          width: 176,
-          padding: const EdgeInsets.all(7),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Title
-              const McText.title('Furnace'),
-
-              const SizedBox(height: 8),
-
-              // Furnace slots and progress indicators
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Input and fuel column
-                  Column(
-                    children: [
-                      // Input slot (index 0)
-                      SlotReporter(
-                        slotIndex: SimpleFurnaceContainer.inputSlot,
-                        child: const McSlot(),
-                      ),
-                      const SizedBox(height: 4),
-                      // Flame indicator (fuel remaining)
-                      _FurnaceFlame(
-                        progress: fuelProgress,
-                        isLit: litTime > 0,
-                      ),
-                      const SizedBox(height: 4),
-                      // Fuel slot (index 1)
-                      SlotReporter(
-                        slotIndex: SimpleFurnaceContainer.fuelSlot,
-                        child: const McSlot(),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(width: 24),
-
-                  // Arrow progress indicator
-                  _FurnaceArrow(progress: cookProgress),
-
-                  const SizedBox(width: 24),
-
-                  // Output slot (index 2)
-                  SlotReporter(
-                    slotIndex: SimpleFurnaceContainer.outputSlot,
-                    child: const McSlot(),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 14),
-
-              // Player inventory label
-              const McText.label('Inventory'),
-              const SizedBox(height: 2),
-
-              // Player inventory (3 rows x 9 columns)
-              // Slots 3-29 are player main inventory
-              for (int row = 0; row < 3; row++)
-                Row(
+      body: Stack(
+        children: [
+          Center(
+            child: Banner(
+              message: 'This is Flutter!',
+              location: BannerLocation.topStart,
+              child: McPanel(
+                width: 176,
+                padding: const EdgeInsets.all(7),
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (int col = 0; col < 9; col++)
-                      SlotReporter(
-                        slotIndex: 3 + row * 9 + col,
-                        child: const McSlot(),
+                    // Title
+                    const McText.title('Furnace'),
+
+                    const SizedBox(height: 8),
+
+                    // Furnace slots and progress indicators
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Input and fuel column
+                        Column(
+                          children: [
+                            // Input slot (index 0)
+                            SlotReporter(
+                              slotIndex: SimpleFurnaceContainer.inputSlot,
+                              child: const McSlot(),
+                            ),
+                            const SizedBox(height: 4),
+                            // Flame indicator (fuel remaining)
+                            _FurnaceFlame(
+                              progress: fuelProgress,
+                              isLit: litTime > 0,
+                            ),
+                            const SizedBox(height: 4),
+                            // Fuel slot (index 1)
+                            SlotReporter(
+                              slotIndex: SimpleFurnaceContainer.fuelSlot,
+                              child: const McSlot(),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(width: 24),
+
+                        // Arrow progress indicator
+                        _FurnaceArrow(progress: cookProgress),
+
+                        const SizedBox(width: 24),
+
+                        // Output slot (index 2)
+                        SlotReporter(
+                          slotIndex: SimpleFurnaceContainer.outputSlot,
+                          child: const McSlot(),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Player inventory label
+                    const McText.label('Inventory'),
+                    const SizedBox(height: 2),
+
+                    // Player inventory (3 rows x 9 columns)
+                    // Slots 3-29 are player main inventory
+                    for (int row = 0; row < 3; row++)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (int col = 0; col < 9; col++)
+                            SlotReporter(
+                              slotIndex: 3 + row * 9 + col,
+                              child: const McSlot(),
+                            ),
+                        ],
                       ),
+
+                    const SizedBox(height: 4),
+
+                    // Player hotbar (1 row x 9 columns)
+                    // Slots 30-38 are hotbar
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (int col = 0; col < 9; col++)
+                          SlotReporter(
+                            slotIndex: 30 + col,
+                            child: const McSlot(),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-
-              const SizedBox(height: 4),
-
-              // Player hotbar (1 row x 9 columns)
-              // Slots 30-38 are hotbar
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (int col = 0; col < 9; col++)
-                    SlotReporter(
-                      slotIndex: 30 + col,
-                      child: const McSlot(),
-                    ),
-                ],
               ),
-            ],
+            ),
           ),
-        ),
+
+          // Uncomment for video (hot reload): fun "Powered by Flutter" badge.
+          const Positioned(
+            right: 90,
+            bottom: 130,
+            child: _FlutterHypeBadge(),
+          ),
+        ],
       ),
     );
   }
@@ -217,23 +232,23 @@ class _FurnaceArrow extends StatelessWidget {
   // Arrow shape (24x17 pixels) - shaft with arrowhead pointing right
   // Vanilla Minecraft style: horizontal shaft + triangular arrowhead with tip
   static const String _arrowShape = '''
-......................X.
-.....................XX.
-....................XXX.
-...................XXXX.
-..................XXXXX.
-.................XXXXXX.
-................XXXXXXX.
-...............XXXXXXXX.
-................XXXXXXX.
-...............XXXXXXXX.
-................XXXXXXX.
-.................XXXXXX.
-..................XXXXX.
-...................XXXX.
-....................XXX.
-.....................XX.
-......................X.''';
+........................
+........................
+..............X.........
+..............XX........
+..............XXX.......
+..............XXXX......
+..XXXXXXXXXXXXXXXXX.....
+..XXXXXXXXXXXXXXXXXX....
+..XXXXXXXXXXXXXXXXXXX...
+..XXXXXXXXXXXXXXXXXX....
+..XXXXXXXXXXXXXXXXX.....
+..............XXXX......
+..............XXX.......
+..............XX........
+..............X.........
+........................
+........................''';
 
   static const Color _emptyColor = Color(0xFF8B8B8B);
   static const Color _fillColor = Color(0xFFFFFFFF);
@@ -292,4 +307,115 @@ class _HorizontalProgressClipper extends CustomClipper<Rect> {
 
   @override
   bool shouldReclip(_HorizontalProgressClipper oldClipper) => progress != oldClipper.progress;
+}
+
+/// A fun little "Powered by Flutter" badge (for video).
+///
+/// Intended to be placed as an overlay in the bottom-right corner.
+class _FlutterHypeBadge extends StatefulWidget {
+  const _FlutterHypeBadge();
+
+  @override
+  State<_FlutterHypeBadge> createState() => _FlutterHypeBadgeState();
+}
+
+class _FlutterHypeBadgeState extends State<_FlutterHypeBadge> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  // Tap-to-cycle text for a bit of "wow it's interactive" on camera.
+  static const List<String> _messages = [
+    'Powered by Flutter',
+    'Hot reload magic',
+    'Pixel UI, real Flutter',
+    'Vibes: 60fps',
+  ];
+
+  int _messageIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _cycleMessage() {
+    setState(() {
+      _messageIndex = (_messageIndex + 1) % _messages.length;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final message = _messages[_messageIndex];
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value; // 0..1
+        final lift = (t - 0.5).abs(); // 0.5..0
+        final translateY = -2.0 + (lift * 4.0); // subtle bounce
+        final rotate = (t - 0.5) * 0.10; // subtle wiggle
+
+        return Transform.translate(
+          offset: Offset(0, translateY),
+          child: Transform.rotate(
+            angle: rotate,
+            child: child,
+          ),
+        );
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _cycleMessage,
+          borderRadius: BorderRadius.circular(10),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: const Color(0xCC0B0E14),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF6EE7FF), width: 1),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x55000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const FlutterLogo(size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
+                      shadows: [
+                        Shadow(color: Colors.black, blurRadius: 4),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

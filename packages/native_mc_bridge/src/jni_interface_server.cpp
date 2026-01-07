@@ -1517,7 +1517,7 @@ JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingBlockEntityReg
  * Get the next block entity registration from the queue.
  * Returns an Object array: [handlerId(Integer), blockId(String),
  *                           inventorySize(Integer), containerTitle(String),
- *                           ticks(Boolean)]
+ *                           ticks(Boolean), dataSlotCount(Integer)]
  * Returns null if the queue is empty.
  */
 JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockEntityRegistration(
@@ -1528,19 +1528,21 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockEntityRe
     int32_t inventory_size;
     char container_title_buf[256];
     bool ticks;
+    int32_t data_slot_count;
 
     if (!server_get_next_block_entity_registration(
             &handler_id,
             block_id_buf, sizeof(block_id_buf),
             &inventory_size,
             container_title_buf, sizeof(container_title_buf),
-            &ticks)) {
+            &ticks,
+            &data_slot_count)) {
         return nullptr;
     }
 
-    // Create Object array with 5 elements
+    // Create Object array with 6 elements
     jclass objectClass = env->FindClass("java/lang/Object");
-    jobjectArray result = env->NewObjectArray(5, objectClass, nullptr);
+    jobjectArray result = env->NewObjectArray(6, objectClass, nullptr);
 
     // Use shared boxing helpers from jni_helpers.h
     env->SetObjectArrayElement(result, 0, boxInt(env, handler_id));
@@ -1548,6 +1550,7 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockEntityRe
     env->SetObjectArrayElement(result, 2, boxInt(env, inventory_size));
     env->SetObjectArrayElement(result, 3, env->NewStringUTF(container_title_buf));
     env->SetObjectArrayElement(result, 4, boxBool(env, ticks ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 5, boxInt(env, data_slot_count));
 
     return result;
 }

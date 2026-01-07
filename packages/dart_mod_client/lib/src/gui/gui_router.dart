@@ -102,10 +102,12 @@ class _GuiRouterState extends State<GuiRouter> {
   }
 
   void _initializeEventListeners() {
+    print('[GuiRouter] _initializeEventListeners called');
     // Try to use event-driven approach first
     try {
       ContainerEvents.initialize();
       ContainerDataEvents.initialize();
+      print('[GuiRouter] ContainerEvents initialized successfully');
 
       _openSubscription = ContainerEvents.onOpen.listen(_onContainerOpen);
       _closeSubscription = ContainerEvents.onClose.listen(_onContainerClose);
@@ -114,6 +116,7 @@ class _GuiRouterState extends State<GuiRouter> {
       _checkCurrentContainer();
     } catch (e) {
       // Fall back to polling if events aren't available
+      print('[GuiRouter] Event initialization failed: $e, falling back to polling');
       _startPolling();
     }
   }
@@ -144,6 +147,8 @@ class _GuiRouterState extends State<GuiRouter> {
   }
 
   void _onContainerOpen(ContainerOpenEvent event) {
+    print('[GuiRouter] _onContainerOpen: menuId=${event.menuId}, slotCount=${event.slotCount}, containerId="${event.containerId}", title="${event.title}"');
+
     // Use containerId from event (passed from Java)
     final containerId = event.containerId;
 
@@ -165,6 +170,7 @@ class _GuiRouterState extends State<GuiRouter> {
 
     // Find matching route (try containerId first, then title)
     final route = _findRoute(containerId, event.title);
+    print('[GuiRouter] Found route: $route');
 
     // Send pre-registered or cached slots if available
     final effectiveSlots = route?.effectiveSlots;

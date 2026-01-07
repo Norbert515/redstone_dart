@@ -429,6 +429,7 @@ struct ServerBlockEntityRegistration {
     int32_t inventory_size;
     std::string container_title;
     bool ticks;
+    int32_t data_slot_count;
 };
 
 static std::queue<ServerBlockRegistration> g_server_block_queue;
@@ -1502,7 +1503,8 @@ int32_t server_queue_block_entity_registration(
     const char* block_id,
     int32_t inventory_size,
     const char* container_title,
-    bool ticks) {
+    bool ticks,
+    int32_t data_slot_count) {
 
     std::lock_guard<std::mutex> lock(g_server_registration_mutex);
     int32_t handler_id = g_server_next_block_entity_id.fetch_add(1);
@@ -1513,11 +1515,13 @@ int32_t server_queue_block_entity_registration(
     reg.inventory_size = inventory_size;
     reg.container_title = container_title ? container_title : "";
     reg.ticks = ticks;
+    reg.data_slot_count = data_slot_count;
 
     g_server_block_entity_queue.push(reg);
 
     std::cout << "Queued block entity registration: " << reg.block_id
-              << " with handler ID " << handler_id << std::endl;
+              << " with handler ID " << handler_id
+              << ", dataSlotCount=" << data_slot_count << std::endl;
 
     return handler_id;
 }
@@ -1532,7 +1536,8 @@ bool server_get_next_block_entity_registration(
     char* out_block_id, size_t block_id_len,
     int32_t* out_inventory_size,
     char* out_container_title, size_t container_title_len,
-    bool* out_ticks) {
+    bool* out_ticks,
+    int32_t* out_data_slot_count) {
 
     std::lock_guard<std::mutex> lock(g_server_registration_mutex);
 
@@ -1547,6 +1552,7 @@ bool server_get_next_block_entity_registration(
     strncpy(out_container_title, reg.container_title.c_str(), container_title_len - 1);
     out_container_title[container_title_len - 1] = '\0';
     *out_ticks = reg.ticks;
+    *out_data_slot_count = reg.data_slot_count;
 
     g_server_block_entity_queue.pop();
     return true;

@@ -22,12 +22,14 @@ import org.slf4j.LoggerFactory;
 public class DartProcessingBlockEntity extends DartBlockEntityWithInventory {
     private static final Logger LOGGER = LoggerFactory.getLogger("DartProcessingBlockEntity");
 
-    // Processing state - 4 values synced via ContainerData
+    // Default data slot indices (for fallback when not using Dart)
     public static final int DATA_LIT_TIME = 0;
     public static final int DATA_LIT_DURATION = 1;
     public static final int DATA_COOKING_PROGRESS = 2;
     public static final int DATA_COOKING_TOTAL_TIME = 3;
-    public static final int NUM_DATA_VALUES = 4;
+
+    /** Number of data slots for ContainerData synchronization. */
+    protected final int dataSlotCount;
 
     /** Current remaining burn time (ticks). */
     protected int litTime = 0;
@@ -42,57 +44,64 @@ public class DartProcessingBlockEntity extends DartBlockEntityWithInventory {
     protected int cookingTotalTime = 200; // Default 10 seconds (200 ticks)
 
     /** ContainerData for syncing processing state to client GUI. */
-    protected final ContainerData containerData = new ContainerData() {
-        @Override
-        public int get(int index) {
-            // First try to get from Dart if initialized
-            if (DartBridge.isInitialized()) {
-                try {
-                    return DartBridge.getBlockEntityDataSlot(handlerId, blockPosHash, index);
-                } catch (Exception e) {
-                    // Fall through to local values
-                }
-            }
-
-            // Use local values
-            return switch (index) {
-                case DATA_LIT_TIME -> litTime;
-                case DATA_LIT_DURATION -> litDuration;
-                case DATA_COOKING_PROGRESS -> cookingProgress;
-                case DATA_COOKING_TOTAL_TIME -> cookingTotalTime;
-                default -> 0;
-            };
-        }
-
-        @Override
-        public void set(int index, int value) {
-            // First try to set in Dart if initialized
-            if (DartBridge.isInitialized()) {
-                try {
-                    DartBridge.setBlockEntityDataSlot(handlerId, blockPosHash, index, value);
-                } catch (Exception e) {
-                    // Fall through to local values
-                }
-            }
-
-            // Update local values
-            switch (index) {
-                case DATA_LIT_TIME -> litTime = value;
-                case DATA_LIT_DURATION -> litDuration = value;
-                case DATA_COOKING_PROGRESS -> cookingProgress = value;
-                case DATA_COOKING_TOTAL_TIME -> cookingTotalTime = value;
-            }
-        }
-
-        @Override
-        public int getCount() {
-            return NUM_DATA_VALUES;
-        }
-    };
+    protected final ContainerData containerData;
 
     public DartProcessingBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state,
-                                     int handlerId, int inventorySize, Component displayName) {
+                                     int handlerId, int inventorySize, Component displayName,
+                                     int dataSlotCount) {
         super(type, pos, state, handlerId, inventorySize, displayName);
+        this.dataSlotCount = dataSlotCount;
+
+        // Create ContainerData with dynamic slot count
+        this.containerData = new ContainerData() {
+            @Override
+            public int get(int index) {
+                // First try to get from Dart if initialized
+                if (DartBridge.isInitialized()) {
+                    try {
+                        return DartBridge.getBlockEntityDataSlot(DartProcessingBlockEntity.this.handlerId,
+                            DartProcessingBlockEntity.this.blockPosHash, index);
+                    } catch (Exception e) {
+                        // Fall through to local values
+                    }
+                }
+
+                // Use local values as fallback
+                return switch (index) {
+                    case DATA_LIT_TIME -> litTime;
+                    case DATA_LIT_DURATION -> litDuration;
+                    case DATA_COOKING_PROGRESS -> cookingProgress;
+                    case DATA_COOKING_TOTAL_TIME -> cookingTotalTime;
+                    default -> 0;
+                };
+            }
+
+            @Override
+            public void set(int index, int value) {
+                // First try to set in Dart if initialized
+                if (DartBridge.isInitialized()) {
+                    try {
+                        DartBridge.setBlockEntityDataSlot(DartProcessingBlockEntity.this.handlerId,
+                            DartProcessingBlockEntity.this.blockPosHash, index, value);
+                    } catch (Exception e) {
+                        // Fall through to local values
+                    }
+                }
+
+                // Update local values as fallback
+                switch (index) {
+                    case DATA_LIT_TIME -> litTime = value;
+                    case DATA_LIT_DURATION -> litDuration = value;
+                    case DATA_COOKING_PROGRESS -> cookingProgress = value;
+                    case DATA_COOKING_TOTAL_TIME -> cookingTotalTime = value;
+                }
+            }
+
+            @Override
+            public int getCount() {
+                return DartProcessingBlockEntity.this.dataSlotCount;
+            }
+        };
     }
 
     // ========================================================================

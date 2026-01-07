@@ -76,7 +76,9 @@ public class DartBlockEntityMenu extends AbstractContainerMenu {
         super(RedstoneMenuTypes.DART_BLOCK_ENTITY_MENU, containerId);
 
         checkContainerSize(container, SLOT_COUNT);
-        checkContainerDataCount(data, 4);
+        // Use the data's own count instead of hardcoded 4
+        // This allows Dart containers to have any number of synced values
+        checkContainerDataCount(data, data.getCount());
 
         this.container = container;
         this.data = data;

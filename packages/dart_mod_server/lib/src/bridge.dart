@@ -271,8 +271,8 @@ class ServerBridge {
             Pointer<Utf8>, Pointer<Utf8>)>('server_queue_entity_registration');
 
     _serverQueueBlockEntityRegistration = lib.lookupFunction<
-        Int32 Function(Pointer<Utf8>, Int32, Pointer<Utf8>, Bool),
-        int Function(Pointer<Utf8>, int, Pointer<Utf8>, bool)>('server_queue_block_entity_registration');
+        Int32 Function(Pointer<Utf8>, Int32, Pointer<Utf8>, Bool, Int32),
+        int Function(Pointer<Utf8>, int, Pointer<Utf8>, bool, int)>('server_queue_block_entity_registration');
 
     _serverSignalRegistrationsQueued =
         lib.lookupFunction<Void Function(), void Function()>('server_signal_registrations_queued');
@@ -656,12 +656,17 @@ class ServerBridge {
   /// Block entities are associated with blocks and provide state storage,
   /// inventory, and tick behavior.
   ///
+  /// [dataSlotCount] specifies the number of data slots for ContainerData
+  /// synchronization. This should match the number of synced values in the
+  /// Dart container. Defaults to 0 if not specified.
+  ///
   /// Returns the handler ID assigned to this block entity type.
   static int queueBlockEntityRegistration({
     required String blockId,
     required int inventorySize,
     required String containerTitle,
     required bool ticks,
+    int dataSlotCount = 0,
   }) {
     // In datagen mode, return fake handler IDs (no FFI available)
     if (isDatagenMode) {
@@ -673,7 +678,7 @@ class ServerBridge {
 
     try {
       return _serverQueueBlockEntityRegistration(
-        blockIdPtr, inventorySize, containerTitlePtr, ticks,
+        blockIdPtr, inventorySize, containerTitlePtr, ticks, dataSlotCount,
       );
     } finally {
       calloc.free(blockIdPtr);
@@ -1058,7 +1063,7 @@ typedef _ServerQueueEntityRegistration = int Function(
     Pointer<Utf8>, Pointer<Utf8>);
 
 typedef _ServerQueueBlockEntityRegistration = int Function(
-    Pointer<Utf8>, int, Pointer<Utf8>, bool);
+    Pointer<Utf8>, int, Pointer<Utf8>, bool, int);
 
 typedef _ServerSignalRegistrationsQueued = void Function();
 

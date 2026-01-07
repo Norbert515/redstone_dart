@@ -79,13 +79,18 @@ public class DartBlockWithEntity extends DartBlockProxy implements EntityBlock {
             return null;
         }
 
+        // Get dataSlotCount from the block entity config
+        BlockEntityRegistry.BlockEntityConfig config = BlockEntityRegistry.getConfig(blockId);
+        int dataSlotCount = config != null ? config.dataSlotCount() : 0;
+
         return new DartProcessingBlockEntity(
             type,
             pos,
             state,
             blockEntityHandlerId,
             inventorySize,
-            containerTitle
+            containerTitle,
+            dataSlotCount
         );
     }
 

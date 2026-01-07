@@ -40,6 +40,7 @@ public class DartBlockEntityType {
      * @param handlerId The Dart handler ID for block entities of this type
      * @param inventorySize Number of inventory slots
      * @param containerTitle Display title for the container
+     * @param dataSlotCount Number of data slots for ContainerData synchronization
      * @return The registered BlockEntityType
      */
     public static BlockEntityType<DartProcessingBlockEntity> registerForBlock(
@@ -47,7 +48,8 @@ public class DartBlockEntityType {
             Block block,
             int handlerId,
             int inventorySize,
-            String containerTitle) {
+            String containerTitle,
+            int dataSlotCount) {
 
         if (TYPES.containsKey(blockId)) {
             LOGGER.warn("BlockEntityType already registered for {}", blockId);
@@ -59,8 +61,8 @@ public class DartBlockEntityType {
         String namespace = parts[0];
         String path = parts[1] + "_entity";
 
-        LOGGER.info("Registering BlockEntityType for {} (handler={}, inventory={})",
-            blockId, handlerId, inventorySize);
+        LOGGER.info("Registering BlockEntityType for {} (handler={}, inventory={}, dataSlotCount={})",
+            blockId, handlerId, inventorySize, dataSlotCount);
 
         // Create the BlockEntityType with this specific block
         // We need to use a holder for the type reference in the factory lambda
@@ -76,7 +78,8 @@ public class DartBlockEntityType {
                     state,
                     handlerId,
                     inventorySize,
-                    Component.literal(containerTitle)
+                    Component.literal(containerTitle),
+                    dataSlotCount
                 ),
                 block
             ).build()

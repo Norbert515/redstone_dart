@@ -71,21 +71,22 @@ public class DartModLoader implements ModInitializer {
             if (beReg == null) break;
 
             // Extract registration data from the array
-            // Format: [handlerId, blockId, inventorySize, containerTitle, ticks]
+            // Format: [handlerId, blockId, inventorySize, containerTitle, ticks, dataSlotCount]
             int handlerId = (Integer) beReg[0];
             String blockId = (String) beReg[1];
             int inventorySize = (Integer) beReg[2];
             String containerTitle = (String) beReg[3];
             boolean ticks = (Boolean) beReg[4];
+            int dataSlotCount = (Integer) beReg[5];
 
             // Store the mapping from block ID to block entity handler
             com.redstone.blockentity.BlockEntityRegistry.registerBlockEntity(
-                blockId, handlerId, inventorySize, containerTitle, ticks
+                blockId, handlerId, inventorySize, containerTitle, ticks, dataSlotCount
             );
 
             blockEntitiesRegistered++;
-            LOGGER.info("[{}] Registered block entity for {}: handlerId={}, inventory={}, ticks={}",
-                MOD_ID, blockId, handlerId, inventorySize, ticks);
+            LOGGER.info("[{}] Registered block entity for {}: handlerId={}, inventory={}, ticks={}, dataSlotCount={}",
+                MOD_ID, blockId, handlerId, inventorySize, ticks, dataSlotCount);
         }
 
         // Process all queued block registrations

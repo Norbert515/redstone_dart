@@ -521,7 +521,8 @@ public class ProxyRegistry {
                     block,
                     beConfig.handlerId(),
                     beConfig.inventorySize(),
-                    beConfig.containerTitle()
+                    beConfig.containerTitle(),
+                    beConfig.dataSlotCount()
                 );
             }
 

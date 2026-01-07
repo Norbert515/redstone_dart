@@ -23,7 +23,8 @@ public class BlockEntityRegistry {
         int handlerId,
         int inventorySize,
         String containerTitle,
-        boolean ticks
+        boolean ticks,
+        int dataSlotCount
     ) {}
 
     /**
@@ -39,18 +40,20 @@ public class BlockEntityRegistry {
      * @param inventorySize Number of inventory slots
      * @param containerTitle Display title for the container
      * @param ticks Whether this block entity should tick
+     * @param dataSlotCount Number of data slots for ContainerData synchronization
      */
     public static void registerBlockEntity(
             String blockId,
             int handlerId,
             int inventorySize,
             String containerTitle,
-            boolean ticks) {
+            boolean ticks,
+            int dataSlotCount) {
 
-        BlockEntityConfig config = new BlockEntityConfig(handlerId, inventorySize, containerTitle, ticks);
+        BlockEntityConfig config = new BlockEntityConfig(handlerId, inventorySize, containerTitle, ticks, dataSlotCount);
         blockEntityConfigs.put(blockId, config);
-        LOGGER.info("Registered block entity config for {}: handler={}, inventory={}, ticks={}",
-            blockId, handlerId, inventorySize, ticks);
+        LOGGER.info("Registered block entity config for {}: handler={}, inventory={}, ticks={}, dataSlotCount={}",
+            blockId, handlerId, inventorySize, ticks, dataSlotCount);
     }
 
     /**
