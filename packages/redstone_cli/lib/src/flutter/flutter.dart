@@ -4,6 +4,7 @@
 /// kernel format for use with the Flutter embedder in Minecraft.
 library;
 
+export 'flutter_cache.dart';
 export 'flutter_sdk.dart';
 export 'frontend_server_manager.dart';
 export 'mod_compiler.dart';

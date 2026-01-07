@@ -3,134 +3,54 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../util/platform.dart';
+import 'flutter_cache.dart';
 
 /// Locates Flutter SDK and its components
+///
+/// Redstone manages its own Flutter SDK and engine artifacts to ensure
+/// version compatibility. The SDK is cached at:
+///   ~/.redstone/versions/<version>-<engine>/
+///
+/// The engine artifacts (flutter_patched_sdk, dart-sdk) come from the
+/// engine build output and have SDK hashes that match the FlutterEmbedder.
 class FlutterSdk {
   final String path;
 
-  /// Optional path to a custom engine build output directory.
-  ///
-  /// When set, the SDK will use artifacts from this directory:
-  /// - dart-sdk/bin/dartaotruntime
-  /// - dart-sdk/bin/snapshots/frontend_server_aot.dart.snapshot
-  /// - flutter_patched_sdk/
-  ///
-  /// This is used for debug engine builds that support JIT/hot reload.
-  /// All three components must come from the same engine build to ensure
-  /// the kernel SDK hash matches.
-  final String? customEnginePath;
+  FlutterSdk(this.path);
 
-  FlutterSdk(this.path, {this.customEnginePath});
-
-  /// Find Flutter SDK from environment or standard locations
+  /// Find Flutter SDK from redstone cache
   ///
-  /// Environment variables:
-  /// - FLUTTER_ROOT: Path to Flutter SDK (framework, build tools)
-  /// - FLUTTER_ENGINE_PATH: Path to custom engine build (only for embedder runtime)
+  /// Returns null if not cached yet - caller should call ensureAvailable() first.
   static FlutterSdk? locate() {
-    // Check for custom engine path (e.g., from local engine build)
-    final customEnginePath = Platform.environment['FLUTTER_ENGINE_PATH'];
-
-    // Check FLUTTER_ROOT environment variable
-    final flutterRoot = Platform.environment['FLUTTER_ROOT'];
-    if (flutterRoot != null && _isValidFlutterSdk(flutterRoot)) {
-      return FlutterSdk(flutterRoot, customEnginePath: customEnginePath);
-    }
-
-    // Check PATH for flutter command
-    final flutterFromPath = _findFlutterInPath();
-    if (flutterFromPath != null) {
-      return FlutterSdk(flutterFromPath, customEnginePath: customEnginePath);
-    }
-
-    // Check standard install locations
-    final standardLocations = _getStandardLocations();
-    for (final location in standardLocations) {
-      if (_isValidFlutterSdk(location)) {
-        return FlutterSdk(location, customEnginePath: customEnginePath);
-      }
-    }
-
-    return null;
-  }
-
-  /// Find Flutter SDK by running `flutter --version` and parsing output
-  static String? _findFlutterInPath() {
-    try {
-      final result = Process.runSync('which', ['flutter']);
-      if (result.exitCode == 0) {
-        // `which flutter` returns path like /path/to/flutter/bin/flutter
-        // We need the parent of bin/
-        final flutterBin = result.stdout.toString().trim();
-        if (flutterBin.isNotEmpty) {
-          final binDir = File(flutterBin).parent.path;
-          final sdkDir = Directory(binDir).parent.path;
-          if (_isValidFlutterSdk(sdkDir)) {
-            return sdkDir;
-          }
-        }
-      }
-    } catch (_) {
-      // which command may not exist on Windows
-      if (Platform.isWindows) {
-        try {
-          final result = Process.runSync('where', ['flutter']);
-          if (result.exitCode == 0) {
-            final flutterBin = result.stdout.toString().trim().split('\n').first;
-            if (flutterBin.isNotEmpty) {
-              final binDir = File(flutterBin).parent.path;
-              final sdkDir = Directory(binDir).parent.path;
-              if (_isValidFlutterSdk(sdkDir)) {
-                return sdkDir;
-              }
-            }
-          }
-        } catch (_) {}
-      }
+    final cachedFlutter = FlutterCache.cachedFlutterPath;
+    if (_isValidFlutterSdk(cachedFlutter)) {
+      return FlutterSdk(cachedFlutter);
     }
     return null;
   }
 
-  /// Get standard Flutter installation locations based on platform
-  static List<String> _getStandardLocations() {
-    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
-
-    if (Platform.isMacOS) {
-      return [
-        p.join(home, 'flutter'),
-        p.join(home, 'development', 'flutter'),
-        '/usr/local/flutter',
-        p.join(home, 'fvm', 'default'),
-      ];
-    } else if (Platform.isLinux) {
-      return [
-        p.join(home, 'flutter'),
-        p.join(home, 'development', 'flutter'),
-        '/usr/local/flutter',
-        '/opt/flutter',
-        p.join(home, 'fvm', 'default'),
-      ];
-    } else if (Platform.isWindows) {
-      return [
-        p.join(home, 'flutter'),
-        r'C:\flutter',
-        r'C:\src\flutter',
-        p.join(home, 'fvm', 'default'),
-      ];
+  /// Ensure all Flutter/engine artifacts are available and return SDK
+  ///
+  /// This caches:
+  /// - Flutter SDK (for flutter command)
+  /// - Engine artifacts (flutter_patched_sdk, dart-sdk with matching SDK hash)
+  /// - FlutterEmbedder.framework
+  static Future<FlutterSdk?> ensureAvailable() async {
+    final cached = await FlutterCache.ensureFullyCached();
+    if (!cached) {
+      return null;
     }
-    return [];
+    return locate();
   }
 
   /// Validate that a path contains a valid Flutter SDK
   static bool _isValidFlutterSdk(String path) {
-    // Check for flutter executable in bin/
     final flutterExe = Platform.isWindows ? 'flutter.bat' : 'flutter';
     final flutterBin = File(p.join(path, 'bin', flutterExe));
     if (!flutterBin.existsSync()) {
       return false;
     }
 
-    // Check for engine artifacts directory
     final engineDir = Directory(p.join(path, 'bin', 'cache', 'artifacts', 'engine'));
     if (!engineDir.existsSync()) {
       return false;
@@ -151,201 +71,128 @@ class FlutterSdk {
     return p.join(path, 'bin', exe);
   }
 
-  /// Path to the Dart AOT runtime within Flutter SDK
+  /// Path to the Dart AOT runtime
   ///
-  /// Used for running AOT-compiled snapshots like frontend_server_aot.dart.snapshot.
-  /// When using a custom engine, uses that engine's dartaotruntime to ensure
-  /// compatibility with the engine's frontend_server and flutter_patched_sdk.
+  /// Uses the cached engine dart-sdk which has matching SDK hash.
   String get dartAotRuntimePath {
     final exe = Platform.isWindows ? 'dartaotruntime.exe' : 'dartaotruntime';
 
-    // Use custom engine's dartaotruntime if available
-    if (customEnginePath != null) {
-      final customPath = p.join(customEnginePath!, 'dart-sdk', 'bin', exe);
-      if (File(customPath).existsSync()) {
-        return customPath;
-      }
+    // Use cached engine dart-sdk (has correct SDK hash)
+    final cachedPath = p.join(FlutterCache.cachedDartSdkPath, 'bin', exe);
+    if (File(cachedPath).existsSync()) {
+      return cachedPath;
     }
 
+    // Fallback to Flutter SDK's dart-sdk
     return p.join(path, 'bin', 'cache', 'dart-sdk', 'bin', exe);
   }
 
   /// Path to frontend_server snapshot
   ///
-  /// The frontend_server compiles Dart code to kernel format.
-  /// Flutter SDK: bin/cache/artifacts/engine/<platform>/frontend_server.dart.snapshot
-  String get frontendServerPath {
-    return p.join(
-      path,
-      'bin',
-      'cache',
-      'artifacts',
-      'engine',
-      _platformDir,
-      'frontend_server.dart.snapshot',
-    );
-  }
-
-  /// Alternative path to frontend_server (AOT version in dart-sdk)
-  /// Flutter SDK: bin/cache/dart-sdk/bin/snapshots/frontend_server_aot.dart.snapshot
-  String get frontendServerAotPath {
-    return p.join(
-      path,
-      'bin',
-      'cache',
-      'dart-sdk',
+  /// Uses the cached engine dart-sdk which has matching SDK hash.
+  String get bestFrontendServerPath {
+    // Use cached engine dart-sdk's frontend_server (has correct SDK hash)
+    final cachedPath = p.join(
+      FlutterCache.cachedDartSdkPath,
       'bin',
       'snapshots',
       'frontend_server_aot.dart.snapshot',
     );
-  }
-
-  /// Get the best available frontend_server path
-  ///
-  /// When using a custom engine, uses that engine's frontend_server to ensure
-  /// compatibility with the engine's dartaotruntime and flutter_patched_sdk.
-  String get bestFrontendServerPath {
-    // Use custom engine's frontend_server if available
-    if (customEnginePath != null) {
-      final customPath = p.join(
-        customEnginePath!,
-        'dart-sdk',
-        'bin',
-        'snapshots',
-        'frontend_server_aot.dart.snapshot',
-      );
-      if (File(customPath).existsSync()) {
-        return customPath;
-      }
+    if (File(cachedPath).existsSync()) {
+      return cachedPath;
     }
 
-    // Prefer the engine version as it's more closely matched to Flutter
-    if (File(frontendServerPath).existsSync()) {
-      return frontendServerPath;
+    // Fallback to Flutter SDK paths
+    final enginePath = p.join(
+      path, 'bin', 'cache', 'artifacts', 'engine',
+      _platformDir, 'frontend_server.dart.snapshot',
+    );
+    if (File(enginePath).existsSync()) {
+      return enginePath;
     }
-    // Fall back to AOT version
-    if (File(frontendServerAotPath).existsSync()) {
-      return frontendServerAotPath;
+
+    final aotPath = p.join(
+      path, 'bin', 'cache', 'dart-sdk', 'bin', 'snapshots',
+      'frontend_server_aot.dart.snapshot',
+    );
+    if (File(aotPath).existsSync()) {
+      return aotPath;
     }
-    // Default to engine version (will fail if missing, but with clear error)
-    return frontendServerPath;
+
+    return enginePath;
   }
 
   /// Path to Flutter's patched SDK
   ///
-  /// This is the SDK root that should be passed to frontend_server.
-  /// When using a custom engine (FLUTTER_ENGINE_PATH), uses that engine's
-  /// flutter_patched_sdk to ensure the kernel SDK hash matches the engine.
-  /// Flutter SDK: bin/cache/artifacts/engine/common/flutter_patched_sdk/
+  /// Uses the cached engine flutter_patched_sdk which has SDK hash
+  /// matching the FlutterEmbedder.framework.
   String get sdkRoot {
-    // Use custom engine's flutter_patched_sdk if available
-    // The kernel SDK hash must match what the FlutterEmbedder expects
-    if (customEnginePath != null) {
-      final customPath = p.join(customEnginePath!, 'flutter_patched_sdk');
-      if (Directory(customPath).existsSync()) {
-        return customPath;
-      }
+    // Use cached engine flutter_patched_sdk (has correct SDK hash)
+    final cachedPath = FlutterCache.cachedPatchedSdkPath;
+    if (Directory(cachedPath).existsSync()) {
+      return cachedPath;
     }
 
+    // Fallback to Flutter SDK's patched sdk
     return p.join(
-      path,
-      'bin',
-      'cache',
-      'artifacts',
-      'engine',
-      'common',
-      'flutter_patched_sdk',
+      path, 'bin', 'cache', 'artifacts', 'engine',
+      'common', 'flutter_patched_sdk',
     );
   }
 
   /// Path to Flutter's patched SDK for product mode (release builds)
   String get sdkRootProduct {
     return p.join(
-      path,
-      'bin',
-      'cache',
-      'artifacts',
-      'engine',
-      'common',
-      'flutter_patched_sdk_product',
+      path, 'bin', 'cache', 'artifacts', 'engine',
+      'common', 'flutter_patched_sdk_product',
     );
   }
 
   /// Path to ICU data file
   ///
-  /// Required for Flutter engine initialization.
-  /// Flutter SDK: bin/cache/artifacts/engine/<platform>/icudtl.dat
+  /// Uses the cached engine icudtl.dat if available.
   String get icuDataPath {
+    // Use cached engine icudtl.dat
+    final cachedPath = p.join(FlutterCache.cachedEnginePath, 'icudtl.dat');
+    if (File(cachedPath).existsSync()) {
+      return cachedPath;
+    }
+
+    // Fallback to Flutter SDK
     return p.join(
-      path,
-      'bin',
-      'cache',
-      'artifacts',
-      'engine',
-      _platformDir,
-      'icudtl.dat',
+      path, 'bin', 'cache', 'artifacts', 'engine',
+      _platformDir, 'icudtl.dat',
     );
   }
 
   /// Path to engine library directory
-  ///
-  /// Contains libflutter_engine.dylib/so/dll and other engine artifacts.
-  /// Flutter SDK: bin/cache/artifacts/engine/<platform>/
   String get engineLibPath {
     return p.join(
-      path,
-      'bin',
-      'cache',
-      'artifacts',
-      'engine',
-      _platformDir,
+      path, 'bin', 'cache', 'artifacts', 'engine', _platformDir,
     );
   }
 
   /// Path to Flutter framework on macOS
-  ///
-  /// macOS: bin/cache/artifacts/engine/<platform>/FlutterMacOS.framework/
   String? get flutterFrameworkPath {
     if (!Platform.isMacOS) return null;
     return p.join(engineLibPath, 'FlutterMacOS.framework');
   }
 
   /// Path to Dart SDK within Flutter
-  ///
-  /// Note: Always uses Flutter SDK's prebuilt dart-sdk, not from custom engine,
-  /// as it must match the other build tools.
   String get dartSdkPath {
     return p.join(path, 'bin', 'cache', 'dart-sdk');
   }
 
-  /// Path to platform_dill directory containing core libraries
-  ///
-  /// Contains platform.dill and other core Dart libraries.
+  /// Path to platform_dill
   String get platformDillPath {
-    return p.join(
-      path,
-      'bin',
-      'cache',
-      'artifacts',
-      'engine',
-      'common',
-      'flutter_patched_sdk',
-      'platform_strong.dill',
-    );
+    return p.join(sdkRoot, 'platform_strong.dill');
   }
 
   /// Get platform-specific directory name
-  ///
-  /// Returns the directory name used for platform-specific engine artifacts:
-  /// - macOS ARM64: darwin-arm64 (falls back to darwin-x64 if not available)
-  /// - macOS x64: darwin-x64
-  /// - Linux x64: linux-x64
-  /// - Windows x64: windows-x64
   String get _platformDir {
     final platform = PlatformInfo.detect();
 
     if (platform.isMacOS) {
-      // Try ARM64 first on Apple Silicon, fall back to x64 (Rosetta)
       if (platform.isArm64) {
         final arm64Dir = p.join(path, 'bin', 'cache', 'artifacts', 'engine', 'darwin-arm64');
         if (Directory(arm64Dir).existsSync()) {
@@ -362,7 +209,7 @@ class FlutterSdk {
     throw UnsupportedError('Unsupported platform: ${platform.identifier}');
   }
 
-  /// Get Flutter version by running flutter --version
+  /// Get Flutter version
   Future<String?> getVersion() async {
     try {
       final result = await Process.run(flutterPath, ['--version']);
@@ -376,8 +223,6 @@ class FlutterSdk {
   }
 
   /// Ensure Flutter artifacts are downloaded
-  ///
-  /// Runs `flutter precache` to download engine artifacts if needed.
   Future<bool> ensureArtifacts() async {
     try {
       final result = await Process.run(
@@ -398,14 +243,6 @@ class FlutterSdk {
         File(icuDataPath).existsSync();
   }
 
-  /// Whether using a custom engine path
-  bool get hasCustomEngine => customEnginePath != null;
-
   @override
-  String toString() {
-    if (customEnginePath != null) {
-      return 'FlutterSdk(path: $path, customEnginePath: $customEnginePath)';
-    }
-    return 'FlutterSdk(path: $path)';
-  }
+  String toString() => 'FlutterSdk(path: $path)';
 }

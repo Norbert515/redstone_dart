@@ -150,8 +150,15 @@ endif()
 #   Windows: dart_mc_bridge.dll (no lib prefix)
 #   Linux: libdart_mc_bridge.so (with lib prefix)
 if(APPLE)
-    # Build rpath list
-    set(RPATH_LIST "${DART_DLL_PATH}/lib")
+    # RPATH search order:
+    # 1. @loader_path - look in the same directory as the dylib (for deployed builds)
+    # 2. Development paths - absolute paths for cmake build to find deps
+    #
+    # This allows the library to work both during development AND when deployed
+    # to any location (e.g., natives/ folder). When deployed, the FlutterEmbedder.framework
+    # and libdart_dll.dylib must be in the same directory as dart_mc_bridge.dylib.
+    set(RPATH_LIST "@loader_path")  # Check local dir first!
+    list(APPEND RPATH_LIST "${DART_DLL_PATH}/lib")
     if(NOT SERVER_ONLY)
         list(APPEND RPATH_LIST "${FLUTTER_EMBEDDER_PATH}/lib")
         if(EXISTS "${FLUTTER_FRAMEWORK_PATH}")
@@ -164,7 +171,6 @@ if(APPLE)
         PREFIX ""
         OUTPUT_NAME "dart_mc_bridge"
         SUFFIX ".dylib"
-        # Use absolute paths for local development (redstone test/run)
         INSTALL_RPATH "${RPATH_LIST}"
         BUILD_RPATH "${RPATH_LIST}"
     )

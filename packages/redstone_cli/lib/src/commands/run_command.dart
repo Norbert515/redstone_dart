@@ -345,15 +345,14 @@ class RunCommand extends Command<int> {
   }) async {
     Logger.info('Preparing Flutter assets...');
 
-    // 1. Locate Flutter SDK
-    _flutterSdk = FlutterSdk.locate();
+    // 1. Ensure Flutter SDK is available (cached by redstone)
+    _flutterSdk = await FlutterSdk.ensureAvailable();
     if (_flutterSdk == null) {
-      Logger.error('Flutter SDK not found.');
-      Logger.info('Please install Flutter and ensure it is in your PATH.');
-      Logger.info('Or set the FLUTTER_ROOT environment variable.');
+      Logger.error('Flutter SDK not available.');
+      Logger.info('Could not set up the redstone Flutter SDK.');
       return false;
     }
-    Logger.debug('Found Flutter SDK at: ${_flutterSdk!.path}');
+    Logger.debug('Using Flutter SDK at: ${_flutterSdk!.path}');
 
     // 2. Ensure Flutter artifacts are downloaded
     if (!_flutterSdk!.hasRequiredArtifacts) {
@@ -379,6 +378,12 @@ class RunCommand extends Command<int> {
     if (!await _bundleFlutterAssets(project, clientDir)) {
       return false;
     }
+
+    // 4.5. Replace snapshot files with correct SDK hash versions
+    // flutter build bundle copies snapshots from Flutter SDK cache which have
+    // the wrong SDK hash. We need to replace them with snapshots from our
+    // engine build that have the correct SDK hash matching our embedder.
+    await _replaceSnapshotsWithCorrectSdkHash(project.flutterAssetsDir);
 
     // 5. Build Flutter kernel (compile mod to kernel_blob.bin)
     // In dual-runtime mode, use the configured client entry point
@@ -562,39 +567,26 @@ class RunCommand extends Command<int> {
       Logger.warning('ICU data not found at ${_flutterSdk!.icuDataPath}');
     }
 
-    // Copy Flutter engine library based on platform
-    // On macOS, this is FlutterMacOS.framework
-    // On Linux, it's libflutter_engine.so
-    // On Windows, it's flutter_engine.dll
-    final engineLibPath = _flutterSdk!.engineLibPath;
-    final engineDir = Directory(engineLibPath);
-
-    if (engineDir.existsSync()) {
-      if (Platform.isMacOS) {
-        // Copy FlutterMacOS.framework
-        final frameworkPath = _flutterSdk!.flutterFrameworkPath;
-        if (frameworkPath != null && Directory(frameworkPath).existsSync()) {
-          final targetPath = p.join(nativesDir.path, 'FlutterMacOS.framework');
-          await _copyDirectory(Directory(frameworkPath), Directory(targetPath));
-          Logger.debug('Copied FlutterMacOS.framework');
+    // Ensure embedder is cached and copy from cache
+    // This ensures we always use the versioned embedder that matches our Flutter SDK
+    if (Platform.isMacOS) {
+      final embedderCached = await FlutterCache.ensureEmbedderCached();
+      if (embedderCached) {
+        final cachedEmbedder = Directory(FlutterCache.cachedEmbedderFrameworkPath);
+        if (cachedEmbedder.existsSync()) {
+          final targetPath = p.join(nativesDir.path, 'FlutterEmbedder.framework');
+          final targetDir = Directory(targetPath);
+          if (targetDir.existsSync()) {
+            targetDir.deleteSync(recursive: true);
+          }
+          await _copyDirectory(cachedEmbedder, targetDir);
+          Logger.debug('Copied FlutterEmbedder.framework from cache');
         }
-      } else if (Platform.isLinux) {
-        // Copy libflutter_engine.so
-        final engineFile = File(p.join(engineLibPath, 'libflutter_engine.so'));
-        if (engineFile.existsSync()) {
-          await engineFile
-              .copy(p.join(nativesDir.path, 'libflutter_engine.so'));
-          Logger.debug('Copied libflutter_engine.so');
-        }
-      } else if (Platform.isWindows) {
-        // Copy flutter_engine.dll
-        final engineFile = File(p.join(engineLibPath, 'flutter_engine.dll'));
-        if (engineFile.existsSync()) {
-          await engineFile.copy(p.join(nativesDir.path, 'flutter_engine.dll'));
-          Logger.debug('Copied flutter_engine.dll');
-        }
+      } else {
+        Logger.warning('Flutter embedder not available in cache');
       }
     }
+    // TODO: Add Linux and Windows support when needed
 
     Logger.success('Flutter dependencies copied');
   }
@@ -630,6 +622,33 @@ class RunCommand extends Command<int> {
 
     Logger.success('Flutter assets bundled');
     return true;
+  }
+
+  /// Replace snapshot files with versions that have the correct SDK hash
+  ///
+  /// flutter build bundle copies vm_snapshot_data and isolate_snapshot_data from
+  /// the Flutter SDK cache, which have the official Flutter SDK hash.
+  /// Our custom engine build produces snapshots with a different SDK hash that
+  /// matches our FlutterEmbedder. We need to replace them to avoid
+  /// "Invalid kernel binary format version" errors.
+  Future<void> _replaceSnapshotsWithCorrectSdkHash(String flutterAssetsDir) async {
+    final cachedEnginePath = FlutterCache.cachedEnginePath;
+
+    // Map of cached snapshot name -> flutter_assets snapshot name
+    final snapshotMappings = {
+      'isolate_snapshot.bin': 'isolate_snapshot_data',
+      'vm_isolate_snapshot.bin': 'vm_snapshot_data',
+    };
+
+    for (final entry in snapshotMappings.entries) {
+      final sourceFile = File(p.join(cachedEnginePath, entry.key));
+      final targetFile = File(p.join(flutterAssetsDir, entry.value));
+
+      if (sourceFile.existsSync()) {
+        await sourceFile.copy(targetFile.path);
+        Logger.debug('Replaced ${entry.value} with correct SDK hash version');
+      }
+    }
   }
 
   /// Recursively copy a directory
