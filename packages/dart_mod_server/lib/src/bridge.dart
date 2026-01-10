@@ -834,6 +834,58 @@ class ServerBridge {
   }
 
   // ==========================================================================
+  // Chunk Management APIs
+  // ==========================================================================
+
+  /// Force-load a chunk to prevent it from being unloaded.
+  ///
+  /// This is useful for tests to ensure block entities aren't removed
+  /// during chunk unloading.
+  ///
+  /// [dimension] is the dimension name (e.g., "minecraft:overworld").
+  /// [chunkX] and [chunkZ] are the chunk coordinates.
+  /// [load] is true to force-load, false to remove force-load.
+  ///
+  /// Returns true if successful.
+  static bool setChunkForceLoaded(
+    String dimension,
+    int chunkX,
+    int chunkZ,
+    bool load,
+  ) {
+    if (isDatagenMode) return false;
+    return GenericJniBridge.callStaticBoolMethod(
+      'com/redstone/DartBridge',
+      'setChunkForceLoaded',
+      '(Ljava/lang/String;IIZ)Z',
+      [dimension, chunkX, chunkZ, load],
+    );
+  }
+
+  /// Convert block coordinates to chunk coordinates.
+  static int blockToChunk(int blockCoord) {
+    return blockCoord >> 4;
+  }
+
+  /// Force-load the chunk containing a block position.
+  ///
+  /// This is a convenience method that calculates chunk coordinates
+  /// from block coordinates.
+  static bool forceLoadChunkAtBlockPos(
+    String dimension,
+    int blockX,
+    int blockZ, {
+    bool load = true,
+  }) {
+    return setChunkForceLoaded(
+      dimension,
+      blockToChunk(blockX),
+      blockToChunk(blockZ),
+      load,
+    );
+  }
+
+  // ==========================================================================
   // Callback Registration
   // ==========================================================================
 

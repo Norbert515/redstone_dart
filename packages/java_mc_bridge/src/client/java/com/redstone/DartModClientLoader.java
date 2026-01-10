@@ -1,6 +1,7 @@
 package com.redstone;
 
 import com.redstone.blockentity.DartBlockEntityMenu;
+import com.redstone.blockentity.DartChestMenu;
 import com.redstone.flutter.FlutterContainerScreen;
 import com.redstone.flutter.FlutterScreen;
 import net.minecraft.client.gui.screens.MenuScreens;
@@ -226,6 +227,12 @@ public class DartModClientLoader implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         LOGGER.info("[DartModClientLoader] Initializing Flutter client runtime...");
+
+        // Check for visual test mode system property (set by redstone test --client)
+        if ("true".equals(System.getProperty("VISUAL_TEST_MODE"))) {
+            DartBridgeClient.setVisualTestMode(true);
+            LOGGER.info("[DartModClientLoader] Visual test mode enabled via system property");
+        }
 
         // Initialize Flutter client runtime
         // This runs AFTER DartModLoader.onInitialize() has initialized the server runtime
@@ -474,6 +481,12 @@ public class DartModClientLoader implements ClientModInitializer {
         // FlutterContainerScreen renders the UI via Flutter and handles item rendering on top
         MenuScreens.<DartBlockEntityMenu, FlutterContainerScreen<DartBlockEntityMenu>>register(
             RedstoneMenuTypes.DART_BLOCK_ENTITY_MENU,
+            (menu, inventory, title) -> new FlutterContainerScreen<>(menu, inventory, title)
+        );
+
+        // Register the chest menu screen with Flutter rendering
+        MenuScreens.<DartChestMenu, FlutterContainerScreen<DartChestMenu>>register(
+            RedstoneMenuTypes.DART_CHEST_MENU,
             (menu, inventory, title) -> new FlutterContainerScreen<>(menu, inventory, title)
         );
 

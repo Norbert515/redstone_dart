@@ -83,8 +83,8 @@ abstract class ContainerBlockEntity<T extends ContainerDefinition>
   // ============ Save/Load ============
 
   @override
-  Map<String, dynamic> onSave() {
-    final base = super.onSave();
+  Map<String, dynamic> saveAdditional() {
+    final base = super.saveAdditional();
     // Save synced values by their indices
     for (final syncedValue in container.syncedValuesList) {
       base['data_${syncedValue.dataSlotIndex}'] = syncedValue.value;
@@ -93,8 +93,8 @@ abstract class ContainerBlockEntity<T extends ContainerDefinition>
   }
 
   @override
-  void onLoad(Map<String, dynamic> nbt) {
-    super.onLoad(nbt);
+  void loadAdditional(Map<String, dynamic> nbt) {
+    super.loadAdditional(nbt);
     // Load synced values by their indices
     for (final syncedValue in container.syncedValuesList) {
       final key = 'data_${syncedValue.dataSlotIndex}';

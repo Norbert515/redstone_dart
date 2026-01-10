@@ -176,15 +176,15 @@ abstract class BlockEntityWithInventory extends TickingBlockEntity {
   }
 
   @override
-  Map<String, dynamic> onSave() {
-    final base = super.onSave();
+  Map<String, dynamic> saveAdditional() {
+    final base = super.saveAdditional();
     base['inventory'] = _inventory.map((stack) => _serializeStack(stack)).toList();
     return base;
   }
 
   @override
-  void onLoad(Map<String, dynamic> nbt) {
-    super.onLoad(nbt);
+  void loadAdditional(Map<String, dynamic> nbt) {
+    super.loadAdditional(nbt);
     final inv = nbt['inventory'] as List?;
     if (inv != null) {
       for (var i = 0; i < inv.length && i < _inventory.length; i++) {

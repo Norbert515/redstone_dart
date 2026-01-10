@@ -66,12 +66,15 @@ typedef void (*ProxyBlockEntityInsideCallback)(int64_t handler_id, int64_t world
                                                 int32_t x, int32_t y, int32_t z, int32_t entity_id);
 
 // Block entity callbacks
+typedef void (*BlockEntitySetLevelCallback)(int32_t handler_id, int64_t block_pos_hash);
 typedef void (*BlockEntityLoadCallback)(int32_t handler_id, int64_t block_pos_hash, const char* nbt_json);
 typedef const char* (*BlockEntitySaveCallback)(int32_t handler_id, int64_t block_pos_hash);
 typedef void (*BlockEntityTickCallback)(int32_t handler_id, int64_t block_pos_hash);
 typedef int32_t (*BlockEntityGetDataSlotCallback)(int32_t handler_id, int64_t block_pos_hash, int32_t index);
 typedef void (*BlockEntitySetDataSlotCallback)(int32_t handler_id, int64_t block_pos_hash, int32_t index, int32_t value);
 typedef void (*BlockEntityRemovedCallback)(int32_t handler_id, int64_t block_pos_hash);
+typedef void (*BlockEntityContainerOpenCallback)(int32_t handler_id, int64_t block_pos_hash);
+typedef void (*BlockEntityContainerCloseCallback)(int32_t handler_id, int64_t block_pos_hash);
 
 // Player events
 typedef void (*PlayerJoinCallback)(int32_t player_id);
@@ -163,12 +166,15 @@ void server_register_proxy_block_neighbor_changed_handler(ProxyBlockNeighborChan
 void server_register_proxy_block_entity_inside_handler(ProxyBlockEntityInsideCallback cb);
 
 // Block entity callback registration
+void server_register_block_entity_set_level_handler(BlockEntitySetLevelCallback cb);
 void server_register_block_entity_load_handler(BlockEntityLoadCallback cb);
 void server_register_block_entity_save_handler(BlockEntitySaveCallback cb);
 void server_register_block_entity_tick_handler(BlockEntityTickCallback cb);
 void server_register_block_entity_get_data_slot_handler(BlockEntityGetDataSlotCallback cb);
 void server_register_block_entity_set_data_slot_handler(BlockEntitySetDataSlotCallback cb);
 void server_register_block_entity_removed_handler(BlockEntityRemovedCallback cb);
+void server_register_block_entity_container_open_handler(BlockEntityContainerOpenCallback cb);
+void server_register_block_entity_container_close_handler(BlockEntityContainerCloseCallback cb);
 
 void server_register_player_join_handler(PlayerJoinCallback cb);
 void server_register_player_leave_handler(PlayerLeaveCallback cb);
@@ -245,12 +251,15 @@ void server_dispatch_proxy_block_entity_inside(int64_t handler_id, int64_t world
                                                 int32_t x, int32_t y, int32_t z, int32_t entity_id);
 
 // Block entity dispatch functions
+void server_dispatch_block_entity_set_level(int32_t handler_id, int64_t block_pos_hash);
 void server_dispatch_block_entity_load(int32_t handler_id, int64_t block_pos_hash, const char* nbt_json);
 const char* server_dispatch_block_entity_save(int32_t handler_id, int64_t block_pos_hash);
 void server_dispatch_block_entity_tick(int32_t handler_id, int64_t block_pos_hash);
 int32_t server_dispatch_block_entity_get_data_slot(int32_t handler_id, int64_t block_pos_hash, int32_t index);
 void server_dispatch_block_entity_set_data_slot(int32_t handler_id, int64_t block_pos_hash, int32_t index, int32_t value);
 void server_dispatch_block_entity_removed(int32_t handler_id, int64_t block_pos_hash);
+void server_dispatch_block_entity_container_open(int32_t handler_id, int64_t block_pos_hash);
+void server_dispatch_block_entity_container_close(int32_t handler_id, int64_t block_pos_hash);
 
 void server_dispatch_player_join(int32_t player_id);
 void server_dispatch_player_leave(int32_t player_id);

@@ -8,6 +8,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.WorldlyContainer;
+import net.minecraft.world.entity.ContainerUser;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -19,6 +20,7 @@ import net.minecraft.world.level.storage.ValueOutput;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.redstone.DartBridge;
 
 /**
  * Block entity with inventory support.
@@ -111,6 +113,46 @@ public class DartBlockEntityWithInventory extends DartBlockEntity implements Con
     public void clearContent() {
         items.clear();
         setChanged();
+    }
+
+    /**
+     * Called when a player opens this container.
+     * Notifies Dart to handle the container open event.
+     */
+    @Override
+    public void startOpen(ContainerUser containerUser) {
+        LOGGER.info("startOpen called with containerUser: {}", containerUser);
+        if (containerUser instanceof Player player) {
+            if (!this.isRemoved() && !player.isSpectator()) {
+                if (DartBridge.isInitialized()) {
+                    try {
+                        DartBridge.onBlockEntityContainerOpen(handlerId, blockPosHash);
+                    } catch (Exception e) {
+                        LOGGER.error("Error notifying Dart of container open: {}", e.getMessage());
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Called when a player closes this container.
+     * Notifies Dart to handle the container close event.
+     */
+    @Override
+    public void stopOpen(ContainerUser containerUser) {
+        LOGGER.info("stopOpen called with containerUser: {}", containerUser);
+        if (containerUser instanceof Player player) {
+            if (!this.isRemoved() && !player.isSpectator()) {
+                if (DartBridge.isInitialized()) {
+                    try {
+                        DartBridge.onBlockEntityContainerClose(handlerId, blockPosHash);
+                    } catch (Exception e) {
+                        LOGGER.error("Error notifying Dart of container close: {}", e.getMessage());
+                    }
+                }
+            }
+        }
     }
 
     // ========================================================================

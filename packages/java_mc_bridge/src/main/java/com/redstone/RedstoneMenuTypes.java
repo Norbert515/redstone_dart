@@ -1,6 +1,7 @@
 package com.redstone;
 
 import com.redstone.blockentity.DartBlockEntityMenu;
+import com.redstone.blockentity.DartChestMenu;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
@@ -34,6 +35,17 @@ public class RedstoneMenuTypes {
             BuiltInRegistries.MENU,
             Identifier.fromNamespaceAndPath(NAMESPACE, "dart_block_entity"),
             new MenuType<>(DartBlockEntityMenu::new, FeatureFlags.VANILLA_SET)
+    );
+
+    /**
+     * Menu type for Dart chest-like block entities (grid-based with ContainerData).
+     * Used for block entities with larger inventories (e.g., 27 slots like a chest).
+     * Unlike DART_BLOCK_ENTITY_MENU (furnace-style), this supports dynamic grid sizes.
+     */
+    public static final MenuType<DartChestMenu> DART_CHEST_MENU = Registry.register(
+            BuiltInRegistries.MENU,
+            Identifier.fromNamespaceAndPath(NAMESPACE, "dart_chest"),
+            new MenuType<>(DartChestMenu::new, FeatureFlags.VANILLA_SET)
     );
 
     /**

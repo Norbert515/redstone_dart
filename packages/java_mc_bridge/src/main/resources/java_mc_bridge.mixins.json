@@ -6,7 +6,12 @@
   "mixins": [
     "RecipeManagerMixin"
   ],
-  "client": [],
+  "client": [
+    "ClientInputAccessor",
+    "KeyboardAccessor",
+    "KeyMappingAccessor",
+    "MouseAccessor"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

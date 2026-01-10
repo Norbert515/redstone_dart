@@ -152,4 +152,218 @@ class ClientBridge {
       '()Z',
     );
   }
+
+  // ==========================================================================
+  // Input Simulation Methods (for testing)
+  // ==========================================================================
+
+  /// Simulate a key press (down then up).
+  ///
+  /// [keyCode] - GLFW key code (see GlfwKeys constants).
+  static void pressKey(int keyCode) {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'pressKey',
+      '(I)V',
+      [keyCode],
+    );
+  }
+
+  /// Hold a key down. Call [releaseKey] to release.
+  ///
+  /// [keyCode] - GLFW key code (see GlfwKeys constants).
+  static void holdKey(int keyCode) {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'holdKey',
+      '(I)V',
+      [keyCode],
+    );
+  }
+
+  /// Release a held key.
+  ///
+  /// [keyCode] - GLFW key code (see GlfwKeys constants).
+  static void releaseKey(int keyCode) {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'releaseKey',
+      '(I)V',
+      [keyCode],
+    );
+  }
+
+  /// Type a single character (for text input).
+  ///
+  /// [codePoint] - Unicode code point of the character.
+  static void typeChar(int codePoint) {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'typeChar',
+      '(I)V',
+      [codePoint],
+    );
+  }
+
+  /// Type a string of characters.
+  ///
+  /// [text] - The text to type.
+  static void typeChars(String text) {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'typeChars',
+      '(Ljava/lang/String;)V',
+      [text],
+    );
+  }
+
+  /// Click a mouse button (press and release).
+  ///
+  /// [button] - Mouse button (0=left, 1=right, 2=middle).
+  static void clickMouse(int button) {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'clickMouse',
+      '(I)V',
+      [button],
+    );
+  }
+
+  /// Hold a mouse button down.
+  ///
+  /// [button] - Mouse button (0=left, 1=right, 2=middle).
+  static void holdMouse(int button) {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'holdMouse',
+      '(I)V',
+      [button],
+    );
+  }
+
+  /// Release a held mouse button.
+  ///
+  /// [button] - Mouse button (0=left, 1=right, 2=middle).
+  static void releaseMouse(int button) {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'releaseMouse',
+      '(I)V',
+      [button],
+    );
+  }
+
+  /// Set cursor position (GUI coordinates).
+  ///
+  /// [x], [y] - Position in GUI pixels.
+  static void setCursorPos(double x, double y) {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'setCursorPos',
+      '(DD)V',
+      [x, y],
+    );
+  }
+
+  /// Scroll the mouse wheel.
+  ///
+  /// [horizontal] - Horizontal scroll amount.
+  /// [vertical] - Vertical scroll amount.
+  static void scroll(double horizontal, double vertical) {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'scroll',
+      '(DD)V',
+      [horizontal, vertical],
+    );
+  }
+
+  /// Release all held inputs (cleanup for tests).
+  static void releaseAllInputs() {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'releaseAllInputs',
+      '()V',
+    );
+  }
+
+  /// Ensure a clean UI state for testing - close any open screens.
+  ///
+  /// This method closes any open GUI screens (inventory, menus, etc.)
+  /// and any open container menus. Call this before running tests to
+  /// ensure a consistent starting state.
+  static void ensureCleanUIState() {
+    GenericJniBridge.callStaticVoidMethod(
+      _className,
+      'ensureCleanUIState',
+      '()V',
+    );
+  }
+
+  // ==========================================================================
+  // Local Player State Methods (for testing)
+  // ==========================================================================
+
+  /// Check if LocalPlayer exists on the client.
+  static bool hasLocalPlayer() {
+    return GenericJniBridge.callStaticBoolMethod(
+      _className,
+      'hasLocalPlayer',
+      '()Z',
+    );
+  }
+
+  /// Get LocalPlayer's X coordinate.
+  static double getLocalPlayerX() {
+    return GenericJniBridge.callStaticDoubleMethod(
+      _className,
+      'getLocalPlayerX',
+      '()D',
+    );
+  }
+
+  /// Get LocalPlayer's Y coordinate.
+  static double getLocalPlayerY() {
+    return GenericJniBridge.callStaticDoubleMethod(
+      _className,
+      'getLocalPlayerY',
+      '()D',
+    );
+  }
+
+  /// Get LocalPlayer's Z coordinate.
+  static double getLocalPlayerZ() {
+    return GenericJniBridge.callStaticDoubleMethod(
+      _className,
+      'getLocalPlayerZ',
+      '()D',
+    );
+  }
+
+  /// Check if LocalPlayer is sneaking (shift key down).
+  static bool isLocalPlayerSneaking() {
+    return GenericJniBridge.callStaticBoolMethod(
+      _className,
+      'isLocalPlayerSneaking',
+      '()Z',
+    );
+  }
+
+  /// Check if LocalPlayer is sprinting.
+  static bool isLocalPlayerSprinting() {
+    return GenericJniBridge.callStaticBoolMethod(
+      _className,
+      'isLocalPlayerSprinting',
+      '()Z',
+    );
+  }
+
+  /// Get debug information about LocalPlayer's current input state.
+  static String getLocalPlayerInputDebug() {
+    return GenericJniBridge.callStaticStringMethod(
+      _className,
+      'getLocalPlayerInputDebug',
+      '()Ljava/lang/String;',
+    ) ?? 'JNI call failed';
+  }
 }

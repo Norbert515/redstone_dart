@@ -208,8 +208,8 @@ abstract class ProcessingBlockEntity extends BlockEntityWithInventory {
   // ============ Save/Load ============
 
   @override
-  Map<String, dynamic> onSave() {
-    final base = super.onSave();
+  Map<String, dynamic> saveAdditional() {
+    final base = super.saveAdditional();
     base['litTime'] = litTime.value;
     base['litDuration'] = litDuration.value;
     base['cookingProgress'] = cookingProgress.value;
@@ -218,8 +218,8 @@ abstract class ProcessingBlockEntity extends BlockEntityWithInventory {
   }
 
   @override
-  void onLoad(Map<String, dynamic> nbt) {
-    super.onLoad(nbt);
+  void loadAdditional(Map<String, dynamic> nbt) {
+    super.loadAdditional(nbt);
     litTime.value = nbt['litTime'] as int? ?? 0;
     litDuration.value = nbt['litDuration'] as int? ?? 0;
     cookingProgress.value = nbt['cookingProgress'] as int? ?? 0;

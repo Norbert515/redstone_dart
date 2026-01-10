@@ -214,12 +214,15 @@ public class DartBridge {
     public static native void onProxyAnimalBreed(long handlerId, int parentId, int partnerId, int babyId);
 
     // Block entity native methods - called by DartBlockEntity classes
+    public static native void onBlockEntitySetLevel(int handlerId, long blockPosHash);
     public static native void onBlockEntityLoad(int handlerId, long blockPosHash, String nbtJson);
     public static native String onBlockEntitySave(int handlerId, long blockPosHash);
     public static native void onBlockEntityTick(int handlerId, long blockPosHash);
     public static native int getBlockEntityDataSlot(int handlerId, long blockPosHash, int index);
     public static native void setBlockEntityDataSlot(int handlerId, long blockPosHash, int index, int value);
     public static native void onBlockEntityRemoved(int handlerId, long blockPosHash);
+    public static native void onBlockEntityContainerOpen(int handlerId, long blockPosHash);
+    public static native void onBlockEntityContainerClose(int handlerId, long blockPosHash);
 
     // Item proxy native methods - called by DartItemProxy
     public static native boolean onProxyItemAttackEntity(long handlerId, int worldId, int attackerId, int targetId);
@@ -1059,6 +1062,44 @@ public class DartBridge {
         Identifier dimId = Identifier.parse(dimension);
         ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, dimId);
         return serverInstance.getLevel(key);
+    }
+
+    // ==========================================================================
+    // Chunk Management APIs
+    // ==========================================================================
+
+    /**
+     * Force-load a chunk to prevent it from being unloaded.
+     * This is useful for tests to ensure block entities aren't removed.
+     *
+     * @param dimension The dimension name (e.g., "minecraft:overworld")
+     * @param chunkX The chunk X coordinate
+     * @param chunkZ The chunk Z coordinate
+     * @param load true to force-load, false to remove force-load
+     * @return true if successful
+     */
+    public static boolean setChunkForceLoaded(String dimension, int chunkX, int chunkZ, boolean load) {
+        ServerLevel level = getServerLevel(dimension);
+        if (level == null) {
+            LOGGER.error("Failed to get level for dimension: {}", dimension);
+            return false;
+        }
+
+        try {
+            level.setChunkForced(chunkX, chunkZ, load);
+            LOGGER.info("Chunk ({}, {}) force-load set to {} in {}", chunkX, chunkZ, load, dimension);
+            return true;
+        } catch (Exception e) {
+            LOGGER.error("Failed to set chunk force-load: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Helper to convert block coordinates to chunk coordinates.
+     */
+    public static int blockToChunk(int blockCoord) {
+        return blockCoord >> 4;  // Equivalent to Math.floorDiv(blockCoord, 16)
     }
 
     // ==========================================================================
@@ -3398,7 +3439,11 @@ public class DartBridge {
             if (level == null) return;
 
             BlockPos pos = new BlockPos(x, y, z);
-            net.minecraft.world.level.block.entity.BlockEntity be = level.getBlockEntity(pos);
+
+            // Use CHECK mode to avoid creating a new block entity if one doesn't exist yet
+            // This is important during setLevel() callbacks when the entity is being set up
+            net.minecraft.world.level.chunk.LevelChunk chunk = level.getChunkAt(pos);
+            net.minecraft.world.level.block.entity.BlockEntity be = chunk.getBlockEntity(pos, net.minecraft.world.level.chunk.LevelChunk.EntityCreationType.CHECK);
 
             if (be instanceof net.minecraft.world.Container container) {
                 if (slot >= 0 && slot < container.getContainerSize()) {

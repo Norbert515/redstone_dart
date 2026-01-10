@@ -50,6 +50,12 @@ class BlockEntityRegistry {
   /// Map of block entity type ID (string) -> handler ID
   static final Map<String, int> _typeToHandler = {};
 
+  /// Counter for unique instance IDs (debug)
+  static int _nextInstanceId = 1;
+
+  /// Map of instance -> instanceId for debugging
+  static final Map<BlockEntity, int> _instanceIds = {};
+
   BlockEntityRegistry._(); // Private constructor - all static
 
   /// Register a block entity type for a specific block and get a handler ID.
@@ -148,6 +154,16 @@ class BlockEntityRegistry {
     instance.handlerId = handlerId;
     instance.blockPosHash = blockPosHash;
 
+    // Assign unique instance ID for debugging
+    final instanceId = _nextInstanceId++;
+    _instanceIds[instance] = instanceId;
+
+    // Check if we're replacing an existing instance
+    final existingInstance = _instances[handlerId]?[blockPosHash];
+    if (existingInstance != null) {
+      _instanceIds.remove(existingInstance);
+    }
+
     _instances[handlerId] ??= {};
     _instances[handlerId]![blockPosHash] = instance;
 
@@ -176,6 +192,10 @@ class BlockEntityRegistry {
   ///
   /// Called when the block is broken or replaced.
   static void remove(int handlerId, int blockPosHash) {
+    final instance = _instances[handlerId]?[blockPosHash];
+    if (instance != null) {
+      _instanceIds.remove(instance);
+    }
     _instances[handlerId]?.remove(blockPosHash);
   }
 

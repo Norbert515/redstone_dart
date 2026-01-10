@@ -96,7 +96,17 @@ public class DartBlockEntityMenu extends AbstractContainerMenu {
         // This is the key to making progress bars work!
         this.addDataSlots(data);
 
+        // Notify container that it's being opened
+        this.container.startOpen(playerInventory.player);
+        LOGGER.info("DartBlockEntityMenu: called container.startOpen, container class={}", container.getClass().getName());
+
         LOGGER.debug("DartBlockEntityMenu created with containerId={}", containerId);
+    }
+
+    @Override
+    public void removed(Player player) {
+        super.removed(player);
+        this.container.stopOpen(player);
     }
 
     // ========================================================================
@@ -173,7 +183,7 @@ public class DartBlockEntityMenu extends AbstractContainerMenu {
 
         // Only push to Dart on client side
         if (this.level.isClientSide()) {
-            LOGGER.debug("setData called: index={}, value={}, containerId={}", index, value, this.containerId);
+            LOGGER.info("setData called: index={}, value={}, containerId={}", index, value, this.containerId);
             // Call DartBridgeClient via reflection to avoid compile-time dependency
             // on client-only code. DartBridgeClient is in src/client/ and not available on server.
             try {

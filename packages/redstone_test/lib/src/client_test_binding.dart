@@ -90,6 +90,10 @@ class ClientTestBinding {
     // Poll for client readiness
     if (!_clientReady && ClientBridge.isClientReady()) {
       _clientReady = true;
+
+      // Ensure clean UI state for tests (close any open screens/inventory)
+      ClientBridge.ensureCleanUIState();
+
       // Complete all ready waiters
       for (final completer in _readyCompleters) {
         if (!completer.isCompleted) {

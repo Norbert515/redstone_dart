@@ -109,4 +109,9 @@ tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
         def port = project.property('serverVmServicePort')
         jvmArgs("-DDART_SERVER_VM_SERVICE_PORT=${port}")
     }
+
+    // Enable visual test mode (auto-join test world for client tests)
+    if (project.hasProperty('visualTestMode')) {
+        jvmArgs("-DVISUAL_TEST_MODE=true")
+    }
 }

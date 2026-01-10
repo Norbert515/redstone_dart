@@ -381,12 +381,15 @@ static SendPacketToClientCallback g_server_send_packet_callback = nullptr;
 static RegistryReadyCallback g_server_registry_ready_callback = nullptr;
 
 // Block entity callbacks
+static BlockEntitySetLevelCallback g_block_entity_set_level_callback = nullptr;
 static BlockEntityLoadCallback g_block_entity_load_callback = nullptr;
 static BlockEntitySaveCallback g_block_entity_save_callback = nullptr;
 static BlockEntityTickCallback g_block_entity_tick_callback = nullptr;
 static BlockEntityGetDataSlotCallback g_block_entity_get_data_slot_callback = nullptr;
 static BlockEntitySetDataSlotCallback g_block_entity_set_data_slot_callback = nullptr;
 static BlockEntityRemovedCallback g_block_entity_removed_callback = nullptr;
+static BlockEntityContainerOpenCallback g_block_entity_container_open_callback = nullptr;
+static BlockEntityContainerCloseCallback g_block_entity_container_close_callback = nullptr;
 
 // ==========================================================================
 // Registration Queue System (for thread-safe registration from Dart)
@@ -645,6 +648,10 @@ void server_set_send_chat_message_callback(SendChatMessageCallback cb) {
 }
 
 // Block entity callback registration
+void server_register_block_entity_set_level_handler(BlockEntitySetLevelCallback cb) {
+    g_block_entity_set_level_callback = cb;
+}
+
 void server_register_block_entity_load_handler(BlockEntityLoadCallback cb) {
     g_block_entity_load_callback = cb;
 }
@@ -667,6 +674,14 @@ void server_register_block_entity_set_data_slot_handler(BlockEntitySetDataSlotCa
 
 void server_register_block_entity_removed_handler(BlockEntityRemovedCallback cb) {
     g_block_entity_removed_callback = cb;
+}
+
+void server_register_block_entity_container_open_handler(BlockEntityContainerOpenCallback cb) {
+    g_block_entity_container_open_callback = cb;
+}
+
+void server_register_block_entity_container_close_handler(BlockEntityContainerCloseCallback cb) {
+    g_block_entity_container_close_callback = cb;
 }
 
 // ==========================================================================
@@ -796,6 +811,17 @@ void server_dispatch_proxy_block_entity_inside(int64_t handler_id, int64_t world
 // Block Entity Dispatch Functions (called from Java via JNI)
 // ==========================================================================
 
+void server_dispatch_block_entity_set_level(int32_t handler_id, int64_t block_pos_hash) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    if (g_block_entity_set_level_callback) {
+        g_block_entity_set_level_callback(handler_id, block_pos_hash);
+    }
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
 void server_dispatch_block_entity_load(int32_t handler_id, int64_t block_pos_hash, const char* nbt_json) {
     SERVER_DISPATCH_BEGIN();
     bool did_enter = safe_enter_isolate();
@@ -861,6 +887,28 @@ void server_dispatch_block_entity_removed(int32_t handler_id, int64_t block_pos_
     Dart_EnterScope();
     if (g_block_entity_removed_callback) {
         g_block_entity_removed_callback(handler_id, block_pos_hash);
+    }
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void server_dispatch_block_entity_container_open(int32_t handler_id, int64_t block_pos_hash) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    if (g_block_entity_container_open_callback) {
+        g_block_entity_container_open_callback(handler_id, block_pos_hash);
+    }
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+void server_dispatch_block_entity_container_close(int32_t handler_id, int64_t block_pos_hash) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    if (g_block_entity_container_close_callback) {
+        g_block_entity_container_close_callback(handler_id, block_pos_hash);
     }
     Dart_ExitScope();
     safe_exit_isolate(did_enter);

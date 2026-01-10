@@ -34,6 +34,10 @@ sourceSets {
             // Include Redstone bridge code (server-side)
             srcDir '../.redstone/bridge/java'
         }
+        resources {
+            // Include Redstone bridge resources (mixin configs, etc.)
+            srcDir '../.redstone/bridge/resources'
+        }
     }
     client {
         java {
@@ -51,6 +55,7 @@ dependencies {
 }
 
 processResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
     inputs.property "loader_version", project.loader_version
@@ -105,5 +110,10 @@ tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
     if (project.hasProperty('serverVmServicePort')) {
         def port = project.property('serverVmServicePort')
         jvmArgs("-DDART_SERVER_VM_SERVICE_PORT=${port}")
+    }
+
+    // Enable visual test mode (auto-join test world for client tests)
+    if (project.hasProperty('visualTestMode')) {
+        jvmArgs("-DVISUAL_TEST_MODE=true")
     }
 }

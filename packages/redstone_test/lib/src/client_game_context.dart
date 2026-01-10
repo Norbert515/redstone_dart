@@ -292,4 +292,216 @@ class ClientGameContext {
 
   /// Wait for the client to be ready.
   Future<void> waitForClientReady() => _binding.waitForClientReady();
+
+  // ==========================================================================
+  // Keyboard Input Simulation
+  // ==========================================================================
+
+  /// Press and release a key.
+  ///
+  /// The key is pressed, held for 1 tick to allow input processing
+  /// (movement keys poll KeyMapping.isDown() once per tick), then released.
+  ///
+  /// [keyCode] - GLFW key code (see GlfwKeys constants).
+  ///
+  /// Example:
+  /// ```dart
+  /// await game.pressKey(GlfwKeys.w); // Press W key
+  /// ```
+  Future<void> pressKey(int keyCode) async {
+    ClientBridge.pressKey(keyCode);
+    await waitTicks(1); // Wait for input to be processed by tick handler
+    ClientBridge.releaseKey(keyCode);
+    await waitTicks(1); // Wait for release to process
+  }
+
+  /// Hold a key down. Call [releaseKey] to release.
+  ///
+  /// [keyCode] - GLFW key code (see GlfwKeys constants).
+  void holdKey(int keyCode) {
+    ClientBridge.holdKey(keyCode);
+  }
+
+  /// Release a held key.
+  ///
+  /// [keyCode] - GLFW key code (see GlfwKeys constants).
+  Future<void> releaseKey(int keyCode) async {
+    ClientBridge.releaseKey(keyCode);
+    await waitTicks(1);
+  }
+
+  /// Hold a key for specified ticks, then release.
+  ///
+  /// [keyCode] - GLFW key code (see GlfwKeys constants).
+  /// [ticks] - Number of ticks to hold the key.
+  ///
+  /// Example:
+  /// ```dart
+  /// // Hold W key for 20 ticks (1 second) to walk forward
+  /// await game.holdKeyFor(GlfwKeys.w, 20);
+  /// ```
+  Future<void> holdKeyFor(int keyCode, int ticks) async {
+    holdKey(keyCode);
+    await waitTicks(ticks);
+    await releaseKey(keyCode);
+  }
+
+  /// Type a single character.
+  ///
+  /// [codePoint] - Unicode code point of the character.
+  void typeChar(int codePoint) {
+    ClientBridge.typeChar(codePoint);
+  }
+
+  /// Type a string of characters.
+  ///
+  /// [text] - The text to type.
+  ///
+  /// Example:
+  /// ```dart
+  /// await game.typeChars('/gamemode creative');
+  /// ```
+  Future<void> typeChars(String text) async {
+    ClientBridge.typeChars(text);
+    await waitTicks(1);
+  }
+
+  // ==========================================================================
+  // Mouse Input Simulation
+  // ==========================================================================
+
+  /// Click a mouse button (press and release).
+  ///
+  /// [button] - Mouse button (0=left, 1=right, 2=middle). Defaults to left.
+  ///
+  /// Example:
+  /// ```dart
+  /// await game.click(); // Left click
+  /// await game.click(button: MouseButton.right); // Right click
+  /// ```
+  Future<void> click({int button = 0}) async {
+    ClientBridge.clickMouse(button);
+    await waitTicks(1);
+  }
+
+  /// Hold a mouse button down.
+  ///
+  /// [button] - Mouse button (0=left, 1=right, 2=middle). Defaults to left.
+  void holdMouse({int button = 0}) {
+    ClientBridge.holdMouse(button);
+  }
+
+  /// Release a held mouse button.
+  ///
+  /// [button] - Mouse button (0=left, 1=right, 2=middle). Defaults to left.
+  Future<void> releaseMouse({int button = 0}) async {
+    ClientBridge.releaseMouse(button);
+    await waitTicks(1);
+  }
+
+  /// Move cursor to position (GUI coordinates).
+  ///
+  /// [x], [y] - Position in GUI pixels.
+  ///
+  /// Example:
+  /// ```dart
+  /// await game.moveCursor(100, 200);
+  /// ```
+  Future<void> moveCursor(double x, double y) async {
+    ClientBridge.setCursorPos(x, y);
+    await waitTicks(1);
+  }
+
+  /// Scroll the mouse wheel.
+  ///
+  /// [amount] - Vertical scroll amount (positive = up, negative = down).
+  /// [horizontal] - Horizontal scroll amount (default 0).
+  ///
+  /// Example:
+  /// ```dart
+  /// await game.scroll(1); // Scroll up
+  /// await game.scroll(-1); // Scroll down
+  /// ```
+  Future<void> scroll(double amount, {double horizontal = 0}) async {
+    ClientBridge.scroll(horizontal, amount);
+    await waitTicks(1);
+  }
+
+  /// Click at a specific position.
+  ///
+  /// [x], [y] - Position in GUI pixels.
+  /// [button] - Mouse button (0=left, 1=right, 2=middle). Defaults to left.
+  ///
+  /// Example:
+  /// ```dart
+  /// await game.clickAt(100, 200); // Left click at (100, 200)
+  /// ```
+  Future<void> clickAt(double x, double y, {int button = 0}) async {
+    await moveCursor(x, y);
+    await click(button: button);
+  }
+
+  /// Drag from one position to another.
+  ///
+  /// [fromX], [fromY] - Starting position in GUI pixels.
+  /// [toX], [toY] - Ending position in GUI pixels.
+  /// [button] - Mouse button (0=left, 1=right, 2=middle). Defaults to left.
+  /// [durationTicks] - Number of ticks for the drag animation (default 10).
+  ///
+  /// Example:
+  /// ```dart
+  /// // Drag from (100, 100) to (200, 200)
+  /// await game.drag(100, 100, 200, 200);
+  /// ```
+  Future<void> drag(
+    double fromX,
+    double fromY,
+    double toX,
+    double toY, {
+    int button = 0,
+    int durationTicks = 10,
+  }) async {
+    await moveCursor(fromX, fromY);
+    holdMouse(button: button);
+
+    for (int i = 1; i <= durationTicks; i++) {
+      final t = i / durationTicks;
+      final x = fromX + (toX - fromX) * t;
+      final y = fromY + (toY - fromY) * t;
+      await moveCursor(x, y);
+    }
+
+    await releaseMouse(button: button);
+  }
+
+  /// Release all held inputs (call in test cleanup).
+  ///
+  /// This releases all held keys and mouse buttons. Useful for cleanup
+  /// in case a test fails while inputs are held.
+  void releaseAllInputs() {
+    ClientBridge.releaseAllInputs();
+  }
+
+  // ==========================================================================
+  // Local Player State (client-side)
+  // ==========================================================================
+
+  /// Check if there's a local player on the client.
+  bool get hasLocalPlayer => ClientBridge.hasLocalPlayer();
+
+  /// Get client-side player position (may differ from server during sync).
+  Vec3 get localPlayerPosition => Vec3(
+        ClientBridge.getLocalPlayerX(),
+        ClientBridge.getLocalPlayerY(),
+        ClientBridge.getLocalPlayerZ(),
+      );
+
+  /// Check client-side sneak state.
+  bool get isLocalPlayerSneaking => ClientBridge.isLocalPlayerSneaking();
+
+  /// Check client-side sprint state.
+  bool get isLocalPlayerSprinting => ClientBridge.isLocalPlayerSprinting();
+
+  /// Debug: Get current input state.
+  String get localPlayerInputDebug => ClientBridge.getLocalPlayerInputDebug();
 }

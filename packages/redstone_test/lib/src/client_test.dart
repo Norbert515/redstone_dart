@@ -1,11 +1,14 @@
-/// Client test function for Minecraft visual tests.
+/// Full test function for Minecraft visual tests (client + server).
 ///
-/// Provides [testMinecraftClient] which runs tests inside the Minecraft client
+/// Provides [testMinecraftFull] which runs tests inside the Minecraft client
 /// with access to client-only features like screenshots.
+///
+/// Also provides aliases [testMinecraftClient] and [clientGroup] for backwards compatibility.
 library;
 
 import 'dart:async';
 
+import 'package:dart_mod_server/dart_mod_server.dart';
 import 'package:meta/meta.dart';
 
 import 'client_game_context.dart';
@@ -24,15 +27,40 @@ String _groupPrefix = '';
 /// Track inherited skip reason from group.
 String? _groupSkip;
 
-/// Define a group of related client tests.
+/// Whether we're running in server-only mode (no client).
+/// In server-only mode, ClientBridge.isClientReady() is always false.
+bool get _isServerOnlyMode {
+  try {
+    // In server-only mode, the client is never ready
+    // We wait a bit and check - if still not ready, we're in server mode
+    // However, for detection purposes, we use a simpler approach:
+    // The test harness sets an environment variable or we check if client bridge works
+    return !ClientBridge.isClientReady();
+  } catch (_) {
+    return true; // If ClientBridge fails, we're in server-only mode
+  }
+}
+
+/// Define a group of related full tests (client + server).
 ///
 /// Groups can be nested and help organize test output.
-/// The body is async so that `testMinecraftClient` calls can be awaited.
-Future<void> clientGroup(
+/// The body is async so that `testMinecraftFull` calls can be awaited.
+Future<void> fullGroup(
   String description,
   Future<void> Function() body, {
   Object? skip = false,
 }) async {
+  // If running in server-only mode, skip full groups with a message
+  if (_isServerOnlyMode) {
+    testResults.skipped++;
+    emitEvent(TestSkipEvent(
+      name: description,
+      reason: 'Skipping full group - run with --full flag',
+    ));
+    print('  SKIP: $description (full group skipped in server-only mode)');
+    return;
+  }
+
   final previousPrefix = _groupPrefix;
   final previousSkip = _groupSkip;
 
@@ -56,10 +84,23 @@ Future<void> clientGroup(
   _groupSkip = previousSkip;
 }
 
-/// Define a Minecraft client test for visual testing.
+/// Alias for [fullGroup] - backwards compatibility.
 ///
-/// Unlike `testMinecraft`, this runs in the Minecraft client with
+/// Define a group of related full tests.
+Future<void> clientGroup(
+  String description,
+  Future<void> Function() body, {
+  Object? skip = false,
+}) =>
+    fullGroup(description, body, skip: skip);
+
+/// Define a Minecraft full test for visual testing (client + server).
+///
+/// Unlike `testMinecraftServer`, this runs in the Minecraft client with
 /// access to client-only features like screenshots and rendering.
+///
+/// In server-only mode, full tests are gracefully skipped with a message.
+/// Run with `--full` flag to execute full tests.
 ///
 /// The test has access to [ClientGameContext] which provides:
 /// - `takeScreenshot(name)` - Capture a screenshot
@@ -69,7 +110,7 @@ Future<void> clientGroup(
 ///
 /// Example:
 /// ```dart
-/// testMinecraftClient('entity renders correctly', (game) async {
+/// testMinecraftFull('entity renders correctly', (game) async {
 ///   // Position camera
 ///   await game.positionCamera(100, 70, 200, yaw: 45, pitch: 30);
 ///
@@ -83,7 +124,7 @@ Future<void> clientGroup(
 /// });
 /// ```
 @isTest
-Future<void> testMinecraftClient(
+Future<void> testMinecraftFull(
   String description,
   Future<void> Function(ClientGameContext game) callback, {
   Object? skip = false,
@@ -92,6 +133,17 @@ Future<void> testMinecraftClient(
 }) async {
   final fullName =
       _groupPrefix.isEmpty ? description : '$_groupPrefix > $description';
+
+  // If running in server-only mode, skip full tests with a message
+  if (_isServerOnlyMode) {
+    testResults.skipped++;
+    emitEvent(TestSkipEvent(
+      name: fullName,
+      reason: 'Skipping full test - run with --full flag',
+    ));
+    print('  SKIP: $description (full test skipped in server-only mode)');
+    return;
+  }
 
   // Determine effective skip reason
   String? skipReason;
@@ -159,3 +211,17 @@ Future<void> testMinecraftClient(
     print('    Stack: $st');
   }
 }
+
+/// Alias for [testMinecraftFull] - backwards compatibility.
+///
+/// Define a Minecraft full test for visual testing.
+@isTest
+Future<void> testMinecraftClient(
+  String description,
+  Future<void> Function(ClientGameContext game) callback, {
+  Object? skip = false,
+  Duration timeout = _defaultClientTimeout,
+  dynamic tags,
+}) =>
+    testMinecraftFull(description, callback,
+        skip: skip, timeout: timeout, tags: tags);

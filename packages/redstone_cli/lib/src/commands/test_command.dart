@@ -17,7 +17,9 @@ import '../util/logger.dart';
 /// Usage: redstone test [test files] [dart test args]
 ///
 /// Example:
-///   redstone test                          # Run all tests
+///   redstone test                          # Run all tests (server + full)
+///   redstone test --server                 # Run only server tests
+///   redstone test --full                   # Run only full tests (with client)
 ///   redstone test test/block_test.dart     # Run specific test file
 ///   redstone test --name "placement"       # Filter by test name
 class TestCommand extends Command<int> {
@@ -58,9 +60,15 @@ class TestCommand extends Command<int> {
       negatable: false,
     );
     argParser.addFlag(
-      'client',
-      abbr: 'c',
-      help: 'Run client-side visual tests (uses testMinecraftClient).',
+      'server',
+      abbr: 's',
+      help: 'Run only server tests (testMinecraftServer).',
+      negatable: false,
+    );
+    argParser.addFlag(
+      'full',
+      abbr: 'f',
+      help: 'Run only full tests with client (testMinecraftFull).',
       negatable: false,
     );
   }
@@ -75,13 +83,20 @@ class TestCommand extends Command<int> {
       return 1;
     }
 
-    final clientMode = argResults!['client'] as bool;
+    final serverOnly = argResults!['server'] as bool;
+    final fullOnly = argResults!['full'] as bool;
+
+    // Determine which modes to run
+    final runServer = !fullOnly;
+    final runFull = !serverOnly;
 
     Logger.newLine();
-    if (clientMode) {
-      Logger.header('🎮 Running client visual tests for ${project.name}');
+    if (serverOnly) {
+      Logger.header('🧪 Running server tests for ${project.name}');
+    } else if (fullOnly) {
+      Logger.header('🎮 Running full tests for ${project.name}');
     } else {
-      Logger.header('🧪 Running tests for ${project.name}');
+      Logger.header('🧪 Running all tests for ${project.name}');
     }
     Logger.newLine();
 
@@ -126,6 +141,61 @@ class TestCommand extends Command<int> {
       filterArgs.addAll(['--exclude-tags', tag]);
     }
 
+    final verbose = argResults!['verbose'] as bool;
+    int overallExitCode = 0;
+
+    // Run server tests first (if enabled)
+    if (runServer) {
+      Logger.info('Running server tests...');
+      final serverExitCode = await _runTests(
+        project: project,
+        testFiles: testFiles,
+        filterArgs: filterArgs,
+        verbose: verbose,
+        clientMode: false,
+      );
+      if (serverExitCode != 0) {
+        overallExitCode = serverExitCode;
+      }
+    }
+
+    // Run full tests (if enabled)
+    if (runFull) {
+      if (runServer) {
+        Logger.newLine();
+        Logger.info('Running full tests (with client)...');
+      }
+      final fullExitCode = await _runTests(
+        project: project,
+        testFiles: testFiles,
+        filterArgs: filterArgs,
+        verbose: verbose,
+        clientMode: true,
+      );
+      if (fullExitCode != 0) {
+        overallExitCode = fullExitCode;
+      }
+    }
+
+    // Final summary
+    Logger.newLine();
+    if (overallExitCode == 0) {
+      Logger.success('All tests passed!');
+    } else {
+      Logger.error('Some tests failed.');
+    }
+
+    return overallExitCode;
+  }
+
+  /// Run tests in a specific mode (server or client/full).
+  Future<int> _runTests({
+    required RedstoneProject project,
+    required List<String> testFiles,
+    required List<String> filterArgs,
+    required bool verbose,
+    required bool clientMode,
+  }) async {
     // Generate test harness
     Logger.info('Generating test harness...');
     final generator = TestHarnessGenerator(project);
@@ -146,7 +216,7 @@ class TestCommand extends Command<int> {
 
     // Start Minecraft with the test harness
     if (clientMode) {
-      Logger.info('Starting Minecraft client with visual test harness...');
+      Logger.info('Starting Minecraft client with full test harness...');
     } else {
       Logger.info('Starting Minecraft server with test harness...');
     }
@@ -155,7 +225,6 @@ class TestCommand extends Command<int> {
       testMode: !clientMode,
       clientTestMode: clientMode,
     );
-    final verbose = argResults!['verbose'] as bool;
 
     try {
       await runner.start();
@@ -163,21 +232,14 @@ class TestCommand extends Command<int> {
       // Wait for tests to complete by listening to stdout events
       Logger.info('Waiting for tests to complete...');
 
-      final exitCode = await _waitForTestCompletion(runner: runner, verbose: verbose);
+      final exitCode =
+          await _waitForTestCompletion(runner: runner, verbose: verbose);
 
       // Clean up
       await runner.stop();
 
       // Delete world for clean test runs
       await _cleanupWorld(project);
-
-      if (exitCode == 0) {
-        Logger.newLine();
-        Logger.success('All tests passed!');
-      } else {
-        Logger.newLine();
-        Logger.error('Some tests failed.');
-      }
 
       return exitCode;
     } catch (e) {
@@ -205,9 +267,11 @@ class TestCommand extends Command<int> {
     }
 
     if (_isInteractive) {
-      return _waitWithTUI(runner: runner, stdoutLines: stdoutLines, verbose: verbose);
+      return _waitWithTUI(
+          runner: runner, stdoutLines: stdoutLines, verbose: verbose);
     } else {
-      return _waitWithSimpleOutput(runner: runner, stdoutLines: stdoutLines, verbose: verbose);
+      return _waitWithSimpleOutput(
+          runner: runner, stdoutLines: stdoutLines, verbose: verbose);
     }
   }
 

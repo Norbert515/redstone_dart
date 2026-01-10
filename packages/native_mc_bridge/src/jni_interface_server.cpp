@@ -1390,6 +1390,22 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextEntityRegistr
 
 /*
  * Class:     com_redstone_DartBridge
+ * Method:    onBlockEntitySetLevel
+ * Signature: (IJ)V
+ *
+ * Called when a block entity is added to a level.
+ * Routes to Dart's BlockEntityRegistry for initialization.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onBlockEntitySetLevel(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint handler_id, jlong block_pos_hash) {
+    server_dispatch_block_entity_set_level(
+        static_cast<int32_t>(handler_id),
+        static_cast<int64_t>(block_pos_hash));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
  * Method:    onBlockEntityLoad
  * Signature: (IJLjava/lang/String;)V
  *
@@ -1489,6 +1505,38 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onBlockEntityRemoved(
     JNIEnv* /* env */, jclass /* cls */,
     jint handler_id, jlong block_pos_hash) {
     server_dispatch_block_entity_removed(
+        static_cast<int32_t>(handler_id),
+        static_cast<int64_t>(block_pos_hash));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onBlockEntityContainerOpen
+ * Signature: (IJ)V
+ *
+ * Called when a player opens a block entity container.
+ * Routes to Dart for container open event handling.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onBlockEntityContainerOpen(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint handler_id, jlong block_pos_hash) {
+    server_dispatch_block_entity_container_open(
+        static_cast<int32_t>(handler_id),
+        static_cast<int64_t>(block_pos_hash));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onBlockEntityContainerClose
+ * Signature: (IJ)V
+ *
+ * Called when a player closes a block entity container.
+ * Routes to Dart for container close event handling.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onBlockEntityContainerClose(
+    JNIEnv* /* env */, jclass /* cls */,
+    jint handler_id, jlong block_pos_hash) {
+    server_dispatch_block_entity_container_close(
         static_cast<int32_t>(handler_id),
         static_cast<int64_t>(block_pos_hash));
 }

@@ -147,17 +147,22 @@ class _ContainerScopeState<T extends ContainerDefinition>
   /// This ensures we have correct values immediately on container open,
   /// even for values that don't change frequently (like litDuration).
   void _loadInitialValues() {
+    print('[ContainerScope] _loadInitialValues: menuId=${widget.menuId}, container=${widget.container.runtimeType}');
     final syncedValues = widget.container.syncedValuesList;
+    print('[ContainerScope] Found ${syncedValues.length} synced values');
     for (final syncedValue in syncedValues) {
       if (syncedValue.dataSlotIndex >= 0) {
         final value = _containerView.getContainerDataSlot(syncedValue.dataSlotIndex);
+        print('[ContainerScope] Initial load slot ${syncedValue.dataSlotIndex}: got value $value');
         syncedValue.updateFromSync(value);
       }
     }
   }
 
   void _subscribeToDataChanges() {
+    print('[ContainerScope] _subscribeToDataChanges: subscribing for menuId=${widget.menuId}');
     _subscription = ContainerDataEvents.onDataChanged.listen((event) {
+      print('[ContainerScope] onDataChanged: event.menuId=${event.menuId}, slotIndex=${event.slotIndex}, value=${event.value}, our menuId=${widget.menuId}');
       // Only handle events for our menu
       if (event.menuId != widget.menuId) return;
 
@@ -165,6 +170,7 @@ class _ContainerScopeState<T extends ContainerDefinition>
       final syncedValues = widget.container.syncedValuesList;
       for (final syncedValue in syncedValues) {
         if (syncedValue.dataSlotIndex == event.slotIndex) {
+          print('[ContainerScope] Updating syncedValue at slot ${syncedValue.dataSlotIndex} from ${syncedValue.value} to ${event.value}');
           syncedValue.updateFromSync(event.value);
           // Trigger rebuild
           if (mounted) {

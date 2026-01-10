@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart';
 
 import '../project/redstone_project.dart';
 import '../util/logger.dart';
@@ -109,28 +110,90 @@ class TestHarnessGenerator {
   /// This allows the Dart VM to resolve packages when loading the test harness
   /// directly from its location (via DART_SCRIPT_PATH).
   Future<void> _createHarnessPubspec(Directory harnessDir) async {
-    // Read the project's pubspec to extract dependency paths
+    // For workspace projects, check packages/server/pubspec.yaml first
+    // Fall back to root pubspec.yaml for non-workspace projects
+    final serverPubspecFile = File(p.join(project.rootDir, 'packages', 'server', 'pubspec.yaml'));
     final projectPubspecFile = File(p.join(project.rootDir, 'pubspec.yaml'));
+
     String? dartMcPath;
     String? redstoneTestPath;
 
-    if (projectPubspecFile.existsSync()) {
-      final content = projectPubspecFile.readAsStringSync();
+    // Try server package pubspec first (for workspace projects)
+    File? pubspecToUse;
+    String? baseDir;
+
+    if (serverPubspecFile.existsSync()) {
+      pubspecToUse = serverPubspecFile;
+      baseDir = p.join(project.rootDir, 'packages', 'server');
+      Logger.debug('Using server package pubspec for dependency resolution');
+    } else if (projectPubspecFile.existsSync()) {
+      pubspecToUse = projectPubspecFile;
+      baseDir = project.rootDir;
+    }
+
+    if (pubspecToUse != null && baseDir != null) {
+      final content = pubspecToUse.readAsStringSync();
       // Simple regex to find path dependencies - this is sufficient for our use case
       final dartModServerMatch = RegExp(r'dart_mod_server:\s*\n\s*path:\s*(.+)').firstMatch(content);
       final redstoneTestMatch = RegExp(r'redstone_test:\s*\n\s*path:\s*(.+)').firstMatch(content);
 
       if (dartModServerMatch != null) {
         final relativePath = dartModServerMatch.group(1)!.trim();
-        dartMcPath = Uri.directory(project.rootDir).resolve(relativePath).toFilePath();
+        dartMcPath = Uri.directory(baseDir).resolve(relativePath).toFilePath();
+        Logger.debug('Found dart_mod_server at: $dartMcPath');
       }
       if (redstoneTestMatch != null) {
         final relativePath = redstoneTestMatch.group(1)!.trim();
-        redstoneTestPath = Uri.directory(project.rootDir).resolve(relativePath).toFilePath();
+        redstoneTestPath = Uri.directory(baseDir).resolve(relativePath).toFilePath();
+        Logger.debug('Found redstone_test at: $redstoneTestPath');
       }
     }
 
-    // Create a minimal pubspec that includes dart_mod_server and redstone_test
+    // Build the dependencies section
+    final depsBuffer = StringBuffer();
+    depsBuffer.writeln('  # dart_mod_server package for ServerBridge and Events');
+    depsBuffer.writeln('  dart_mod_server:');
+    depsBuffer.writeln('    path: ${dartMcPath ?? '../dart_mod_server'}');
+    depsBuffer.writeln('  # redstone_test for test utilities');
+    depsBuffer.writeln('  redstone_test:');
+    depsBuffer.writeln('    path: ${redstoneTestPath ?? '../redstone_test'}');
+
+    // For workspace projects, add each workspace package
+    final workspacePackagesDir = Directory(p.join(project.rootDir, 'packages'));
+    if (workspacePackagesDir.existsSync()) {
+      Logger.debug('Found workspace packages directory, adding package references');
+      for (final entity in workspacePackagesDir.listSync()) {
+        if (entity is Directory) {
+          final packagePubspec = File(p.join(entity.path, 'pubspec.yaml'));
+          if (packagePubspec.existsSync()) {
+            // Get package name from pubspec
+            final content = packagePubspec.readAsStringSync();
+
+            // Skip packages that depend on Flutter SDK
+            // These require a newer Dart version than the system Dart supports
+            if (content.contains('sdk: flutter')) {
+              Logger.debug('  - Skipping Flutter-dependent package: ${p.basename(entity.path)}');
+              continue;
+            }
+
+            final nameMatch = RegExp(r'^name:\s*(.+)$', multiLine: true).firstMatch(content);
+            if (nameMatch != null) {
+              final packageName = nameMatch.group(1)!.trim();
+              depsBuffer.writeln('  $packageName:');
+              depsBuffer.writeln('    path: ${entity.path}');
+              Logger.debug('  - Added workspace package: $packageName');
+            }
+          }
+        }
+      }
+    } else {
+      // Non-workspace project - just reference the main project
+      depsBuffer.writeln('  # Reference the main project');
+      depsBuffer.writeln('  ${project.name}:');
+      depsBuffer.writeln('    path: ${project.rootDir}');
+    }
+
+    // Create the pubspec
     final harnessPubspec = '''
 name: test_harness
 description: Generated test harness for ${project.name}
@@ -140,16 +203,7 @@ environment:
   sdk: ^3.0.0
 
 dependencies:
-  # dart_mod_server package for ServerBridge and Events
-  dart_mod_server:
-    path: ${dartMcPath ?? '../dart_mod_server'}
-  # redstone_test for test utilities
-  redstone_test:
-    path: ${redstoneTestPath ?? '../redstone_test'}
-  # Reference the main project
-  ${project.name}:
-    path: ${project.rootDir}
-''';
+${depsBuffer.toString()}''';
 
     final pubspecFile = File(p.join(harnessDir.path, 'pubspec.yaml'));
     pubspecFile.writeAsStringSync(harnessPubspec);
@@ -218,7 +272,8 @@ dependencies:
     final modMainPath = File(project.serverEntry).existsSync()
         ? project.serverEntry
         : project.entryPoint;
-    buffer.writeln("import 'file://$modMainPath' as mod_main;");
+    final modMainUri = _getModMainImportUri(modMainPath);
+    buffer.writeln("import '$modMainUri' as mod_main;");
     buffer.writeln();
 
     // Generate imports for each test file with unique aliases
@@ -332,11 +387,19 @@ dependencies:
 
     // Import the mod's client entry point to register blocks, items, and entities
     // Use configured client entry point or fall back to main.dart
+    // Skip if the client package depends on Flutter SDK (can't be imported by system Dart)
     final modMainPath = File(project.clientEntry).existsSync()
         ? project.clientEntry
         : project.entryPoint;
-    buffer.writeln("import 'file://$modMainPath' as mod_main;");
-    buffer.writeln();
+    final hasFlutterDep = _hasFlutterSdkDependency(modMainPath);
+
+    if (!hasFlutterDep) {
+      final modMainUri = _getModMainImportUri(modMainPath);
+      buffer.writeln("import '$modMainUri' as mod_main;");
+      buffer.writeln();
+    } else {
+      Logger.debug('Skipping client package import (depends on Flutter SDK)');
+    }
 
     // Generate imports for each test file with unique aliases
     for (var i = 0; i < testFiles.length; i++) {
@@ -403,10 +466,18 @@ dependencies:
     buffer.writeln('  // Initialize bridge');
     buffer.writeln('  ServerBridge.initialize();');
     buffer.writeln();
-    buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
-    buffer.writeln('  // This is important for visual tests that need custom entities to be registered');
-    buffer.writeln('  mod_main.main();');
-    buffer.writeln();
+
+    // Only call mod_main.main() if the client package doesn't depend on Flutter SDK
+    if (!hasFlutterDep) {
+      buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
+      buffer.writeln('  // This is important for visual tests that need custom entities to be registered');
+      buffer.writeln('  mod_main.main();');
+      buffer.writeln();
+    } else {
+      buffer.writeln('  // Note: Client package depends on Flutter SDK and cannot be imported');
+      buffer.writeln('  // Custom blocks, items, and entities will need to be registered by the Flutter runtime');
+      buffer.writeln();
+    }
     buffer.writeln('  // Enable visual test mode to auto-join test world');
     buffer.writeln('  // TODO: ClientBridge needs to be imported from dart_mod_client when available');
     buffer.writeln('  // ClientBridge.setVisualTestMode(true);');
@@ -443,4 +514,75 @@ dependencies:
     return Uri.file(absolutePath).toString();
   }
 
+  /// Check if a file's containing package depends on Flutter SDK.
+  ///
+  /// This is used to determine whether we can import the client package
+  /// in the test harness. Packages that depend on Flutter SDK cannot be
+  /// imported by the system Dart runtime.
+  bool _hasFlutterSdkDependency(String filePath) {
+    final packagesDir = p.join(project.rootDir, 'packages');
+
+    // Check if this is in a workspace package
+    if (filePath.startsWith(packagesDir)) {
+      final relativeToPkgs = p.relative(filePath, from: packagesDir);
+      final parts = p.split(relativeToPkgs);
+
+      if (parts.isNotEmpty) {
+        final packageDir = parts[0];
+        final pubspecPath = p.join(packagesDir, packageDir, 'pubspec.yaml');
+        final pubspecFile = File(pubspecPath);
+
+        if (pubspecFile.existsSync()) {
+          final content = pubspecFile.readAsStringSync();
+          // Check for Flutter SDK dependency
+          if (content.contains('sdk: flutter')) {
+            Logger.debug('Package $packageDir depends on Flutter SDK');
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /// Get the import URI for the mod main entry point.
+  ///
+  /// For workspace projects, converts file paths to package:// URIs to ensure
+  /// type consistency. When types are registered via the mod main, they should
+  /// come from the same package:// URI as when they're imported in tests.
+  String _getModMainImportUri(String modMainPath) {
+    final packagesDir = p.join(project.rootDir, 'packages');
+
+    // Check if this is in a workspace package
+    if (modMainPath.startsWith(packagesDir)) {
+      final relativeToPkgs = p.relative(modMainPath, from: packagesDir);
+      final parts = p.split(relativeToPkgs);
+
+      if (parts.length >= 2) {
+        final packageDir = parts[0]; // e.g., "server"
+        final restOfPath = parts.sublist(1).join('/'); // e.g., "lib/main.dart"
+
+        // Only convert lib/ files to package URIs
+        if (restOfPath.startsWith('lib/')) {
+          final pubspecPath = p.join(packagesDir, packageDir, 'pubspec.yaml');
+          final pubspecFile = File(pubspecPath);
+
+          if (pubspecFile.existsSync()) {
+            try {
+              final pubspec = loadYaml(pubspecFile.readAsStringSync());
+              final packageName = pubspec['name'] as String;
+              final libPath = restOfPath.substring(4); // Remove 'lib/'
+              return 'package:$packageName/$libPath';
+            } catch (e) {
+              Logger.debug('Failed to parse pubspec at $pubspecPath: $e');
+            }
+          }
+        }
+      }
+    }
+
+    // Fall back to file:// URI for non-workspace projects
+    return Uri.file(modMainPath).toString();
+  }
 }

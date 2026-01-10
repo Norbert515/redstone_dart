@@ -182,6 +182,38 @@ class MinecraftGameContext {
   }
 
   // ==========================================================================
+  // Block Entity Helpers
+  // ==========================================================================
+
+  /// Get a block entity at the given position.
+  ///
+  /// [typeId] is the block entity type (e.g., 'mymod:my_chest').
+  /// Returns null if no block entity of that type exists at this position.
+  ///
+  /// Example:
+  /// ```dart
+  /// final chest = game.getBlockEntity<MyChestEntity>(
+  ///   pos,
+  ///   'mymod:my_chest',
+  /// );
+  /// expect(chest?.container.progress.value, equals(0));
+  /// ```
+  T? getBlockEntity<T extends BlockEntity>(BlockPos pos, String typeId) {
+    final handlerId = BlockEntityRegistry.getHandlerIdForType(typeId);
+    if (handlerId == null) {
+      print('[GameContext] getBlockEntity: No handler ID for typeId=$typeId');
+      return null; // Type not registered
+    }
+
+    final blockPosHash = encodeBlockPos(pos);
+    final result = BlockEntityRegistry.get(handlerId, blockPosHash);
+    if (result == null) {
+      print('[GameContext] getBlockEntity: No instance found at pos=$pos (hash=$blockPosHash) for handlerId=$handlerId');
+    }
+    return result as T?;
+  }
+
+  // ==========================================================================
   // Entity Helpers
   // ==========================================================================
 
@@ -210,6 +242,44 @@ class MinecraftGameContext {
   /// Set the weather in the overworld.
   void setWeather(Weather weather, {int durationTicks = 6000}) {
     world.setWeather(weather, durationTicks);
+  }
+
+  // ==========================================================================
+  // Chunk Management
+  // ==========================================================================
+
+  /// Force-load the chunk containing a block position.
+  ///
+  /// This prevents the chunk from being unloaded by Minecraft's chunk
+  /// management system. Useful for tests to ensure block entities
+  /// aren't removed during chunk unloading.
+  ///
+  /// Example:
+  /// ```dart
+  /// game.forceLoadChunkAt(pos);
+  /// game.placeBlock(pos, Block.myChest);
+  /// await game.waitTicks(100);
+  /// // Block entity will still exist even after many ticks
+  /// ```
+  bool forceLoadChunkAt(BlockPos pos, {String dimension = 'minecraft:overworld'}) {
+    return ServerBridge.forceLoadChunkAtBlockPos(dimension, pos.x, pos.z);
+  }
+
+  /// Remove force-load from the chunk containing a block position.
+  ///
+  /// Call this after your test is done to allow normal chunk unloading.
+  bool unforceLoadChunkAt(BlockPos pos, {String dimension = 'minecraft:overworld'}) {
+    return ServerBridge.forceLoadChunkAtBlockPos(dimension, pos.x, pos.z, load: false);
+  }
+
+  /// Force-load a chunk by chunk coordinates.
+  bool forceLoadChunk(int chunkX, int chunkZ, {String dimension = 'minecraft:overworld'}) {
+    return ServerBridge.setChunkForceLoaded(dimension, chunkX, chunkZ, true);
+  }
+
+  /// Remove force-load from a chunk by chunk coordinates.
+  bool unforceLoadChunk(int chunkX, int chunkZ, {String dimension = 'minecraft:overworld'}) {
+    return ServerBridge.setChunkForceLoaded(dimension, chunkX, chunkZ, false);
   }
 
   // ==========================================================================

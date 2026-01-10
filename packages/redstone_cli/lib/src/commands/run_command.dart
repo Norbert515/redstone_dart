@@ -117,6 +117,11 @@ class RunCommand extends Command<int> {
       help: 'Show verbose output.',
       negatable: false,
     );
+    argParser.addOption(
+      'world',
+      abbr: 'w',
+      help: 'World to auto-join on startup (uses Quick Play).',
+    );
   }
 
   @override
@@ -187,7 +192,10 @@ class RunCommand extends Command<int> {
         };
       }
 
-      await runner.start();
+      // Get optional world name for Quick Play
+      final worldName = argResults!['world'] as String?;
+
+      await runner.start(quickPlayWorld: worldName);
 
       if (hotReloadEnabled) {
         if (dualRuntimeEnabled) {

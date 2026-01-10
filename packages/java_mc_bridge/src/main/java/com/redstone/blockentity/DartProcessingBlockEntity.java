@@ -160,8 +160,21 @@ public class DartProcessingBlockEntity extends DartBlockEntityWithInventory {
             int containerId,
             net.minecraft.world.entity.player.Inventory playerInventory,
             net.minecraft.world.entity.player.Player player) {
-        // Create the block entity menu with our container (inventory) and data (progress)
-        return new DartBlockEntityMenu(containerId, playerInventory, this, this.containerData);
+        // Use DartChestMenu for larger inventories (grid-based like chests)
+        // Use DartBlockEntityMenu for small inventories (furnace-style with 3 slots)
+        int inventorySize = this.getContainerSize();
+        if (inventorySize > 3) {
+            // Calculate rows and columns for chest-like layout
+            // Standard is 9 columns, calculate rows from total size
+            int columns = 9;
+            int rows = (inventorySize + columns - 1) / columns; // Round up
+            LOGGER.debug("Creating DartChestMenu: inventorySize={}, rows={}, columns={}",
+                         inventorySize, rows, columns);
+            return new DartChestMenu(containerId, playerInventory, this, this.containerData, rows, columns);
+        } else {
+            // Use furnace-style menu for small inventories
+            return new DartBlockEntityMenu(containerId, playerInventory, this, this.containerData);
+        }
     }
 
     // ========================================================================

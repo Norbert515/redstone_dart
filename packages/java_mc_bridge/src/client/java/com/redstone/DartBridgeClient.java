@@ -1,17 +1,33 @@
 package com.redstone;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.InputConstants;
+import com.redstone.mixin.ClientInputAccessor;
+import com.redstone.mixin.KeyboardAccessor;
+import com.redstone.mixin.KeyMappingAccessor;
+import com.redstone.mixin.MouseAccessor;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.Options;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Input;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.network.chat.Component;
 import com.redstone.blockentity.DartBlockEntityMenu;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.ArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -943,6 +959,409 @@ public class DartBridgeClient {
             cachedIsLit = false;
             cachedDataSlotCount = 0;
         }
+    }
+
+    // ==========================================================================
+    // Local Player State Methods (for testing)
+    // ==========================================================================
+
+    /**
+     * Check if LocalPlayer exists on the client.
+     * @return true if LocalPlayer is not null
+     */
+    public static boolean hasLocalPlayer() {
+        return Minecraft.getInstance().player != null;
+    }
+
+    /**
+     * Get LocalPlayer's X coordinate.
+     * @return X position, or 0 if no player
+     */
+    public static double getLocalPlayerX() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player != null ? player.getX() : 0;
+    }
+
+    /**
+     * Get LocalPlayer's Y coordinate.
+     * @return Y position, or 0 if no player
+     */
+    public static double getLocalPlayerY() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player != null ? player.getY() : 0;
+    }
+
+    /**
+     * Get LocalPlayer's Z coordinate.
+     * @return Z position, or 0 if no player
+     */
+    public static double getLocalPlayerZ() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player != null ? player.getZ() : 0;
+    }
+
+    /**
+     * Check if LocalPlayer is sneaking (shift key down).
+     * @return true if sneaking
+     */
+    public static boolean isLocalPlayerSneaking() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player != null && player.isShiftKeyDown();
+    }
+
+    /**
+     * Check if LocalPlayer is sprinting.
+     * @return true if sprinting
+     */
+    public static boolean isLocalPlayerSprinting() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player != null && player.isSprinting();
+    }
+
+    /**
+     * Get debug information about LocalPlayer's current input state.
+     * @return Debug string showing input state, or error message if unavailable
+     */
+    public static String getLocalPlayerInputDebug() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) return "No LocalPlayer";
+        if (player.input == null) return "No Input object";
+
+        Input keyPresses = ((ClientInputAccessor) player.input).getKeyPresses();
+
+        return String.format(
+            "forward=%b, backward=%b, left=%b, right=%b, jump=%b, shift=%b, sprint=%b",
+            keyPresses.forward(), keyPresses.backward(),
+            keyPresses.left(), keyPresses.right(),
+            keyPresses.jump(), keyPresses.shift(), keyPresses.sprint()
+        );
+    }
+
+    // ==========================================================================
+    // Input Simulation Methods (for testing)
+    // ==========================================================================
+
+    // State tracking for held inputs
+    private static final Set<Integer> heldKeys = new HashSet<>();
+    private static final Set<Integer> heldMouseButtons = new HashSet<>();
+
+    /**
+     * Simulate a key press (down only - caller must release via releaseKey).
+     *
+     * Movement keys (W, A, S, D, Shift, Control) poll KeyMapping.isDown() once per tick
+     * in KeyboardInput.tick(). To ensure the key state is seen by the tick handler,
+     * this method only presses the key - the caller must wait at least 1 tick before
+     * calling releaseKey() to allow the input to be processed.
+     *
+     * @param keyCode GLFW key code (e.g., GLFW.GLFW_KEY_W)
+     */
+    public static void pressKey(int keyCode) {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            long window = mc.getWindow().handle();
+            InputConstants.Key key = InputConstants.Type.KEYSYM.getOrCreate(keyCode);
+
+            // Set KeyMapping state and trigger click
+            KeyMapping.set(key, true);
+            KeyMapping.click(key);
+
+            // Dispatch press event only (release handled separately by releaseKey)
+            KeyEvent keyEvent = new KeyEvent(keyCode, 0, 0);
+            ((KeyboardAccessor) mc.keyboardHandler).invokeKeyPress(window, GLFW.GLFW_PRESS, keyEvent);
+        });
+        // Track as held so releaseAllInputs can clean up
+        heldKeys.add(keyCode);
+    }
+
+    /**
+     * Hold a key down.
+     * Directly sets the isDown field on KeyMappings, bypassing ToggleKeyMapping's toggle logic.
+     * Also directly injects into LocalPlayer.input.keyPresses for movement keys, since the
+     * KeyboardInput.tick() polling may not see the KeyMapping state in time for tests.
+     *
+     * IMPORTANT: The KeyMapping state and input injection are set SYNCHRONOUSLY (outside mc.execute)
+     * to ensure they're applied immediately, before any tick can overwrite them. The keyboard event
+     * dispatch still uses mc.execute() since it requires render thread access.
+     *
+     * @param keyCode GLFW key code
+     */
+    public static void holdKey(int keyCode) {
+        Minecraft mc = Minecraft.getInstance();
+
+        // IMMEDIATELY set KeyMapping state (thread-safe boolean write)
+        // This MUST happen before any KeyboardInput.tick() can poll and overwrite keyPresses
+        InputConstants.Key key = InputConstants.Type.KEYSYM.getOrCreate(keyCode);
+        setKeyMappingState(key, true);
+
+        // IMMEDIATELY inject into LocalPlayer.input.keyPresses for movement keys
+        // This ensures the input is available even if KeyboardInput.tick() hasn't run yet
+        LocalPlayer player = mc.player;
+        if (player != null && player.input != null) {
+            Options options = mc.options;
+            Input current = ((ClientInputAccessor) player.input).getKeyPresses();
+
+            // Determine which movement key is being pressed and create new Input record
+            boolean forward = current.forward() || matchesKey(options.keyUp, keyCode);
+            boolean backward = current.backward() || matchesKey(options.keyDown, keyCode);
+            boolean left = current.left() || matchesKey(options.keyLeft, keyCode);
+            boolean right = current.right() || matchesKey(options.keyRight, keyCode);
+            boolean jump = current.jump() || matchesKey(options.keyJump, keyCode);
+            boolean shift = current.shift() || matchesKey(options.keyShift, keyCode);
+            boolean sprint = current.sprint() || matchesKey(options.keySprint, keyCode);
+
+            // Only update if something changed
+            if (forward != current.forward() || backward != current.backward() ||
+                left != current.left() || right != current.right() ||
+                jump != current.jump() || shift != current.shift() || sprint != current.sprint()) {
+                Input newInput = new Input(forward, backward, left, right, jump, shift, sprint);
+                ((ClientInputAccessor) player.input).setKeyPresses(newInput);
+            }
+
+            // Also set sprinting directly on the player if sprint key is pressed
+            if (matchesKey(options.keySprint, keyCode)) {
+                player.setSprinting(true);
+            }
+        }
+
+        // Schedule keyboard event dispatch for render thread (required for screen handlers)
+        mc.execute(() -> {
+            KeyEvent keyEvent = new KeyEvent(keyCode, 0, 0);
+            ((KeyboardAccessor) mc.keyboardHandler).invokeKeyPress(
+                mc.getWindow().handle(), GLFW.GLFW_PRESS, keyEvent);
+        });
+
+        heldKeys.add(keyCode);
+    }
+
+    /**
+     * Check if a KeyMapping matches the given GLFW key code.
+     * @param keyMapping The KeyMapping to check
+     * @param keyCode The GLFW key code
+     * @return true if the KeyMapping is bound to this key code
+     */
+    private static boolean matchesKey(KeyMapping keyMapping, int keyCode) {
+        InputConstants.Key boundKey = ((KeyMappingAccessor) keyMapping).getKey();
+        return boundKey.getType() == InputConstants.Type.KEYSYM && boundKey.getValue() == keyCode;
+    }
+
+    /**
+     * Release a held key.
+     * Directly sets the isDown field on KeyMappings, bypassing ToggleKeyMapping's toggle logic.
+     * Also directly clears the input from LocalPlayer.input.keyPresses for movement keys.
+     *
+     * IMPORTANT: The KeyMapping state and input clearing are done SYNCHRONOUSLY (outside mc.execute)
+     * to ensure they're applied immediately, matching the holdKey() behavior.
+     *
+     * @param keyCode GLFW key code
+     */
+    public static void releaseKey(int keyCode) {
+        Minecraft mc = Minecraft.getInstance();
+
+        // IMMEDIATELY clear KeyMapping state (thread-safe boolean write)
+        InputConstants.Key key = InputConstants.Type.KEYSYM.getOrCreate(keyCode);
+        setKeyMappingState(key, false);
+
+        // IMMEDIATELY clear the input from LocalPlayer.input.keyPresses for movement keys
+        LocalPlayer player = mc.player;
+        if (player != null && player.input != null) {
+            Options options = mc.options;
+            Input current = ((ClientInputAccessor) player.input).getKeyPresses();
+
+            // Determine which movement key is being released and create new Input record
+            boolean forward = current.forward() && !matchesKey(options.keyUp, keyCode);
+            boolean backward = current.backward() && !matchesKey(options.keyDown, keyCode);
+            boolean left = current.left() && !matchesKey(options.keyLeft, keyCode);
+            boolean right = current.right() && !matchesKey(options.keyRight, keyCode);
+            boolean jump = current.jump() && !matchesKey(options.keyJump, keyCode);
+            boolean shift = current.shift() && !matchesKey(options.keyShift, keyCode);
+            boolean sprint = current.sprint() && !matchesKey(options.keySprint, keyCode);
+
+            // Only update if something changed
+            if (forward != current.forward() || backward != current.backward() ||
+                left != current.left() || right != current.right() ||
+                jump != current.jump() || shift != current.shift() || sprint != current.sprint()) {
+                Input newInput = new Input(forward, backward, left, right, jump, shift, sprint);
+                ((ClientInputAccessor) player.input).setKeyPresses(newInput);
+            }
+
+            // Also stop sprinting if sprint key is released
+            if (matchesKey(options.keySprint, keyCode)) {
+                player.setSprinting(false);
+            }
+        }
+
+        // Schedule keyboard event dispatch for render thread (required for screen handlers)
+        mc.execute(() -> {
+            KeyEvent keyEvent = new KeyEvent(keyCode, 0, 0);
+            ((KeyboardAccessor) mc.keyboardHandler).invokeKeyPress(
+                mc.getWindow().handle(), GLFW.GLFW_RELEASE, keyEvent);
+        });
+
+        heldKeys.remove(keyCode);
+    }
+
+    /**
+     * Set the isDown state on all KeyMappings that match the given key.
+     * This directly accesses the isDown field via mixin accessor, bypassing
+     * ToggleKeyMapping.setDown() which has toggle behavior that interferes
+     * with hold/release semantics for keys like Shift and Control.
+     *
+     * @param key The InputConstants.Key to match
+     * @param isDown The new isDown state
+     */
+    private static void setKeyMappingState(InputConstants.Key key, boolean isDown) {
+        // Access the static ALL map via our mixin accessor
+        for (KeyMapping keyMapping : KeyMappingAccessor.getAll().values()) {
+            if (!keyMapping.isUnbound()) {
+                // Get the bound key via accessor and compare
+                InputConstants.Key boundKey = ((KeyMappingAccessor) keyMapping).getKey();
+                if (boundKey.equals(key)) {
+                    ((KeyMappingAccessor) keyMapping).setIsDown(isDown);
+                }
+            }
+        }
+    }
+
+    /**
+     * Type a character (for text input).
+     * @param codePoint Unicode code point of the character
+     */
+    public static void typeChar(int codePoint) {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            CharacterEvent charEvent = new CharacterEvent(codePoint, 0);
+            ((KeyboardAccessor) mc.keyboardHandler).invokeCharTyped(mc.getWindow().handle(), charEvent);
+        });
+    }
+
+    /**
+     * Type a string of characters.
+     * @param text The text to type
+     */
+    public static void typeChars(String text) {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            long window = mc.getWindow().handle();
+            for (int codePoint : text.codePoints().toArray()) {
+                CharacterEvent charEvent = new CharacterEvent(codePoint, 0);
+                ((KeyboardAccessor) mc.keyboardHandler).invokeCharTyped(window, charEvent);
+            }
+        });
+    }
+
+    /**
+     * Click a mouse button (press and release).
+     * @param button Mouse button (0=left, 1=right, 2=middle)
+     */
+    public static void clickMouse(int button) {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            long window = mc.getWindow().handle();
+            MouseButtonInfo buttonInfo = new MouseButtonInfo(button, 0);
+            ((MouseAccessor) mc.mouseHandler).invokeOnButton(window, buttonInfo, 1);  // 1=press
+            ((MouseAccessor) mc.mouseHandler).invokeOnButton(window, buttonInfo, 0);  // 0=release
+        });
+    }
+
+    /**
+     * Hold a mouse button down.
+     * @param button Mouse button (0=left, 1=right, 2=middle)
+     */
+    public static void holdMouse(int button) {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            MouseButtonInfo buttonInfo = new MouseButtonInfo(button, 0);
+            ((MouseAccessor) mc.mouseHandler).invokeOnButton(
+                mc.getWindow().handle(), buttonInfo, 1);  // 1=press
+        });
+        heldMouseButtons.add(button);
+    }
+
+    /**
+     * Release a mouse button.
+     * @param button Mouse button (0=left, 1=right, 2=middle)
+     */
+    public static void releaseMouse(int button) {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            MouseButtonInfo buttonInfo = new MouseButtonInfo(button, 0);
+            ((MouseAccessor) mc.mouseHandler).invokeOnButton(
+                mc.getWindow().handle(), buttonInfo, 0);  // 0=release
+        });
+        heldMouseButtons.remove(button);
+    }
+
+    /**
+     * Set cursor position (GUI coordinates).
+     * @param x X coordinate in GUI pixels
+     * @param y Y coordinate in GUI pixels
+     */
+    public static void setCursorPos(double x, double y) {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            double scale = mc.getWindow().getGuiScale();
+            ((MouseAccessor) mc.mouseHandler).invokeOnMove(
+                mc.getWindow().handle(), x * scale, y * scale);
+        });
+    }
+
+    /**
+     * Scroll the mouse wheel.
+     * @param horizontal Horizontal scroll amount
+     * @param vertical Vertical scroll amount
+     */
+    public static void scroll(double horizontal, double vertical) {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            ((MouseAccessor) mc.mouseHandler).invokeOnScroll(
+                mc.getWindow().handle(), horizontal, vertical);
+        });
+    }
+
+    /**
+     * Release all held inputs (cleanup for tests).
+     */
+    public static void releaseAllInputs() {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            long window = mc.getWindow().handle();
+            for (int keyCode : new ArrayList<>(heldKeys)) {
+                KeyEvent keyEvent = new KeyEvent(keyCode, 0, 0);
+                ((KeyboardAccessor) mc.keyboardHandler).invokeKeyPress(window, GLFW.GLFW_RELEASE, keyEvent);
+                // Use accessor to directly set isDown field, bypassing toggle logic
+                InputConstants.Key key = InputConstants.Type.KEYSYM.getOrCreate(keyCode);
+                setKeyMappingState(key, false);
+            }
+            for (int button : new ArrayList<>(heldMouseButtons)) {
+                MouseButtonInfo buttonInfo = new MouseButtonInfo(button, 0);
+                ((MouseAccessor) mc.mouseHandler).invokeOnButton(window, buttonInfo, 0);  // 0=release
+            }
+        });
+        heldKeys.clear();
+        heldMouseButtons.clear();
+    }
+
+    /**
+     * Ensure a clean UI state for testing - close any open screens.
+     *
+     * This method closes any open GUI screens (inventory, menus, etc.)
+     * and any open container menus. Call this before running tests to
+     * ensure a consistent starting state.
+     */
+    public static void ensureCleanUIState() {
+        Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> {
+            // Close any open screen (inventory, menu, etc.)
+            if (mc.screen != null) {
+                LOGGER.debug("Closing open screen: {}", mc.screen.getClass().getSimpleName());
+                mc.setScreen(null);
+            }
+            // If player has a container open, close it
+            if (mc.player != null && mc.player.containerMenu != mc.player.inventoryMenu) {
+                LOGGER.debug("Closing open container menu");
+                mc.player.closeContainer();
+            }
+        });
     }
 
 }

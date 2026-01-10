@@ -39,6 +39,21 @@ public class DartBlockEntity extends BlockEntity {
         this.blockPosHash = posToHash(pos);
     }
 
+    @Override
+    public void setLevel(net.minecraft.world.level.Level level) {
+        super.setLevel(level);
+
+        // Notify Dart that this block entity was added to a level.
+        // This is called for both newly placed blocks and blocks loaded from save.
+        if (DartBridge.isInitialized()) {
+            try {
+                DartBridge.onBlockEntitySetLevel(handlerId, blockPosHash);
+            } catch (Exception e) {
+                LOGGER.error("Error notifying Dart of block entity setLevel: {}", e.getMessage());
+            }
+        }
+    }
+
     /**
      * Get the handler ID for this block entity.
      */

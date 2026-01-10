@@ -18,7 +18,8 @@
     ]
   },
   "mixins": [
-    "example_mod.mixins.json"
+    "example_mod.mixins.json",
+    "java_mc_bridge.mixins.json"
   ],
   "accessWidener": "redstone.accesswidener",
   "depends": {

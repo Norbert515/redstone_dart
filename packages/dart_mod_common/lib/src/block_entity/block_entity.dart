@@ -42,10 +42,28 @@ BlockPos decodeBlockPos(int packed) {
   );
 }
 
+/// Encode a BlockPos to a packed long (matches Java BlockPos.asLong).
+///
+/// This is the inverse of [decodeBlockPos].
+int encodeBlockPos(BlockPos pos) {
+  // Mask to appropriate bit widths
+  final x = pos.x & ((1 << _packedHorizontalLength) - 1);
+  final y = pos.y & ((1 << _packedYLength) - 1);
+  final z = pos.z & ((1 << _packedHorizontalLength) - 1);
+
+  return (x << _xOffset) | (z << _zOffset) | y;
+}
+
 /// Base class for all Dart-defined block entities.
 ///
 /// Block entities are tile entities attached to blocks that can store
 /// data, perform actions, and sync state to clients.
+///
+/// The lifecycle mirrors Java's BlockEntity:
+/// - [setLevel] - Called when the block entity is added to a level
+/// - [loadAdditional] - Called when loading saved NBT data
+/// - [saveAdditional] - Called when saving state to NBT
+/// - [setRemoved] - Called when removed from the world
 ///
 /// ## Example
 ///
@@ -56,12 +74,17 @@ BlockPos decodeBlockPos(int packed) {
 ///   );
 ///
 ///   @override
-///   void onLoad(Map<String, dynamic> nbt) {
-///     // Load saved state
+///   void setLevel() {
+///     // Called when block entity is added to the world
 ///   }
 ///
 ///   @override
-///   Map<String, dynamic> onSave() {
+///   void loadAdditional(Map<String, dynamic> nbt) {
+///     // Load saved state from NBT
+///   }
+///
+///   @override
+///   Map<String, dynamic> saveAdditional() {
 ///     return {'myData': 42};
 ///   }
 /// }
@@ -92,19 +115,57 @@ abstract class BlockEntity {
     return decodeBlockPos(hash);
   }
 
+  /// Called when the block entity is added to a level.
+  ///
+  /// This is called for both newly placed blocks and blocks loaded from save.
+  /// Override to perform initialization that requires access to the world.
+  ///
+  /// Note: [blockPos] is available when this is called.
+  void setLevel() {}
+
   /// Called when the block entity is loaded from saved NBT data.
   ///
   /// Override to restore state when the chunk is loaded or the world starts.
-  void onLoad(Map<String, dynamic> nbt) {}
+  /// This is only called when there is saved data to load.
+  void loadAdditional(Map<String, dynamic> nbt) {}
 
   /// Called when the block entity needs to save its state to NBT.
   ///
   /// Override to persist state when the chunk is saved or the world stops.
   /// Return a map of key-value pairs to save.
-  Map<String, dynamic> onSave() => {};
+  Map<String, dynamic> saveAdditional() => {};
 
   /// Called when the block entity is removed from the world.
   ///
   /// Override to perform cleanup when the block is broken or replaced.
-  void onRemoved() {}
+  void setRemoved() {}
+}
+
+/// Mixin for block entities that need to handle container open/close events.
+///
+/// Implement this mixin in your block entity to receive callbacks when
+/// a player opens or closes the container UI.
+///
+/// ## Example
+///
+/// ```dart
+/// class MyChestEntity extends ContainerBlockEntity<MyChestContainer>
+///     with ContainerOpenCloseHandler {
+///   @override
+///   void onContainerOpen() {
+///     // Start some action when player opens the chest
+///   }
+///
+///   @override
+///   void onContainerClose() {
+///     // Stop when player closes the chest
+///   }
+/// }
+/// ```
+mixin ContainerOpenCloseHandler on BlockEntity {
+  /// Called when a player opens this container.
+  void onContainerOpen();
+
+  /// Called when a player closes this container.
+  void onContainerClose();
 }

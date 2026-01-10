@@ -68,6 +68,9 @@ public class DartContainerMenu extends AbstractContainerMenu {
         this.containerTypeId = containerTypeId;
         menus.put(menuId, this);
 
+        // Notify container that it's being opened
+        this.container.startOpen(playerInventory.player);
+
         // Calculate slot positions to center the grid
         // Standard inventory slot is 18x18 pixels
         // Image width for standard chest-like containers is 176 pixels
@@ -208,6 +211,7 @@ public class DartContainerMenu extends AbstractContainerMenu {
     @Override
     public void removed(Player player) {
         super.removed(player);
+        this.container.stopOpen(player);
         menus.remove(menuId);
     }
 

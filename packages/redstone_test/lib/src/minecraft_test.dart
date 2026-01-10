@@ -1,11 +1,14 @@
-/// Main test function for Minecraft mod tests.
+/// Main test function for Minecraft mod tests (server-side).
 ///
-/// Provides [testMinecraft] which runs tests immediately inside Minecraft,
-/// and [group] for organizing tests.
+/// Provides [testMinecraftServer] which runs tests immediately inside Minecraft,
+/// and [serverGroup] for organizing tests.
+///
+/// Also provides aliases [testMinecraft] and [group] for backwards compatibility.
 library;
 
 import 'dart:async';
 
+import 'package:dart_mod_server/dart_mod_server.dart';
 import 'package:meta/meta.dart';
 
 import 'game_context.dart';
@@ -62,20 +65,44 @@ String _groupPrefix = '';
 /// Track inherited skip reason from group.
 String? _groupSkip;
 
-/// Define a group of related tests.
+/// Whether we're running in full mode (with client).
+/// This is set by the test runner via environment variable.
+bool get _isFullMode {
+  // Check if we're in full mode by checking if the client is available
+  // In full mode (client tests), ClientBridge.isClientReady() will be true
+  // once the world loads. In server-only mode, it's always false.
+  try {
+    return ClientBridge.isClientReady();
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Define a group of related server tests.
 ///
 /// Groups can be nested and help organize test output.
-/// The body is async so that `testMinecraft` calls can be awaited.
+/// The body is async so that `testMinecraftServer` calls can be awaited.
 ///
 /// [skip] can be:
 /// - `false` (default): don't skip
 /// - `true`: skip without reason
 /// - `String`: skip with the given reason
-Future<void> group(
+Future<void> serverGroup(
   String description,
   Future<void> Function() body, {
   Object? skip = false,
 }) async {
+  // If running in full mode, skip server groups with a message
+  if (_isFullMode) {
+    _testResults.skipped++;
+    emitEvent(TestSkipEvent(
+      name: description,
+      reason: 'Skipping server group - use fullGroup for full tests',
+    ));
+    print('  SKIP: $description (server group skipped in full mode)');
+    return;
+  }
+
   final previousPrefix = _groupPrefix;
   final previousSkip = _groupSkip;
 
@@ -101,12 +128,26 @@ Future<void> group(
   _groupSkip = previousSkip;
 }
 
-/// Define a Minecraft mod test.
+/// Alias for [serverGroup] - backwards compatibility.
+///
+/// Define a group of related server tests.
+Future<void> group(
+  String description,
+  Future<void> Function() body, {
+  Object? skip = false,
+}) =>
+    serverGroup(description, body, skip: skip);
+
+/// Define a Minecraft server test.
 ///
 /// Unlike package:test's `test()`, this runs the test immediately
 /// rather than registering it for later execution. This is necessary
 /// because we run inside the Minecraft VM where the test package's
 /// zone-based auto-execution doesn't work.
+///
+/// In full mode (with client), server tests are gracefully skipped
+/// with a message. Use [testMinecraftFull] for tests that require
+/// the client.
 ///
 /// [skip] can be:
 /// - `false` (default): don't skip
@@ -115,7 +156,7 @@ Future<void> group(
 ///
 /// Example:
 /// ```dart
-/// testMinecraft('placing a block changes the world', (game) async {
+/// testMinecraftServer('placing a block changes the world', (game) async {
 ///   final pos = BlockPos(0, 64, 0);
 ///
 ///   game.placeBlock(pos, Block.stone);
@@ -127,7 +168,7 @@ Future<void> group(
 /// The test runs inside the Minecraft process and has access to the
 /// full game state through the [MinecraftGameContext].
 @isTest
-Future<void> testMinecraft(
+Future<void> testMinecraftServer(
   String description,
   Future<void> Function(MinecraftGameContext game) callback, {
   Object? skip = false,
@@ -136,6 +177,17 @@ Future<void> testMinecraft(
 }) async {
   final fullName =
       _groupPrefix.isEmpty ? description : '$_groupPrefix > $description';
+
+  // If running in full mode, skip server tests with a message
+  if (_isFullMode) {
+    _testResults.skipped++;
+    emitEvent(TestSkipEvent(
+      name: fullName,
+      reason: 'Skipping server test - use testMinecraftFull for full tests',
+    ));
+    print('  SKIP: $description (server test skipped in full mode)');
+    return;
+  }
 
   // Determine effective skip reason
   String? skipReason;
@@ -199,3 +251,17 @@ Future<void> testMinecraft(
     print('    Stack: $st');
   }
 }
+
+/// Alias for [testMinecraftServer] - backwards compatibility.
+///
+/// Define a Minecraft server test.
+@isTest
+Future<void> testMinecraft(
+  String description,
+  Future<void> Function(MinecraftGameContext game) callback, {
+  Object? skip = false,
+  Duration timeout = _defaultTimeout,
+  dynamic tags,
+}) =>
+    testMinecraftServer(description, callback,
+        skip: skip, timeout: timeout, tags: tags);

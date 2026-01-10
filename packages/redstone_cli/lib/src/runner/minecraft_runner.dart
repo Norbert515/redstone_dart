@@ -147,6 +147,12 @@ class MinecraftRunner {
       Logger.debug('Server VM service port: $serverVmServicePort');
     }
 
+    // Enable visual test mode for client tests (auto-join test world)
+    if (clientTestMode) {
+      gradleArgs.add('-PvisualTestMode=true');
+      Logger.debug('Visual test mode enabled');
+    }
+
     Logger.debug('Gradle args: $gradleArgs');
 
     if (testMode || clientTestMode) {
@@ -322,6 +328,11 @@ class MinecraftRunner {
     if (testMode && !clientTestMode) {
       await _ensureEula();
     }
+
+    // In client test mode, configure options for testing
+    if (clientTestMode) {
+      await _configureClientTestOptions();
+    }
   }
 
   /// Ensure EULA is accepted for server mode
@@ -332,6 +343,34 @@ class MinecraftRunner {
     }
     eulaFile.writeAsStringSync('eula=true\n');
     Logger.debug('Created EULA file at: ${eulaFile.path}');
+  }
+
+  /// Configure options.txt for client test mode
+  ///
+  /// Sets pauseOnLostFocus to false so tests don't pause when the window
+  /// loses focus (e.g., when running headlessly or in background).
+  Future<void> _configureClientTestOptions() async {
+    final optionsFile = File(p.join(project.minecraftDir, 'run', 'options.txt'));
+    String content = '';
+    if (await optionsFile.exists()) {
+      content = await optionsFile.readAsString();
+    }
+
+    // Ensure pauseOnLostFocus is false
+    if (content.contains('pauseOnLostFocus:')) {
+      content = content.replaceAll(
+        RegExp(r'pauseOnLostFocus:\w+'),
+        'pauseOnLostFocus:false',
+      );
+    } else {
+      if (content.isNotEmpty && !content.endsWith('\n')) {
+        content += '\n';
+      }
+      content += 'pauseOnLostFocus:false\n';
+    }
+
+    await optionsFile.writeAsString(content);
+    Logger.debug('Set pauseOnLostFocus:false in options.txt');
   }
 
   Future<void> _generateAssets() async {
