@@ -1,45 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../util/logger.dart';
 
-/// Utilities for synchronizing bridge code between source and project
+/// Utilities for synchronizing bridge code between source and project via symlinks
 class BridgeSync {
-  /// Compute a content hash of all files in a directory
-  ///
-  /// Returns a deterministic SHA-256 hash based on file paths and contents.
-  /// Files are processed in sorted order to ensure consistent results.
-  static String computeDirectoryHash(Directory directory) {
-    if (!directory.existsSync()) {
-      return '';
-    }
-
-    final fileHashes = <String>[];
-
-    // Get all files recursively and sort for determinism
-    final files = directory
-        .listSync(recursive: true)
-        .whereType<File>()
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
-
-    for (final file in files) {
-      // Get relative path for determinism across machines
-      final relativePath = p.relative(file.path, from: directory.path);
-      final content = file.readAsBytesSync();
-      final contentHash = sha256.convert(content).toString();
-
-      // Include both path and content in the hash input
-      fileHashes.add('$relativePath:$contentHash');
-    }
-
-    // Compute final hash from all file hashes
-    final combinedInput = fileHashes.join('\n');
-    return sha256.convert(utf8.encode(combinedInput)).toString();
-  }
+  // ===========================================================================
+  // Version file utilities (used by multiple sync systems)
+  // ===========================================================================
 
   /// Read version.json from a project's .redstone directory
   ///
@@ -66,22 +36,19 @@ class BridgeSync {
     );
   }
 
-  /// Get the stored bridge content hash from a project's version.json
+  /// Returns an identifier for the bridge source (path-based, not content hash)
   ///
-  /// Returns null if version.json doesn't exist or doesn't have the hash field.
-  static String? getStoredBridgeHash(String projectDir) {
-    final info = readVersionInfo(projectDir);
-    return info?['bridge_content_hash'] as String?;
+  /// With symlinks, we don't need content hashing. This returns a stable identifier
+  /// based on the bridge source location for backward compatibility with version.json.
+  static String computeSourceBridgeHash() {
+    final bridgeSrcDir = getBridgeSrcDir();
+    if (bridgeSrcDir == null) return 'symlink';
+    return 'symlink:$bridgeSrcDir';
   }
 
-  /// Update the bridge content hash in a project's version.json
-  ///
-  /// Preserves existing fields in version.json.
-  static void updateBridgeHash(String projectDir, String hash) {
-    final existing = readVersionInfo(projectDir) ?? {};
-    existing['bridge_content_hash'] = hash;
-    writeVersionInfo(projectDir, existing);
-  }
+  // ===========================================================================
+  // Package directory utilities
+  // ===========================================================================
 
   /// Find the packages directory containing the source bridge code
   ///
@@ -113,162 +80,123 @@ class BridgeSync {
     return null;
   }
 
-  /// Get the source bridge directory path (main source set)
-  static String? getSourceBridgeDir() {
+  /// Get the java_mc_bridge src directory path
+  static String? getBridgeSrcDir() {
     final packagesDir = findPackagesDir();
     if (packagesDir == null) return null;
-    return p.join(packagesDir, 'java_mc_bridge', 'src', 'main');
+    return p.join(packagesDir, 'java_mc_bridge', 'src');
   }
 
-  /// Get the client source bridge directory path (client source set)
-  static String? getClientSourceBridgeDir() {
-    final packagesDir = findPackagesDir();
-    if (packagesDir == null) return null;
-    return p.join(packagesDir, 'java_mc_bridge', 'src', 'client');
-  }
+  /// Create a symlink, removing any existing file/directory/symlink at target
+  static void _createSymlink(String targetPath, String linkPath) {
+    final link = Link(linkPath);
 
-  /// Get the resources directory path (contains access widener, etc.)
-  static String? getResourcesDir() {
-    final packagesDir = findPackagesDir();
-    if (packagesDir == null) return null;
-    return p.join(packagesDir, 'java_mc_bridge', 'src', 'main', 'resources');
-  }
-
-  /// Copy bridge code from source to target directory
-  static Future<void> copyBridgeCode(
-    Directory source,
-    Directory target,
-  ) async {
-    if (!target.existsSync()) {
-      target.createSync(recursive: true);
+    // Remove existing entity at link path
+    if (link.existsSync()) {
+      link.deleteSync();
+    } else if (FileSystemEntity.isDirectorySync(linkPath)) {
+      Directory(linkPath).deleteSync(recursive: true);
+    } else if (FileSystemEntity.isFileSync(linkPath)) {
+      File(linkPath).deleteSync();
     }
 
-    // Clear existing bridge directory contents
-    if (target.existsSync()) {
-      for (final entity in target.listSync()) {
-        if (entity is Directory) {
-          entity.deleteSync(recursive: true);
-        } else if (entity is File) {
-          entity.deleteSync();
+    // Create the symlink
+    link.createSync(targetPath);
+  }
+
+  /// Ensure bridge symlinks exist and point to the correct source
+  ///
+  /// Creates symlinks:
+  /// - .redstone/bridge/java -> {java_mc_bridge}/src/main/java
+  /// - .redstone/bridge/client -> {java_mc_bridge}/src/client
+  /// - .redstone/bridge/resources -> {java_mc_bridge}/src/main/resources
+  ///
+  /// Returns true if symlinks were created/updated, false if already correct.
+  static Future<bool> syncIfNeeded(String projectDir) async {
+    final bridgeSrcDir = getBridgeSrcDir();
+    if (bridgeSrcDir == null) {
+      Logger.warning('Could not find java_mc_bridge source directory');
+      return false;
+    }
+
+    if (!Directory(bridgeSrcDir).existsSync()) {
+      Logger.warning('Bridge source not found at $bridgeSrcDir');
+      return false;
+    }
+
+    final bridgeDir = p.join(projectDir, '.redstone', 'bridge');
+
+    // Ensure bridge directory exists
+    Directory(bridgeDir).createSync(recursive: true);
+
+    var updated = false;
+
+    // Define symlink mappings: link name -> source subdirectory
+    final symlinks = {
+      'java': p.join(bridgeSrcDir, 'main', 'java'),
+      'client': p.join(bridgeSrcDir, 'client'),
+      'resources': p.join(bridgeSrcDir, 'main', 'resources'),
+    };
+
+    for (final entry in symlinks.entries) {
+      final linkPath = p.join(bridgeDir, entry.key);
+      final targetPath = entry.value;
+
+      // Check if source exists
+      if (!Directory(targetPath).existsSync()) {
+        Logger.warning('Bridge source ${entry.key} not found at $targetPath');
+        continue;
+      }
+
+      // Check if symlink already exists and points to correct target
+      final link = Link(linkPath);
+      if (link.existsSync()) {
+        try {
+          final currentTarget = link.targetSync();
+          if (currentTarget == targetPath) {
+            continue; // Already correct
+          }
+        } catch (_) {
+          // Link exists but can't read target, recreate it
         }
       }
+
+      // Create/update symlink
+      Logger.info('Creating symlink: ${entry.key} -> $targetPath');
+      _createSymlink(targetPath, linkPath);
+      updated = true;
     }
 
-    await _copyDirectory(source, target);
+    return updated;
   }
 
-  static Future<void> _copyDirectory(Directory source, Directory target) async {
-    if (!target.existsSync()) {
-      target.createSync(recursive: true);
-    }
+  /// Check if bridge symlinks are properly set up
+  static bool isSymlinked(String projectDir) {
+    final bridgeDir = p.join(projectDir, '.redstone', 'bridge');
 
-    await for (final entity in source.list(recursive: false)) {
-      final targetPath = p.join(target.path, p.basename(entity.path));
-      if (entity is File) {
-        entity.copySync(targetPath);
-      } else if (entity is Directory) {
-        await _copyDirectory(entity, Directory(targetPath));
+    for (final name in ['java', 'client', 'resources']) {
+      final linkPath = p.join(bridgeDir, name);
+      if (!Link(linkPath).existsSync()) {
+        return false;
       }
     }
-  }
-
-  /// Check if bridge code needs to be synced and sync if necessary
-  ///
-  /// Returns true if sync was performed, false if already up-to-date.
-  static Future<bool> syncIfNeeded(String projectDir) async {
-    final sourceDirPath = getSourceBridgeDir();
-    if (sourceDirPath == null) {
-      Logger.warning('Could not find bridge source directory');
-      return false;
-    }
-
-    final sourceDir = Directory(sourceDirPath);
-    if (!sourceDir.existsSync()) {
-      Logger.warning('Bridge source not found at $sourceDirPath');
-      return false;
-    }
-
-    final currentHash = computeSourceBridgeHash();
-    final storedHash = getStoredBridgeHash(projectDir);
-
-    if (storedHash == currentHash) {
-      return false; // Already up-to-date
-    }
-
-    // Need to sync
-    Logger.info('Bridge code updated (hash mismatch detected)');
-
-    // Sync main bridge code
-    final targetDir = Directory(p.join(projectDir, '.redstone', 'bridge'));
-    await copyBridgeCode(sourceDir, targetDir);
-
-    // Sync client bridge code if it exists
-    final clientSourceDirPath = getClientSourceBridgeDir();
-    if (clientSourceDirPath != null) {
-      final clientSourceDir = Directory(clientSourceDirPath);
-      if (clientSourceDir.existsSync()) {
-        final clientTargetDir = Directory(p.join(projectDir, '.redstone', 'bridge', 'client'));
-        await copyBridgeCode(clientSourceDir, clientTargetDir);
-      }
-    }
-
-    // Sync resources (access widener, etc.)
-    final resourcesDirPath = getResourcesDir();
-    if (resourcesDirPath != null) {
-      final resourcesDir = Directory(resourcesDirPath);
-      if (resourcesDir.existsSync()) {
-        final resourcesTargetDir = Directory(p.join(projectDir, '.redstone', 'bridge', 'resources'));
-        await copyBridgeCode(resourcesDir, resourcesTargetDir);
-      }
-    }
-
-    updateBridgeHash(projectDir, currentHash);
 
     return true;
   }
 
-  /// Compute the current source bridge hash
-  ///
-  /// Includes both main and client source directories.
-  /// Returns empty string if source not found.
-  static String computeSourceBridgeHash() {
-    final mainSourceDirPath = getSourceBridgeDir();
-    if (mainSourceDirPath == null) return '';
+  /// Get the target path of a bridge symlink
+  static String? getSymlinkTarget(String projectDir, String name) {
+    final linkPath = p.join(projectDir, '.redstone', 'bridge', name);
+    final link = Link(linkPath);
 
-    final mainSourceDir = Directory(mainSourceDirPath);
-    if (!mainSourceDir.existsSync()) return '';
-
-    // Compute hash for main source
-    final mainHash = computeDirectoryHash(mainSourceDir);
-
-    // Build combined hash from all source directories
-    final hashParts = <String>['main:$mainHash'];
-
-    // Include client source in hash if it exists
-    final clientSourceDirPath = getClientSourceBridgeDir();
-    if (clientSourceDirPath != null) {
-      final clientSourceDir = Directory(clientSourceDirPath);
-      if (clientSourceDir.existsSync()) {
-        final clientHash = computeDirectoryHash(clientSourceDir);
-        hashParts.add('client:$clientHash');
-      }
+    if (!link.existsSync()) {
+      return null;
     }
 
-    // Include resources in hash (access widener, etc.)
-    final resourcesDirPath = getResourcesDir();
-    if (resourcesDirPath != null) {
-      final resourcesDir = Directory(resourcesDirPath);
-      if (resourcesDir.existsSync()) {
-        final resourcesHash = computeDirectoryHash(resourcesDir);
-        hashParts.add('resources:$resourcesHash');
-      }
+    try {
+      return link.targetSync();
+    } catch (_) {
+      return null;
     }
-
-    if (hashParts.length == 1) {
-      return mainHash;
-    }
-
-    final combinedInput = hashParts.join('\n');
-    return sha256.convert(utf8.encode(combinedInput)).toString();
   }
 }
