@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show sleep;
 
 import 'package:dart_mod_server/dart_mod_server.dart';
 
@@ -293,6 +294,27 @@ class ClientGameContext {
   /// Wait for the client to be ready.
   Future<void> waitForClientReady() => _binding.waitForClientReady();
 
+  /// Wait for a real-time duration using blocking sleep (works even when game is paused).
+  ///
+  /// Unlike [waitTicks], this method uses blocking sleep instead of game ticks.
+  /// Use this when interacting with UI elements that pause the game.
+  ///
+  /// Uses synchronous `sleep()` instead of `Future.delayed()` because the
+  /// Dart event loop is tied to the Minecraft main thread and stops when
+  /// the game is paused.
+  ///
+  /// [milliseconds] - Duration to wait in milliseconds.
+  ///
+  /// Example:
+  /// ```dart
+  /// game.pressKeyUI(GlfwKeys.escape); // Open pause menu
+  /// game.sleepMs(100); // Wait 100ms (game ticks are paused)
+  /// game.pressKeyUI(GlfwKeys.escape); // Close pause menu
+  /// ```
+  void sleepMs(int milliseconds) {
+    sleep(Duration(milliseconds: milliseconds));
+  }
+
   // ==========================================================================
   // Keyboard Input Simulation
   // ==========================================================================
@@ -301,6 +323,10 @@ class ClientGameContext {
   ///
   /// The key is pressed, held for 1 tick to allow input processing
   /// (movement keys poll KeyMapping.isDown() once per tick), then released.
+  ///
+  /// **Note:** This method uses tick-based waiting, which won't work when the
+  /// game is paused (e.g., pause menu open). For UI interactions that may
+  /// pause the game, use [pressKeyUI] instead.
   ///
   /// [keyCode] - GLFW key code (see GlfwKeys constants).
   ///
@@ -313,6 +339,31 @@ class ClientGameContext {
     await waitTicks(1); // Wait for input to be processed by tick handler
     ClientBridge.releaseKey(keyCode);
     await waitTicks(1); // Wait for release to process
+  }
+
+  /// Press and release a key using blocking sleep (for UI interactions).
+  ///
+  /// Unlike [pressKey], this method uses blocking sleep instead of game ticks.
+  /// This is essential for UI interactions that may pause the game, such as:
+  /// - Opening/closing the pause menu (ESC)
+  /// - Interacting with screens while paused
+  ///
+  /// Uses synchronous `sleep()` instead of `Future.delayed()` because the
+  /// Dart event loop is tied to the Minecraft main thread and stops when
+  /// the game is paused.
+  ///
+  /// [keyCode] - GLFW key code (see GlfwKeys constants).
+  /// [delayMs] - Delay in milliseconds between press and release. Defaults to 50ms.
+  ///
+  /// Example:
+  /// ```dart
+  /// game.pressKeyUI(GlfwKeys.escape); // Toggle pause menu
+  /// ```
+  void pressKeyUI(int keyCode, {int delayMs = 50}) {
+    ClientBridge.pressKey(keyCode);
+    sleep(Duration(milliseconds: delayMs));
+    ClientBridge.releaseKey(keyCode);
+    sleep(Duration(milliseconds: delayMs));
   }
 
   /// Hold a key down. Call [releaseKey] to release.
