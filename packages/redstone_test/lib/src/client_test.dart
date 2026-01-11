@@ -15,6 +15,7 @@ import 'client_game_context.dart';
 import 'client_test_binding.dart';
 import 'test_event.dart';
 import 'minecraft_test.dart' show testResults;
+import 'test_world.dart';
 
 /// Default timeout for client tests (3 minutes).
 ///
@@ -127,6 +128,7 @@ Future<void> clientGroup(
 Future<void> testMinecraftFull(
   String description,
   Future<void> Function(ClientGameContext game) callback, {
+  TestWorld? world,
   Object? skip = false,
   Duration timeout = _defaultClientTimeout,
   dynamic tags,
@@ -179,6 +181,11 @@ Future<void> testMinecraftFull(
       await binding.waitForClientReady();
     }
 
+    // Apply world configuration if provided
+    if (world != null) {
+      await world.apply(context);
+    }
+
     // Run with timeout, capturing print output
     await runZoned(
       () => callback(context).timeout(timeout),
@@ -219,9 +226,10 @@ Future<void> testMinecraftFull(
 Future<void> testMinecraftClient(
   String description,
   Future<void> Function(ClientGameContext game) callback, {
+  TestWorld? world,
   Object? skip = false,
   Duration timeout = _defaultClientTimeout,
   dynamic tags,
 }) =>
     testMinecraftFull(description, callback,
-        skip: skip, timeout: timeout, tags: tags);
+        world: world, skip: skip, timeout: timeout, tags: tags);

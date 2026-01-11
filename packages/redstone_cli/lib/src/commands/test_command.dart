@@ -399,15 +399,33 @@ class TestCommand extends Command<int> {
     return '(${(micros / 1000000).toStringAsFixed(2)}s)';
   }
 
-  /// Delete the Minecraft world directory for clean test runs.
+  /// Delete the Minecraft world directories for clean test runs.
+  ///
+  /// Cleans up:
+  /// - Server world: run/world/ (for headless server tests)
+  /// - Client world: run/saves/dart_visual_test/ (for client E2E tests)
   Future<void> _cleanupWorld(RedstoneProject project) async {
-    final worldDir = Directory(p.join(project.minecraftDir, 'run', 'world'));
-    if (worldDir.existsSync()) {
-      Logger.debug('Cleaning up test world...');
+    // Clean server world (headless tests)
+    final serverWorldDir = Directory(p.join(project.minecraftDir, 'run', 'world'));
+    if (serverWorldDir.existsSync()) {
+      Logger.debug('Cleaning up server test world...');
       try {
-        await worldDir.delete(recursive: true);
+        await serverWorldDir.delete(recursive: true);
       } catch (e) {
-        Logger.warning('Failed to delete world directory: $e');
+        Logger.warning('Failed to delete server world directory: $e');
+      }
+    }
+
+    // Clean client world (visual/full tests)
+    final clientWorldDir = Directory(
+      p.join(project.minecraftDir, 'run', 'saves', 'dart_visual_test'),
+    );
+    if (clientWorldDir.existsSync()) {
+      Logger.debug('Cleaning up client test world...');
+      try {
+        await clientWorldDir.delete(recursive: true);
+      } catch (e) {
+        Logger.warning('Failed to delete client world directory: $e');
       }
     }
   }

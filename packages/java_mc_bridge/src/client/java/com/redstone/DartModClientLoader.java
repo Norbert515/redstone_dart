@@ -420,21 +420,34 @@ public class DartModClientLoader implements ClientModInitializer {
     }
 
     /**
-     * Automatically join or create a test world for visual testing.
+     * Automatically join the pre-created test world for visual testing.
+     *
+     * The test world is pre-created by the CLI's TemplateWorldGenerator with optimized
+     * settings (superflat, peaceful, noon, disabled cycles). The CLI copies the template
+     * to the saves directory before launching Minecraft, so this method just needs to
+     * load it.
+     *
+     * If the world doesn't exist (e.g., running outside of CLI), falls back to creating
+     * a basic world dynamically.
      */
     private void autoJoinTestWorld(Minecraft client) {
         if (client.getLevelSource().levelExists(TEST_WORLD_NAME)) {
-            LOGGER.info("[DartModClientLoader] Loading existing test world: {}", TEST_WORLD_NAME);
+            LOGGER.info("[DartModClientLoader] Loading pre-created test world: {}", TEST_WORLD_NAME);
             client.createWorldOpenFlows().openWorld(TEST_WORLD_NAME,
                 () -> client.setScreen(new TitleScreen()));
         } else {
-            LOGGER.info("[DartModClientLoader] Creating new flat test world: {}", TEST_WORLD_NAME);
+            // Fallback: create world dynamically (shouldn't happen when using CLI)
+            LOGGER.warn("[DartModClientLoader] Test world not found, creating dynamically. " +
+                "This should not happen when using 'redstone test --full'.");
             createFlatTestWorld(client, TEST_WORLD_NAME);
         }
     }
 
     /**
-     * Create a flat creative world for visual testing.
+     * Fallback: Create a flat creative world for visual testing.
+     *
+     * This is only used if the CLI-generated template world is not found.
+     * Normally the CLI pre-creates the world with optimized settings.
      */
     private void createFlatTestWorld(Minecraft client, String worldName) {
         // Create level settings for creative mode flat world
@@ -450,9 +463,9 @@ public class DartModClientLoader implements ClientModInitializer {
 
         // Create world with flat preset
         WorldOptions worldOptions = new WorldOptions(
-            12345L,  // fixed seed for consistency
-            false,   // no structures
-            false    // no bonus chest
+            0L,     // fixed seed for consistency (matches CLI template)
+            false,  // no structures
+            false   // no bonus chest
         );
 
         client.createWorldOpenFlows().createFreshLevel(

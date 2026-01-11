@@ -534,6 +534,112 @@ class ClientGameContext {
   }
 
   // ==========================================================================
+  // World Control Methods (for test isolation)
+  // ==========================================================================
+
+  /// Teleport the player to specific coordinates.
+  ///
+  /// This teleports the first (and typically only) player in the game.
+  /// Useful for setting up isolated test areas.
+  ///
+  /// Example:
+  /// ```dart
+  /// await game.teleportPlayer(BlockPos(5000, 64, 5000));
+  /// ```
+  Future<void> teleportPlayer(BlockPos pos) async {
+    final players = Players.getAllPlayers();
+    if (players.isEmpty) return;
+    players.first.teleport(pos);
+    await waitTicks(1); // Wait for teleport to complete
+  }
+
+  /// Clear a region to air.
+  ///
+  /// Fills all blocks in the rectangular region from [from] to [to] (inclusive)
+  /// with air blocks. Useful for creating clean test areas.
+  ///
+  /// Example:
+  /// ```dart
+  /// await game.clearArea(
+  ///   BlockPos(4990, 60, 4990),
+  ///   BlockPos(5010, 80, 5010),
+  /// );
+  /// ```
+  void clearArea(BlockPos from, BlockPos to) {
+    fillBlocks(from, to, Block.air);
+  }
+
+  /// Alias for fillBlocks - fill a region with a specific block type.
+  ///
+  /// Fills all blocks in the rectangular region from [from] to [to] (inclusive)
+  /// with the specified block.
+  ///
+  /// Example:
+  /// ```dart
+  /// game.fillArea(
+  ///   BlockPos(4990, 63, 4990),
+  ///   BlockPos(5010, 63, 5010),
+  ///   Block.stone,
+  /// );
+  /// ```
+  void fillArea(BlockPos from, BlockPos to, Block block) {
+    fillBlocks(from, to, block);
+  }
+
+  /// Set the time of day.
+  ///
+  /// Common time values:
+  /// - 0 = sunrise (6:00 AM)
+  /// - 6000 = noon (12:00 PM)
+  /// - 12000 = sunset (6:00 PM)
+  /// - 18000 = midnight (12:00 AM)
+  ///
+  /// Example:
+  /// ```dart
+  /// game.setTime(6000); // Set to noon
+  /// ```
+  void setTime(int time) {
+    world.timeOfDay = time;
+  }
+
+  /// Set the weather.
+  ///
+  /// [weather] - The weather condition to set.
+  /// [durationTicks] - How long the weather should last (default 6000 ticks = 5 minutes).
+  ///
+  /// Example:
+  /// ```dart
+  /// game.setWeather(Weather.clear);
+  /// game.setWeather(Weather.rain, durationTicks: 12000);
+  /// ```
+  void setWeather(Weather weather, {int durationTicks = 6000}) {
+    world.setWeather(weather, durationTicks);
+  }
+
+  /// Set the player's game mode.
+  ///
+  /// This sets the game mode for the first (and typically only) player.
+  ///
+  /// Example:
+  /// ```dart
+  /// game.setGameMode(GameMode.creative);
+  /// game.setGameMode(GameMode.survival);
+  /// ```
+  void setGameMode(GameMode mode) {
+    final players = Players.getAllPlayers();
+    if (players.isEmpty) return;
+    players.first.gameMode = mode;
+  }
+
+  /// Get the first player in the game (for tests).
+  ///
+  /// Returns null if no players are online.
+  Player? get player {
+    final players = Players.getAllPlayers();
+    return players.isEmpty ? null : players.first;
+  }
+
+  // ==========================================================================
   // Local Player State (client-side)
   // ==========================================================================
 

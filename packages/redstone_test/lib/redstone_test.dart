@@ -113,6 +113,9 @@ export 'src/test_event.dart'
 export 'src/game_context.dart' show MinecraftGameContext;
 export 'src/client_game_context.dart' show ClientGameContext;
 
+// Declarative world configuration
+export 'src/test_world.dart' show TestWorld;
+
 // Input simulation constants
 export 'src/glfw_keys.dart' show GlfwKeys, MouseButton;
 

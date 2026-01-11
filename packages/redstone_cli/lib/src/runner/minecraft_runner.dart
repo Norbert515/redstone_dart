@@ -8,6 +8,7 @@ import '../assets/asset_generator.dart';
 import '../project/bridge_sync.dart';
 import '../project/native_build_sync.dart';
 import '../project/redstone_project.dart';
+import '../test/template_world_generator.dart';
 import '../util/logger.dart';
 
 /// Information about a detected VM service
@@ -332,7 +333,28 @@ class MinecraftRunner {
     // In client test mode, configure options for testing
     if (clientTestMode) {
       await _configureClientTestOptions();
+      await _prepareClientTestWorld();
     }
+  }
+
+  /// Prepares the client test world by generating and copying the template.
+  ///
+  /// The template world is a pre-configured superflat world with optimized
+  /// settings (peaceful, noon, no weather cycles, etc.). It's generated once
+  /// and then copied to the Minecraft saves directory for each test run.
+  Future<void> _prepareClientTestWorld() async {
+    final generator = TemplateWorldGenerator(project.rootDir);
+
+    // Generate template if it doesn't exist
+    final wasGenerated = await generator.generateIfNeeded();
+    if (wasGenerated) {
+      Logger.info('Generated client test template world');
+    }
+
+    // Copy template to Minecraft saves directory
+    final savesDir = p.join(project.minecraftDir, 'run', 'saves');
+    await generator.copyToSaves(savesDir);
+    Logger.debug('Prepared client test world: ${TemplateWorldGenerator.testWorldName}');
   }
 
   /// Ensure EULA is accepted for server mode
@@ -349,6 +371,7 @@ class MinecraftRunner {
   ///
   /// Sets pauseOnLostFocus to false so tests don't pause when the window
   /// loses focus (e.g., when running headlessly or in background).
+  /// Also configures performance settings for faster test execution.
   Future<void> _configureClientTestOptions() async {
     final optionsFile = File(p.join(project.minecraftDir, 'run', 'options.txt'));
     String content = '';
@@ -356,21 +379,47 @@ class MinecraftRunner {
       content = await optionsFile.readAsString();
     }
 
-    // Ensure pauseOnLostFocus is false
-    if (content.contains('pauseOnLostFocus:')) {
-      content = content.replaceAll(
-        RegExp(r'pauseOnLostFocus:\w+'),
-        'pauseOnLostFocus:false',
-      );
-    } else {
-      if (content.isNotEmpty && !content.endsWith('\n')) {
-        content += '\n';
+    // Test-optimized settings
+    final settings = <String, String>{
+      // Core test settings
+      'pauseOnLostFocus': 'false',
+
+      // Performance settings for faster tests
+      'renderDistance': '2',
+      'simulationDistance': '2',
+      'particles': '2', // Minimal particles
+      'cloudStatus': 'false',
+      'entityShadows': 'false',
+      'maxFps': '60',
+      'enableVsync': 'false',
+      'ao': '0', // No ambient occlusion
+      'soundCategory_master': '0.0', // Mute all sounds
+      'soundCategory_music': '0.0',
+      'soundCategory_ambient': '0.0',
+
+      // Additional optimizations
+      'mipmapLevels': '0',
+      'biomeBlendRadius': '0',
+      'graphicsMode': '0', // Fast graphics
+      'guiScale': '2', // Fixed scale for consistent screenshots
+      'fullscreen': 'false',
+    };
+
+    // Apply each setting
+    for (final entry in settings.entries) {
+      final pattern = RegExp('${entry.key}:[^\n]*');
+      if (content.contains(pattern)) {
+        content = content.replaceAll(pattern, '${entry.key}:${entry.value}');
+      } else {
+        if (content.isNotEmpty && !content.endsWith('\n')) {
+          content += '\n';
+        }
+        content += '${entry.key}:${entry.value}\n';
       }
-      content += 'pauseOnLostFocus:false\n';
     }
 
     await optionsFile.writeAsString(content);
-    Logger.debug('Set pauseOnLostFocus:false in options.txt');
+    Logger.debug('Configured client test options in options.txt');
   }
 
   Future<void> _generateAssets() async {
