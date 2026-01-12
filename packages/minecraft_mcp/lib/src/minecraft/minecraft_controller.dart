@@ -216,72 +216,55 @@ class MinecraftController {
 
     _status = MinecraftStatus.stopping;
 
-    if (_process != null) {
-      final pid = _process!.pid;
+    if (!Platform.isWindows) {
+      // On Unix, we need to kill both the Minecraft Java process and the gradle wrapper.
+      // The gradle wrapper spawns Minecraft as a child process, but they're not in
+      // the same process group, so we need to kill them separately by pattern matching.
 
-      // On Unix, kill the entire process group to ensure child processes are terminated
-      // The process group ID is typically the same as the parent process ID
-      if (!Platform.isWindows) {
-        // Try to kill the process group (negative PID kills the group)
-        try {
-          Process.killPid(-pid, ProcessSignal.sigterm);
-        } catch (_) {
-          // Fallback: kill just the process
-          _process!.kill(ProcessSignal.sigterm);
-        }
+      // Step 1: Try graceful shutdown with SIGTERM
+      try {
+        await Process.run('pkill', ['-TERM', '-f', 'fabric.dli.main']);
+      } catch (_) {
+        // Ignore errors (process may not exist)
+      }
+      try {
+        await Process.run('pkill', ['-TERM', '-f', 'gradle-wrapper.jar runClient']);
+      } catch (_) {
+        // Ignore errors
+      }
 
-        // Try graceful shutdown first using SIGTERM
-        // Fabric Loader uses fabric.dli.main (DevLaunchInjector)
+      // Wait for graceful shutdown
+      await Future<void>.delayed(const Duration(seconds: 2));
+
+      // Step 2: Check if Minecraft is still running and force kill if needed
+      final checkResult = await Process.run('pgrep', ['-f', 'fabric.dli.main']);
+      if (checkResult.exitCode == 0) {
+        // Still running, force kill
         try {
-          await Process.run('pkill', ['-TERM', '-f', 'fabric.dli.main']);
+          await Process.run('pkill', ['-9', '-f', 'fabric.dli.main']);
         } catch (_) {
           // Ignore errors
         }
-
-        // Wait a moment for graceful shutdown
-        await Future<void>.delayed(const Duration(seconds: 2));
-      } else {
-        // On Windows, try taskkill with /T to kill the tree
         try {
-          await Process.run('taskkill', ['/F', '/T', '/PID', pid.toString()]);
+          await Process.run('pkill', ['-9', '-f', 'gradle-wrapper.jar runClient']);
         } catch (_) {
-          _process!.kill(ProcessSignal.sigterm);
+          // Ignore errors
         }
+        await Future<void>.delayed(const Duration(milliseconds: 500));
       }
-
-      // Wait a bit for graceful exit
-      final exited = await _process!.exitCode
-          .timeout(const Duration(seconds: 5), onTimeout: () => -1);
-
-      if (exited == -1) {
-        // Force kill if didn't exit gracefully
-        if (!Platform.isWindows) {
-          // Force kill the Fabric/Minecraft process
-          try {
-            await Process.run('pkill', ['-9', '-f', 'fabric.dli.main']);
-          } catch (_) {
-            // Ignore errors
-          }
-          // Also kill gradle wrapper if still running
-          try {
-            await Process.run('pkill', ['-9', '-f', 'gradle.*runClient']);
-          } catch (_) {
-            // Ignore errors
-          }
-        } else {
+    } else {
+      // On Windows, use taskkill with /T to kill the process tree
+      if (_process != null) {
+        try {
+          await Process.run('taskkill', ['/F', '/T', '/PID', _process!.pid.toString()]);
+        } catch (_) {
           _process!.kill(ProcessSignal.sigkill);
         }
-
-        // Give it a moment then move on
-        await _process!.exitCode.timeout(
-          const Duration(seconds: 2),
-          onTimeout: () => -1,
-        );
       }
-
-      _process = null;
     }
 
+    // Clean up process reference
+    _process = null;
     _gameClient?.close();
     _gameClient = null;
     _status = MinecraftStatus.stopped;
