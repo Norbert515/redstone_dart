@@ -36,7 +36,9 @@ When the Minecraft MCP is connected, you have access to these tools:
 - `startMinecraft(modPath)` - Start Minecraft with the specified mod (provide absolute path)
 - `stopMinecraft` - Stop the Minecraft client
 - `getStatus` - Check if Minecraft is running
-- `getMinecraftLogs` - Get path to log file (read it to debug issues)
+
+### Debugging
+- `getLogs(lastN?)` - Get all output (Dart prints, Java logs, stderr). Default: last 100 lines.
 
 ### World Operations
 - `placeBlock(x, y, z, blockId)` - Place a block at coordinates

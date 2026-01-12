@@ -42,6 +42,13 @@ class MinecraftController {
   /// Stream controller for output lines.
   final _outputController = StreamController<String>.broadcast();
 
+  /// Buffer for captured process output (stdout + stderr combined).
+  /// This contains Dart print() statements and other process output.
+  final List<_OutputLine> _outputBuffer = [];
+
+  /// Maximum number of lines to keep in the output buffer.
+  static const int _maxOutputBufferSize = 2000;
+
   /// Completer for process exit.
   Completer<int>? _exitCompleter;
 
@@ -131,6 +138,7 @@ class MinecraftController {
           .transform(const LineSplitter())
           .listen((line) {
         _outputController.add(line);
+        _addToOutputBuffer(line, false);
         _processOutputLine(line);
       });
 
@@ -140,6 +148,7 @@ class MinecraftController {
           .transform(const LineSplitter())
           .listen((line) {
         _outputController.add('[stderr] $line');
+        _addToOutputBuffer(line, true);
       });
 
       // Handle process exit
@@ -359,4 +368,63 @@ class MinecraftController {
     }
     return null;
   }
+
+  /// Add a line to the output buffer.
+  void _addToOutputBuffer(String line, bool isStderr) {
+    _outputBuffer.add(_OutputLine(
+      line: line,
+      timestamp: DateTime.now(),
+      isStderr: isStderr,
+    ));
+
+    // Trim buffer if it exceeds max size
+    if (_outputBuffer.length > _maxOutputBufferSize) {
+      _outputBuffer.removeRange(0, _outputBuffer.length - _maxOutputBufferSize);
+    }
+  }
+
+  /// Get the captured process output (Dart prints, stderr, etc.).
+  ///
+  /// Returns a list of output lines with timestamps.
+  /// The [lastN] parameter limits to the most recent N lines.
+  /// The [includeStderr] parameter controls whether stderr lines are included.
+  List<Map<String, dynamic>> getProcessOutput({
+    int? lastN,
+    bool includeStderr = true,
+  }) {
+    var lines = _outputBuffer.where((line) {
+      if (!includeStderr && line.isStderr) return false;
+      return true;
+    }).toList();
+
+    if (lastN != null && lines.length > lastN) {
+      lines = lines.sublist(lines.length - lastN);
+    }
+
+    return lines
+        .map((line) => {
+              'line': line.line,
+              'timestamp': line.timestamp.toIso8601String(),
+              'isStderr': line.isStderr,
+            })
+        .toList();
+  }
+
+  /// Clear the output buffer.
+  void clearOutputBuffer() {
+    _outputBuffer.clear();
+  }
+}
+
+/// A single line of output with metadata.
+class _OutputLine {
+  final String line;
+  final DateTime timestamp;
+  final bool isStderr;
+
+  _OutputLine({
+    required this.line,
+    required this.timestamp,
+    required this.isStderr,
+  });
 }

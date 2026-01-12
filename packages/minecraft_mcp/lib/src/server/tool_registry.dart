@@ -54,11 +54,16 @@ class ToolRegistry {
       },
     ),
     ToolDefinition(
-      name: 'getMinecraftLogs',
-      description: 'Get the path to the Minecraft log file. Read this file to see Minecraft output, errors, and debug info.',
+      name: 'getLogs',
+      description: 'Get all Minecraft output: both Dart print() statements and Java logs. Returns the last N lines of combined output.',
       inputSchema: {
         'type': 'object',
-        'properties': <String, Object>{},
+        'properties': {
+          'lastN': {
+            'type': 'integer',
+            'description': 'Only return the last N lines (default: 100)',
+          },
+        },
       },
     ),
 
@@ -453,8 +458,8 @@ class ToolRegistry {
       case 'getStatus':
         return _handleGetStatus();
 
-      case 'getMinecraftLogs':
-        return _handleGetMinecraftLogs();
+      case 'getLogs':
+        return _handleGetLogs(args);
 
       // =========================================================================
       // World Tools
@@ -616,19 +621,27 @@ class ToolRegistry {
     };
   }
 
-  Map<String, dynamic> _handleGetMinecraftLogs() {
+  Map<String, dynamic> _handleGetLogs(Map<String, dynamic> args) {
     if (minecraftController == null) {
       throw StateError('Minecraft controller not configured');
     }
 
-    final logPath = minecraftController!.logFilePath;
-    if (logPath == null) {
-      throw StateError('Could not determine log file path');
-    }
+    final lastN = args['lastN'] as int? ?? 100;
+
+    final output = minecraftController!.getProcessOutput(
+      lastN: lastN,
+      includeStderr: true,
+    );
+
+    // Format as readable text
+    final lines = output.map((entry) {
+      final prefix = entry['isStderr'] == true ? '[stderr] ' : '';
+      return '$prefix${entry['line']}';
+    }).toList();
 
     return {
-      'logFilePath': logPath,
-      'message': 'Read this file to see Minecraft logs. Use tail for recent entries.',
+      'lineCount': output.length,
+      'output': lines.join('\n'),
     };
   }
 
