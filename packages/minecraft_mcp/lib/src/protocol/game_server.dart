@@ -101,6 +101,10 @@ class GameServer {
     router.post('/input/key', _pressKey);
     router.post('/input/click', _click);
     router.post('/input/type', _typeText);
+    router.post('/input/mouse/hold', _holdMouse);
+    router.post('/input/mouse/release', _releaseMouse);
+    router.post('/input/mouse/move', _moveMouse);
+    router.post('/input/scroll', _scroll);
 
     // Time/Command operations
     router.post('/wait', _waitTicks);
@@ -461,6 +465,74 @@ class GameServer {
     }
   }
 
+  Future<Response> _holdMouse(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final body = await _parseBody(request);
+      final req = HoldMouseRequest.fromJson(body);
+      final context = _getContext()!;
+
+      await context.holdMouse(req.button);
+
+      return _jsonResponse(SuccessResponse(message: 'Mouse button held').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to hold mouse: $e', statusCode: 400);
+    }
+  }
+
+  Future<Response> _releaseMouse(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final body = await _parseBody(request);
+      final req = ReleaseMouseRequest.fromJson(body);
+      final context = _getContext()!;
+
+      await context.releaseMouse(req.button);
+
+      return _jsonResponse(SuccessResponse(message: 'Mouse button released').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to release mouse: $e', statusCode: 400);
+    }
+  }
+
+  Future<Response> _moveMouse(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final body = await _parseBody(request);
+      final req = MoveMouseRequest.fromJson(body);
+      final context = _getContext()!;
+
+      await context.moveMouse(req.x, req.y);
+
+      return _jsonResponse(SuccessResponse(message: 'Mouse moved').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to move mouse: $e', statusCode: 400);
+    }
+  }
+
+  Future<Response> _scroll(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final body = await _parseBody(request);
+      final req = ScrollRequest.fromJson(body);
+      final context = _getContext()!;
+
+      await context.scroll(req.horizontal, req.vertical);
+
+      return _jsonResponse(SuccessResponse(message: 'Scrolled').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to scroll: $e', statusCode: 400);
+    }
+  }
+
   // ===========================================================================
   // Time/Command Endpoints
   // ===========================================================================
@@ -564,6 +636,10 @@ abstract class GameContextProvider {
   Future<void> holdKeyFor(int keyCode, int durationMs);
   Future<void> clickAt(double x, double y, {int button});
   Future<void> typeChars(String text);
+  Future<void> holdMouse(int button);
+  Future<void> releaseMouse(int button);
+  Future<void> moveMouse(int x, int y);
+  Future<void> scroll(double horizontal, double vertical);
 
   // Time/Command operations
   Future<void> waitTicks(int ticks);

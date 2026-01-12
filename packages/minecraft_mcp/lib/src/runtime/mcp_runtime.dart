@@ -312,6 +312,34 @@ class McpRuntime implements GameContextProvider {
     await waitTicks(1);
   }
 
+  @override
+  Future<void> holdMouse(int button) async {
+    _ensureReady();
+    ClientBridge.holdMouse(button);
+    await waitTicks(1);
+  }
+
+  @override
+  Future<void> releaseMouse(int button) async {
+    _ensureReady();
+    ClientBridge.releaseMouse(button);
+    await waitTicks(1);
+  }
+
+  @override
+  Future<void> moveMouse(int x, int y) async {
+    _ensureReady();
+    ClientBridge.setCursorPos(x.toDouble(), y.toDouble());
+    await waitTicks(1);
+  }
+
+  @override
+  Future<void> scroll(double horizontal, double vertical) async {
+    _ensureReady();
+    ClientBridge.scroll(horizontal, vertical);
+    await waitTicks(1);
+  }
+
   // ---------------------------------------------------------------------------
   // Time/Command Operations
   // ---------------------------------------------------------------------------

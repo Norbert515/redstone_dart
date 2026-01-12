@@ -491,6 +491,80 @@ class TypeTextRequest {
       };
 }
 
+/// Request to hold a mouse button.
+class HoldMouseRequest {
+  final int button;
+
+  HoldMouseRequest({required this.button});
+
+  factory HoldMouseRequest.fromJson(Map<String, dynamic> json) {
+    return HoldMouseRequest(
+      button: json['button'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'button': button,
+      };
+}
+
+/// Request to release a mouse button.
+class ReleaseMouseRequest {
+  final int button;
+
+  ReleaseMouseRequest({required this.button});
+
+  factory ReleaseMouseRequest.fromJson(Map<String, dynamic> json) {
+    return ReleaseMouseRequest(
+      button: json['button'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'button': button,
+      };
+}
+
+/// Request to move the mouse cursor.
+class MoveMouseRequest {
+  final int x;
+  final int y;
+
+  MoveMouseRequest({required this.x, required this.y});
+
+  factory MoveMouseRequest.fromJson(Map<String, dynamic> json) {
+    return MoveMouseRequest(
+      x: json['x'] as int,
+      y: json['y'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'x': x,
+        'y': y,
+      };
+}
+
+/// Request to scroll the mouse wheel.
+class ScrollRequest {
+  final double horizontal;
+  final double vertical;
+
+  ScrollRequest({required this.horizontal, required this.vertical});
+
+  factory ScrollRequest.fromJson(Map<String, dynamic> json) {
+    return ScrollRequest(
+      horizontal: (json['horizontal'] as num).toDouble(),
+      vertical: (json['vertical'] as num).toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'horizontal': horizontal,
+        'vertical': vertical,
+      };
+}
+
 // =============================================================================
 // Time/Command Operations
 // =============================================================================

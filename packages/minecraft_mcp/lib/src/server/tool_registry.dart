@@ -292,6 +292,64 @@ class ToolRegistry {
         'required': ['text'],
       },
     ),
+    ToolDefinition(
+      name: 'holdMouse',
+      description: 'Hold a mouse button down (for breaking blocks, using items). Call releaseMouse to release.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'button': {
+            'type': 'integer',
+            'description': 'Mouse button (0=left, 1=right, 2=middle)',
+          },
+        },
+        'required': ['button'],
+      },
+    ),
+    ToolDefinition(
+      name: 'releaseMouse',
+      description: 'Release a held mouse button',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'button': {
+            'type': 'integer',
+            'description': 'Mouse button (0=left, 1=right, 2=middle)',
+          },
+        },
+        'required': ['button'],
+      },
+    ),
+    ToolDefinition(
+      name: 'moveMouse',
+      description: 'Move the mouse cursor to screen coordinates (without clicking)',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'x': {'type': 'integer', 'description': 'Screen X coordinate'},
+          'y': {'type': 'integer', 'description': 'Screen Y coordinate'},
+        },
+        'required': ['x', 'y'],
+      },
+    ),
+    ToolDefinition(
+      name: 'scroll',
+      description: 'Scroll the mouse wheel. Positive vertical = scroll up, negative = scroll down.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'horizontal': {
+            'type': 'number',
+            'description': 'Horizontal scroll amount',
+          },
+          'vertical': {
+            'type': 'number',
+            'description': 'Vertical scroll amount',
+          },
+        },
+        'required': ['horizontal', 'vertical'],
+      },
+    ),
 
     // Time/Command tools
     ToolDefinition(
@@ -436,6 +494,18 @@ class ToolRegistry {
 
       case 'typeText':
         return _handleTypeText(args);
+
+      case 'holdMouse':
+        return _handleHoldMouse(args);
+
+      case 'releaseMouse':
+        return _handleReleaseMouse(args);
+
+      case 'moveMouse':
+        return _handleMoveMouse(args);
+
+      case 'scroll':
+        return _handleScroll(args);
 
       // =========================================================================
       // Time/Command Tools
@@ -763,6 +833,62 @@ class ToolRegistry {
       'success': true,
       'text': text,
       'length': text.length,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleHoldMouse(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final button = args['button'] as int;
+
+    await gameClient!.holdMouse(button);
+
+    return {
+      'success': true,
+      'button': button,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleReleaseMouse(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final button = args['button'] as int;
+
+    await gameClient!.releaseMouse(button);
+
+    return {
+      'success': true,
+      'button': button,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleMoveMouse(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final x = args['x'] as int;
+    final y = args['y'] as int;
+
+    await gameClient!.moveMouse(x, y);
+
+    return {
+      'success': true,
+      'x': x,
+      'y': y,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleScroll(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final horizontal = (args['horizontal'] as num).toDouble();
+    final vertical = (args['vertical'] as num).toDouble();
+
+    await gameClient!.scroll(horizontal, vertical);
+
+    return {
+      'success': true,
+      'horizontal': horizontal,
+      'vertical': vertical,
     };
   }
 

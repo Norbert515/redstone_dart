@@ -264,6 +264,36 @@ class GameClient {
     });
   }
 
+  /// Hold a mouse button down.
+  Future<void> holdMouse(int button) async {
+    await _post('/input/mouse/hold', {
+      'button': button,
+    });
+  }
+
+  /// Release a held mouse button.
+  Future<void> releaseMouse(int button) async {
+    await _post('/input/mouse/release', {
+      'button': button,
+    });
+  }
+
+  /// Move the mouse cursor to screen coordinates.
+  Future<void> moveMouse(int x, int y) async {
+    await _post('/input/mouse/move', {
+      'x': x,
+      'y': y,
+    });
+  }
+
+  /// Scroll the mouse wheel.
+  Future<void> scroll(double horizontal, double vertical) async {
+    await _post('/input/scroll', {
+      'horizontal': horizontal,
+      'vertical': vertical,
+    });
+  }
+
   // ===========================================================================
   // Time/Command Operations
   // ===========================================================================
