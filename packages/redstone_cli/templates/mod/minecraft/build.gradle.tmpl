@@ -121,4 +121,15 @@ tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
     if (project.hasProperty('mcpMode')) {
         jvmArgs("-DMCP_MODE=true")
     }
+
+    // MCP server port (for HTTP communication)
+    if (project.hasProperty('mcpServerPort')) {
+        def mcpPort = project.property('mcpServerPort')
+        jvmArgs("-DMCP_SERVER_PORT=${mcpPort}")
+    }
+
+    // Background mode (prevents window focus stealing)
+    if (project.hasProperty('backgroundMode')) {
+        jvmArgs("-DBACKGROUND_MODE=${project.property('backgroundMode')}")
+    }
 }
