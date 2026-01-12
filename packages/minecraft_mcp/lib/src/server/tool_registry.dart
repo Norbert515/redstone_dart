@@ -6,14 +6,18 @@ import '../minecraft/minecraft_controller.dart';
 /// Defines tool schemas and dispatches tool execution requests.
 class ToolRegistry {
   /// Controller for Minecraft lifecycle.
-  final MinecraftController? minecraftController;
+  MinecraftController? minecraftController;
 
   /// HTTP client for game server communication.
   GameClient? gameClient;
 
+  /// Default port for the game server.
+  final int defaultPort;
+
   ToolRegistry({
     this.minecraftController,
     this.gameClient,
+    this.defaultPort = 8765,
   });
 
   /// Tool definitions.
@@ -529,8 +533,22 @@ class ToolRegistry {
   // ===========================================================================
 
   Future<Map<String, dynamic>> _handleStartMinecraft(Map<String, dynamic> args) async {
+    final modPath = args['modPath'] as String?;
+
+    // Create or update controller if modPath is provided
+    if (modPath != null) {
+      // Stop existing instance if running with different path
+      if (minecraftController != null && minecraftController!.isRunning) {
+        await minecraftController!.stop();
+      }
+      minecraftController = MinecraftController(
+        modPath: modPath,
+        httpPort: defaultPort,
+      );
+    }
+
     if (minecraftController == null) {
-      throw StateError('Minecraft controller not configured. Provide --mod-path when starting the MCP server.');
+      throw StateError('Minecraft controller not configured. Provide modPath argument or --mod-path when starting the MCP server.');
     }
 
     if (minecraftController!.isRunning) {

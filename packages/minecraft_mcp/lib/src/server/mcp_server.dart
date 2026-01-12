@@ -43,6 +43,7 @@ class McpServer {
     _toolRegistry = ToolRegistry(
       minecraftController: minecraftController,
       gameClient: minecraftController?.gameClient,
+      defaultPort: gameServerPort,
     );
   }
 
