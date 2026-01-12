@@ -107,6 +107,7 @@ class MinecraftController {
         '--no-hot-reload', // We don't need hot reload for MCP
         '--mcp-mode', // Enable MCP mode
         '--mcp-port', httpPort.toString(),
+        '--background', // Prevent window focus stealing for automated testing
       ];
 
       // Start the process

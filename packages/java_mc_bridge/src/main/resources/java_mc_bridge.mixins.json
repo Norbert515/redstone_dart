@@ -10,7 +10,8 @@
     "ClientInputAccessor",
     "KeyboardAccessor",
     "KeyMappingAccessor",
-    "MouseAccessor"
+    "MouseAccessor",
+    "WindowMixin"
   ],
   "injectors": {
     "defaultRequire": 1

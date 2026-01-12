@@ -132,6 +132,11 @@ class RunCommand extends Command<int> {
       help: 'Port for MCP HTTP server (default: 8765).',
       defaultsTo: '8765',
     );
+    argParser.addFlag(
+      'background',
+      help: 'Run in background mode without stealing window focus.',
+      negatable: false,
+    );
   }
 
   @override
@@ -208,11 +213,13 @@ class RunCommand extends Command<int> {
       // Get MCP mode settings
       final mcpMode = argResults!['mcp-mode'] as bool;
       final mcpPort = argResults!['mcp-port'] as String;
+      final backgroundMode = argResults!['background'] as bool;
 
       await runner.start(
         quickPlayWorld: worldName,
         mcpMode: mcpMode,
         mcpPort: mcpMode ? int.parse(mcpPort) : null,
+        backgroundMode: backgroundMode,
       );
 
       if (hotReloadEnabled) {

@@ -97,10 +97,12 @@ class MinecraftRunner {
   /// If [quickPlayWorld] is provided, Minecraft will auto-join that world on startup.
   /// If [mcpMode] is true, enables the MCP HTTP server for AI-controlled testing.
   /// If [mcpPort] is provided, specifies the port for the MCP HTTP server.
+  /// If [backgroundMode] is true, prevents the window from stealing focus on startup.
   Future<void> start({
     String? quickPlayWorld,
     bool mcpMode = false,
     int? mcpPort,
+    bool backgroundMode = false,
   }) async {
     // Reset VM service detections
     _serverVmService = null;
@@ -167,6 +169,12 @@ class MinecraftRunner {
     if (clientTestMode) {
       gradleArgs.add('-PvisualTestMode=true');
       Logger.debug('Visual test mode enabled');
+    }
+
+    // Enable background mode if specified (prevents window focus stealing)
+    if (backgroundMode) {
+      gradleArgs.add('-PbackgroundMode=true');
+      Logger.debug('Background mode enabled');
     }
 
     Logger.debug('Gradle args: $gradleArgs');
