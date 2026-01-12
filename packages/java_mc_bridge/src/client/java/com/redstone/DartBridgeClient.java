@@ -887,10 +887,16 @@ public class DartBridgeClient {
             } else {
                 cachedContainerMenuId = -1;
             }
-            // Log when menu ID changes
+            // When menu ID changes, clear cached data slots to prevent stale data
+            // from being read by the new container's _loadInitialValues()
             if (oldMenuId != cachedContainerMenuId) {
                 LOGGER.info("[DartBridgeClient] cachedContainerMenuId changed: {} -> {}, classLoader: {}",
                     oldMenuId, cachedContainerMenuId, DartBridgeClient.class.getClassLoader());
+                // Clear all cached data slots to zero
+                for (int i = 0; i < MAX_CACHED_DATA_SLOTS; i++) {
+                    cachedContainerDataSlots[i] = 0;
+                }
+                cachedDataSlotCount = 0;
             }
 
             // Update raw data slot values using DartMenuProvider interface

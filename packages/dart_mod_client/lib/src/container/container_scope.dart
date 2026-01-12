@@ -9,7 +9,6 @@ import 'package:flutter/widgets.dart';
 import 'package:dart_mod_common/dart_mod_common.dart';
 
 import '../events/container_data_events.dart';
-import '../inventory/client_container_view.dart';
 
 /// Provides a container to descendant widgets with automatic rebuild on data changes.
 ///
@@ -128,12 +127,16 @@ class _ContainerScopeState<T extends ContainerDefinition>
     extends State<ContainerScope<T>> {
   StreamSubscription<ContainerDataChangedEvent>? _subscription;
   int _updateCount = 0;
-  static const _containerView = ClientContainerView();
 
   @override
   void initState() {
     super.initState();
-    _loadInitialValues();
+    // Note: We intentionally do NOT call _loadInitialValues() here.
+    // The SyncedInt values start at their default (0), which is correct for fresh containers.
+    // The server will push the actual values via ContainerData sync, which triggers
+    // onDataChanged events that update the values correctly.
+    // This prevents the bug where stale cached values from a previous container
+    // would briefly flash before being overwritten.
     _subscribeToDataChanges();
   }
 
@@ -141,22 +144,6 @@ class _ContainerScopeState<T extends ContainerDefinition>
   void dispose() {
     _subscription?.cancel();
     super.dispose();
-  }
-
-  /// Load initial values from Java via JNI polling.
-  /// This ensures we have correct values immediately on container open,
-  /// even for values that don't change frequently (like litDuration).
-  void _loadInitialValues() {
-    print('[ContainerScope] _loadInitialValues: menuId=${widget.menuId}, container=${widget.container.runtimeType}');
-    final syncedValues = widget.container.syncedValuesList;
-    print('[ContainerScope] Found ${syncedValues.length} synced values');
-    for (final syncedValue in syncedValues) {
-      if (syncedValue.dataSlotIndex >= 0) {
-        final value = _containerView.getContainerDataSlot(syncedValue.dataSlotIndex);
-        print('[ContainerScope] Initial load slot ${syncedValue.dataSlotIndex}: got value $value');
-        syncedValue.updateFromSync(value);
-      }
-    }
   }
 
   void _subscribeToDataChanges() {
