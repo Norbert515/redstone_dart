@@ -1,55 +1,63 @@
 package com.redstone.blockentity;
 
 import com.redstone.RedstoneMenuTypes;
-import net.minecraft.util.Mth;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerData;
-import net.minecraft.world.inventory.FurnaceResultSlot;
 import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Container menu for block entities with processing (furnace-like) behavior.
+ * Generic container menu for all Dart block entities.
  *
- * This menu syncs:
- * - 3 inventory slots (input, fuel, output) - like a furnace
- * - 4 data values (lit time, lit duration, cooking progress, cooking total) via ContainerData
+ * This unified menu supports:
+ * - Dynamic inventory sizes (1 slot to 54+ slots)
+ * - Grid-based slot layout (9 columns, variable rows)
+ * - Dynamic ContainerData synchronization
  *
- * The ContainerData is automatically synced to the client via addDataSlots(),
- * enabling progress bars and other visual indicators in the GUI.
+ * The menu is block-type agnostic - it doesn't care whether the underlying
+ * block entity is a chest, furnace, or any other type. All UI rendering
+ * and slot semantics are handled by Flutter/Dart.
+ *
+ * Implements {@link DartMenuProvider} to support unified ContainerData access
+ * from client-side caching code.
  */
-public class DartBlockEntityMenu extends AbstractContainerMenu {
+public class DartBlockEntityMenu extends AbstractContainerMenu implements DartMenuProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger("DartBlockEntityMenu");
 
-    // Slot indices (matching vanilla furnace layout)
-    public static final int INGREDIENT_SLOT = 0;
-    public static final int FUEL_SLOT = 1;
-    public static final int RESULT_SLOT = 2;
-    public static final int SLOT_COUNT = 3;
+    /** Standard number of columns in the grid (like a chest). */
+    private static final int COLUMNS = 9;
 
-    // Player inventory slot ranges
-    private static final int INV_SLOT_START = 3;
-    private static final int INV_SLOT_END = 30;
-    private static final int USE_ROW_SLOT_START = 30;
-    private static final int USE_ROW_SLOT_END = 39;
+    /** Standard container width in pixels. */
+    private static final int IMAGE_WIDTH = 176;
 
     /** The block entity's container (inventory). */
     private final Container container;
 
-    /** Container data for syncing processing state (lit time, progress, etc). */
+    /** Container data for syncing custom state to client. */
     private final ContainerData data;
 
-    /** Reference to the level for fuel checks. */
+    /** Reference to the level. */
     protected final Level level;
+
+    /** Number of rows in the container grid. */
+    private final int rows;
+
+    /** Total slots in the container (rows * COLUMNS). */
+    private final int containerSlotCount;
+
+    // Player inventory slot indices (calculated based on container size)
+    private final int invSlotStart;
+    private final int invSlotEnd;
+    private final int hotbarSlotStart;
+    private final int hotbarSlotEnd;
 
     // ========================================================================
     // Constructors
@@ -58,9 +66,10 @@ public class DartBlockEntityMenu extends AbstractContainerMenu {
     /**
      * Client-side constructor - creates with empty container and data.
      * Called when the client receives the menu packet from the server.
+     * Default to 3 rows * 9 columns (27 slots) like a standard chest.
      */
     public DartBlockEntityMenu(int containerId, Inventory playerInventory) {
-        this(containerId, playerInventory, new SimpleContainer(SLOT_COUNT), new SimpleContainerData(4));
+        this(containerId, playerInventory, new SimpleContainer(27), new SimpleContainerData(4));
     }
 
     /**
@@ -70,37 +79,79 @@ public class DartBlockEntityMenu extends AbstractContainerMenu {
      * @param containerId The container ID assigned by the server
      * @param playerInventory The player's inventory
      * @param container The block entity's container (its inventory)
-     * @param data The ContainerData for processing state synchronization
+     * @param data The ContainerData for state synchronization
      */
     public DartBlockEntityMenu(int containerId, Inventory playerInventory, Container container, ContainerData data) {
         super(RedstoneMenuTypes.DART_BLOCK_ENTITY_MENU, containerId);
 
-        checkContainerSize(container, SLOT_COUNT);
-        // Use the data's own count instead of hardcoded 4
-        // This allows Dart containers to have any number of synced values
+        // Calculate rows from container size (round up to handle non-multiples of 9)
+        int inventorySize = container.getContainerSize();
+        this.rows = (inventorySize + COLUMNS - 1) / COLUMNS;
+        this.containerSlotCount = inventorySize;
+
+        checkContainerSize(container, inventorySize);
+        // Use the data's own count for flexibility
         checkContainerDataCount(data, data.getCount());
 
         this.container = container;
         this.data = data;
         this.level = playerInventory.player.level();
 
-        // Add block entity slots (furnace layout: input at 56,17, fuel at 56,53, output at 116,35)
-        this.addSlot(new Slot(container, INGREDIENT_SLOT, 56, 17));
-        this.addSlot(new DartFuelSlot(this, container, FUEL_SLOT, 56, 53));
-        this.addSlot(new FurnaceResultSlot(playerInventory.player, container, RESULT_SLOT, 116, 35));
+        // Calculate slot index ranges for quick move
+        this.invSlotStart = containerSlotCount;
+        this.invSlotEnd = containerSlotCount + 27; // 3 rows * 9 columns
+        this.hotbarSlotStart = invSlotEnd;
+        this.hotbarSlotEnd = hotbarSlotStart + 9;
+
+        // Calculate slot positions to center the grid
+        // Standard slot is 18x18 pixels
+        int gridWidth = COLUMNS * 18;
+        int startX = (IMAGE_WIDTH - gridWidth) / 2;
+        int startY = 17;
+
+        // Add container slots in a grid
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < COLUMNS; col++) {
+                int index = col + row * COLUMNS;
+                if (index < inventorySize) {
+                    this.addSlot(new Slot(container, index, startX + col * 18, startY + row * 18));
+                }
+            }
+        }
+
+        // Calculate Y position for player inventory based on container rows
+        // Standard layout: container slots, then 14 pixel gap, then player inventory
+        int playerInvY = startY + (rows * 18) + 14;
 
         // Add player inventory and hotbar slots
-        this.addStandardInventorySlots(playerInventory, 8, 84);
+        addPlayerInventorySlots(playerInventory, 8, playerInvY);
 
         // Register container data for automatic synchronization to client
-        // This is the key to making progress bars work!
         this.addDataSlots(data);
 
         // Notify container that it's being opened
         this.container.startOpen(playerInventory.player);
-        LOGGER.info("DartBlockEntityMenu: called container.startOpen, container class={}", container.getClass().getName());
 
-        LOGGER.debug("DartBlockEntityMenu created with containerId={}", containerId);
+        LOGGER.debug("DartBlockEntityMenu created: containerId={}, rows={}, columns={}, slots={}, dataSlots={}",
+                     containerId, rows, COLUMNS, containerSlotCount, data.getCount());
+    }
+
+    /**
+     * Add player inventory slots (main inventory + hotbar).
+     */
+    private void addPlayerInventorySlots(Inventory playerInventory, int startX, int startY) {
+        // Main inventory (3 rows of 9)
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 9; col++) {
+                this.addSlot(new Slot(playerInventory, col + row * 9 + 9,
+                                      startX + col * 18, startY + row * 18));
+            }
+        }
+
+        // Hotbar (1 row of 9, 4 pixels below main inventory = 58 pixel offset)
+        for (int col = 0; col < 9; col++) {
+            this.addSlot(new Slot(playerInventory, col, startX + col * 18, startY + 58));
+        }
     }
 
     @Override
@@ -110,58 +161,44 @@ public class DartBlockEntityMenu extends AbstractContainerMenu {
     }
 
     // ========================================================================
-    // Progress accessors (for client GUI rendering)
+    // Data accessors (for client GUI rendering)
     // ========================================================================
 
     /**
-     * Get the burn progress (0.0 to 1.0) for the flame icon.
-     * This indicates how much fuel is remaining.
-     */
-    public float getLitProgress() {
-        int litDuration = this.data.get(1); // DATA_LIT_DURATION
-        if (litDuration == 0) {
-            litDuration = 200; // Default value
-        }
-        return Mth.clamp((float) this.data.get(0) / litDuration, 0.0F, 1.0F);
-    }
-
-    /**
-     * Get the cooking progress (0.0 to 1.0) for the arrow icon.
-     * This indicates how close the item is to being fully cooked.
-     */
-    public float getBurnProgress() {
-        int cookingProgress = this.data.get(2); // DATA_COOKING_PROGRESS
-        int cookingTotal = this.data.get(3);    // DATA_COOKING_TOTAL_TIME
-        return cookingTotal != 0 && cookingProgress != 0
-                ? Mth.clamp((float) cookingProgress / cookingTotal, 0.0F, 1.0F)
-                : 0.0F;
-    }
-
-    /**
-     * Check if the furnace is currently burning fuel.
-     */
-    public boolean isLit() {
-        return this.data.get(0) > 0; // DATA_LIT_TIME > 0
-    }
-
-    /**
      * Get a specific data value by index.
-     * Index 0: litTime, 1: litDuration, 2: cookingProgress, 3: cookingTotalTime
      */
+    @Override
     public int getDataValue(int index) {
         return this.data.get(index);
     }
 
-    // ========================================================================
-    // Fuel checking
-    // ========================================================================
+    /**
+     * Get the number of data slots in this container.
+     */
+    @Override
+    public int getDataSlotCount() {
+        return this.data.getCount();
+    }
 
     /**
-     * Check if an item is valid fuel.
-     * Uses the level's fuel values registry.
+     * Get the number of rows in the container grid.
      */
-    public boolean isFuel(ItemStack itemStack) {
-        return this.level.fuelValues().isFuel(itemStack);
+    public int getRows() {
+        return rows;
+    }
+
+    /**
+     * Get the number of columns in the container grid.
+     */
+    public int getColumns() {
+        return COLUMNS;
+    }
+
+    /**
+     * Get the container slot count (actual inventory size).
+     */
+    public int getContainerSlotCount() {
+        return containerSlotCount;
     }
 
     // ========================================================================
@@ -183,7 +220,7 @@ public class DartBlockEntityMenu extends AbstractContainerMenu {
 
         // Only push to Dart on client side
         if (this.level.isClientSide()) {
-            LOGGER.info("setData called: index={}, value={}, containerId={}", index, value, this.containerId);
+            LOGGER.debug("setData called: index={}, value={}, containerId={}", index, value, this.containerId);
             // Call DartBridgeClient via reflection to avoid compile-time dependency
             // on client-only code. DartBridgeClient is in src/client/ and not available on server.
             try {
@@ -208,51 +245,25 @@ public class DartBlockEntityMenu extends AbstractContainerMenu {
             ItemStack slotStack = slot.getItem();
             result = slotStack.copy();
 
-            // Output slot (2) -> move to player inventory
-            if (slotIndex == RESULT_SLOT) {
-                if (!this.moveItemStackTo(slotStack, INV_SLOT_START, USE_ROW_SLOT_END, true)) {
-                    return ItemStack.EMPTY;
-                }
-                slot.onQuickCraft(slotStack, result);
-            }
-            // Input or fuel slot (0-1) -> move to player inventory
-            else if (slotIndex == INGREDIENT_SLOT || slotIndex == FUEL_SLOT) {
-                if (!this.moveItemStackTo(slotStack, INV_SLOT_START, USE_ROW_SLOT_END, false)) {
+            // Container slot -> move to player inventory
+            if (slotIndex < containerSlotCount) {
+                if (!this.moveItemStackTo(slotStack, invSlotStart, hotbarSlotEnd, true)) {
                     return ItemStack.EMPTY;
                 }
             }
-            // Player inventory slots -> try to move to block entity slots
-            else if (slotIndex >= INV_SLOT_START) {
-                // Try fuel slot first if it's valid fuel
-                if (this.isFuel(slotStack)) {
-                    if (!this.moveItemStackTo(slotStack, FUEL_SLOT, FUEL_SLOT + 1, false)) {
-                        // If fuel slot is full, try input slot
-                        if (!this.moveItemStackTo(slotStack, INGREDIENT_SLOT, INGREDIENT_SLOT + 1, false)) {
-                            // Move between inventory sections
-                            if (slotIndex < INV_SLOT_END) {
-                                if (!this.moveItemStackTo(slotStack, USE_ROW_SLOT_START, USE_ROW_SLOT_END, false)) {
-                                    return ItemStack.EMPTY;
-                                }
-                            } else {
-                                if (!this.moveItemStackTo(slotStack, INV_SLOT_START, INV_SLOT_END, false)) {
-                                    return ItemStack.EMPTY;
-                                }
-                            }
+            // Player inventory slot -> move to container
+            else if (slotIndex < hotbarSlotEnd) {
+                if (!this.moveItemStackTo(slotStack, 0, containerSlotCount, false)) {
+                    // If container is full, move between inventory sections
+                    if (slotIndex < invSlotEnd) {
+                        // Main inventory -> hotbar
+                        if (!this.moveItemStackTo(slotStack, hotbarSlotStart, hotbarSlotEnd, false)) {
+                            return ItemStack.EMPTY;
                         }
-                    }
-                }
-                // Not fuel - try input slot
-                else {
-                    if (!this.moveItemStackTo(slotStack, INGREDIENT_SLOT, INGREDIENT_SLOT + 1, false)) {
-                        // Move between inventory sections
-                        if (slotIndex < INV_SLOT_END) {
-                            if (!this.moveItemStackTo(slotStack, USE_ROW_SLOT_START, USE_ROW_SLOT_END, false)) {
-                                return ItemStack.EMPTY;
-                            }
-                        } else {
-                            if (!this.moveItemStackTo(slotStack, INV_SLOT_START, INV_SLOT_END, false)) {
-                                return ItemStack.EMPTY;
-                            }
+                    } else {
+                        // Hotbar -> main inventory
+                        if (!this.moveItemStackTo(slotStack, invSlotStart, invSlotEnd, false)) {
+                            return ItemStack.EMPTY;
                         }
                     }
                 }
@@ -272,35 +283,5 @@ public class DartBlockEntityMenu extends AbstractContainerMenu {
         }
 
         return result;
-    }
-
-    // ========================================================================
-    // Fuel slot (inner class)
-    // ========================================================================
-
-    /**
-     * Slot that only accepts fuel items (and empty buckets for lava bucket swapping).
-     */
-    public static class DartFuelSlot extends Slot {
-        private final DartBlockEntityMenu menu;
-
-        public DartFuelSlot(DartBlockEntityMenu menu, Container container, int slot, int x, int y) {
-            super(container, slot, x, y);
-            this.menu = menu;
-        }
-
-        @Override
-        public boolean mayPlace(ItemStack itemStack) {
-            return this.menu.isFuel(itemStack) || isBucket(itemStack);
-        }
-
-        @Override
-        public int getMaxStackSize(ItemStack itemStack) {
-            return isBucket(itemStack) ? 1 : super.getMaxStackSize(itemStack);
-        }
-
-        public static boolean isBucket(ItemStack itemStack) {
-            return itemStack.is(Items.BUCKET);
-        }
     }
 }

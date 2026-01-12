@@ -19,6 +19,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.network.chat.Component;
 import com.redstone.blockentity.DartBlockEntityMenu;
+import com.redstone.blockentity.DartMenuProvider;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,14 +54,11 @@ public class DartBridgeClient {
     // Flag indicating if the client runtime is initialized (thread-safe)
     private static final AtomicBoolean clientInitialized = new AtomicBoolean(false);
 
-    // Cached container progress values (updated on render thread, read from any thread)
-    private static volatile float cachedLitProgress = 0.0f;
-    private static volatile float cachedBurnProgress = 0.0f;
-    private static volatile boolean cachedIsLit = false;
+    // Cached container menu ID (updated on render thread, read from any thread)
     private static volatile int cachedContainerMenuId = -1;
 
     // Cached raw container data slot values (updated on render thread, read from any thread)
-    // Standard furnace-like menus use 4 slots: litTime, litDuration, cookingProgress, cookingTotalTime
+    // Supports any number of ContainerData slots up to MAX_CACHED_DATA_SLOTS
     private static final int MAX_CACHED_DATA_SLOTS = 8;  // Support up to 8 data slots
     private static final int[] cachedContainerDataSlots = new int[MAX_CACHED_DATA_SLOTS];
     private static volatile int cachedDataSlotCount = 0;
@@ -850,51 +848,18 @@ public class DartBridgeClient {
     }
 
     // ==========================================================================
-    // Block Entity Container Progress Methods (for furnace-like UIs)
+    // Block Entity Container Data Methods
     // ==========================================================================
 
     /**
-     * Get the lit progress (fuel remaining) as a normalized value (0.0-1.0).
-     * Only works when the current container is a DartBlockEntityMenu.
-     *
-     * @return Lit progress 0.0-1.0, or 0.0 if not a block entity menu
-     */
-    public static float getContainerLitProgress() {
-        return cachedLitProgress;
-    }
-
-    /**
-     * Get the burn/cooking progress as a normalized value (0.0-1.0).
-     * Only works when the current container is a DartBlockEntityMenu.
-     *
-     * @return Burn progress 0.0-1.0, or 0.0 if not a block entity menu
-     */
-    public static float getContainerBurnProgress() {
-        return cachedBurnProgress;
-    }
-
-    /**
-     * Check if the furnace is currently lit (burning fuel).
-     * Only works when the current container is a DartBlockEntityMenu.
-     *
-     * @return true if lit, false otherwise
-     */
-    public static boolean isContainerLit() {
-        return cachedIsLit;
-    }
-
-    /**
      * Get a ContainerData slot value by index for the current container menu.
-     * This is a generic way to read synced data from any container.
+     * This is a generic way to read synced data from any Dart container.
      *
-     * Only works when the current container is a DartBlockEntityMenu (or similar
-     * that supports ContainerData). Returns the raw int value at the specified index.
-     *
-     * Common ContainerData indices for furnace-like menus:
-     * - 0: litTime (current fuel burn time remaining)
-     * - 1: litDuration (total burn time of current fuel)
-     * - 2: cookingProgress (current cooking progress)
-     * - 3: cookingTotalTime (total time to cook current item)
+     * The meaning of each slot index is determined by the Dart code that
+     * defines the block entity. Common patterns include:
+     * - Progress values (0-100 or 0-200 ticks)
+     * - Boolean flags (0 or 1)
+     * - State enums (integer values)
      *
      * @param dataIndex The ContainerData slot index
      * @return The value at that index, or 0 if not available
@@ -908,9 +873,9 @@ public class DartBridgeClient {
     }
 
     /**
-     * Update cached container progress values.
+     * Update cached container data values.
      * MUST be called from the render thread (e.g., during screen tick or render).
-     * This allows Dart/Flutter to safely read progress values from any thread.
+     * This allows Dart/Flutter to safely read data values from any thread.
      */
     public static void updateCachedContainerProgress() {
         Minecraft mc = Minecraft.getInstance();
@@ -928,35 +893,23 @@ public class DartBridgeClient {
                     oldMenuId, cachedContainerMenuId, DartBridgeClient.class.getClassLoader());
             }
 
-            // Update progress values and raw data slots
-            if (mc.player.containerMenu instanceof DartBlockEntityMenu menu) {
-                cachedLitProgress = menu.getLitProgress();
-                cachedBurnProgress = menu.getBurnProgress();
-                cachedIsLit = menu.isLit();
-
-                // Update raw data slot values (for SyncedInt support)
-                // DartBlockEntityMenu has 4 data slots: litTime, litDuration, cookingProgress, cookingTotalTime
-                cachedDataSlotCount = 4;
-                for (int i = 0; i < cachedDataSlotCount && i < MAX_CACHED_DATA_SLOTS; i++) {
-                    int val = menu.getDataValue(i);
-                    cachedContainerDataSlots[i] = val;
+            // Update raw data slot values using DartMenuProvider interface
+            // This handles the unified DartBlockEntityMenu
+            if (mc.player.containerMenu instanceof DartMenuProvider provider) {
+                cachedDataSlotCount = Math.min(provider.getDataSlotCount(), MAX_CACHED_DATA_SLOTS);
+                for (int i = 0; i < cachedDataSlotCount; i++) {
+                    cachedContainerDataSlots[i] = provider.getDataValue(i);
                 }
             } else {
-                // Log if menu is not DartBlockEntityMenu
+                // Log if menu is not a supported Dart menu type
                 if (oldMenuId != cachedContainerMenuId) {
-                    LOGGER.info("[DartBridgeClient] Menu is NOT DartBlockEntityMenu, it is: {}",
+                    LOGGER.info("[DartBridgeClient] Menu is not a Dart menu type, it is: {}",
                         mc.player.containerMenu != null ? mc.player.containerMenu.getClass().getName() : "null");
                 }
-                cachedLitProgress = 0.0f;
-                cachedBurnProgress = 0.0f;
-                cachedIsLit = false;
                 cachedDataSlotCount = 0;
             }
         } else {
             cachedContainerMenuId = -1;
-            cachedLitProgress = 0.0f;
-            cachedBurnProgress = 0.0f;
-            cachedIsLit = false;
             cachedDataSlotCount = 0;
         }
     }

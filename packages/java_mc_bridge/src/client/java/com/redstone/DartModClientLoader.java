@@ -1,7 +1,6 @@
 package com.redstone;
 
 import com.redstone.blockentity.DartBlockEntityMenu;
-import com.redstone.blockentity.DartChestMenu;
 import com.redstone.flutter.FlutterContainerScreen;
 import com.redstone.flutter.FlutterScreen;
 import net.minecraft.client.gui.screens.MenuScreens;
@@ -563,14 +562,9 @@ public class DartModClientLoader implements ClientModInitializer {
 
         // Register the block entity menu screen with Flutter rendering
         // FlutterContainerScreen renders the UI via Flutter and handles item rendering on top
+        // This is the unified menu type that handles all inventory sizes
         MenuScreens.<DartBlockEntityMenu, FlutterContainerScreen<DartBlockEntityMenu>>register(
             RedstoneMenuTypes.DART_BLOCK_ENTITY_MENU,
-            (menu, inventory, title) -> new FlutterContainerScreen<>(menu, inventory, title)
-        );
-
-        // Register the chest menu screen with Flutter rendering
-        MenuScreens.<DartChestMenu, FlutterContainerScreen<DartChestMenu>>register(
-            RedstoneMenuTypes.DART_CHEST_MENU,
             (menu, inventory, title) -> new FlutterContainerScreen<>(menu, inventory, title)
         );
 

@@ -95,9 +95,11 @@ abstract class BlockEntityWithInventory extends TickingBlockEntity {
   /// When JNI inventory access is enabled (server-side), this reads directly
   /// from Java's block entity inventory. Otherwise, returns from local cache.
   ItemStack getSlot(int index) {
-    if (index < 0 || index >= _inventory.length) return ItemStack.empty;
+    // Basic sanity check - negative indices are never valid
+    if (index < 0) return ItemStack.empty;
 
     // On server with JNI enabled, read from Java
+    // Let Java handle its own bounds checking for containerSize
     if (_jniEnabled) {
       final pos = blockPos;
       if (pos != null) {
@@ -105,6 +107,8 @@ abstract class BlockEntityWithInventory extends TickingBlockEntity {
       }
     }
 
+    // For local access (non-JNI), check against _inventory.length
+    if (index >= _inventory.length) return ItemStack.empty;
     return _inventory[index];
   }
 
@@ -115,9 +119,11 @@ abstract class BlockEntityWithInventory extends TickingBlockEntity {
   /// When JNI inventory access is enabled (server-side), this writes directly
   /// to Java's block entity inventory. Otherwise, writes to local cache.
   void setSlot(int index, ItemStack item) {
-    if (index < 0 || index >= _inventory.length) return;
+    // Basic sanity check - negative indices are never valid
+    if (index < 0) return;
 
     // On server with JNI enabled, write to Java
+    // Let Java handle its own bounds checking for containerSize
     if (_jniEnabled) {
       final pos = blockPos;
       if (pos != null) {
@@ -126,6 +132,8 @@ abstract class BlockEntityWithInventory extends TickingBlockEntity {
       }
     }
 
+    // For local access (non-JNI), check against _inventory.length
+    if (index >= _inventory.length) return;
     _inventory[index] = item;
   }
 
