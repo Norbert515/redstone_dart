@@ -72,6 +72,13 @@ class MinecraftController {
   /// HTTP client for the game server (available when running).
   GameClient? get gameClient => _gameClient;
 
+  /// Path to the Minecraft log file.
+  String? get logFilePath {
+    final minecraftDir = _findMinecraftDir(modPath);
+    if (minecraftDir == null) return null;
+    return p.join(minecraftDir, 'run', 'logs', 'latest.log');
+  }
+
   /// Start Minecraft client with the MCP game server enabled.
   ///
   /// This uses `redstone run` CLI command which handles:

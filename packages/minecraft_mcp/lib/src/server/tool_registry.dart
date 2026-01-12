@@ -53,6 +53,14 @@ class ToolRegistry {
         'properties': <String, Object>{},
       },
     ),
+    ToolDefinition(
+      name: 'getMinecraftLogs',
+      description: 'Get the path to the Minecraft log file. Read this file to see Minecraft output, errors, and debug info.',
+      inputSchema: {
+        'type': 'object',
+        'properties': <String, Object>{},
+      },
+    ),
 
     // World tools
     ToolDefinition(
@@ -445,6 +453,9 @@ class ToolRegistry {
       case 'getStatus':
         return _handleGetStatus();
 
+      case 'getMinecraftLogs':
+        return _handleGetMinecraftLogs();
+
       // =========================================================================
       // World Tools
       // =========================================================================
@@ -602,6 +613,22 @@ class ToolRegistry {
       'status': minecraftController!.status.name,
       'isRunning': minecraftController!.isRunning,
       'worldName': minecraftController!.worldName,
+    };
+  }
+
+  Map<String, dynamic> _handleGetMinecraftLogs() {
+    if (minecraftController == null) {
+      throw StateError('Minecraft controller not configured');
+    }
+
+    final logPath = minecraftController!.logFilePath;
+    if (logPath == null) {
+      throw StateError('Could not determine log file path');
+    }
+
+    return {
+      'logFilePath': logPath,
+      'message': 'Read this file to see Minecraft logs. Use tail for recent entries.',
     };
   }
 
