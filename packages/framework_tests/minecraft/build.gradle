@@ -114,4 +114,9 @@ tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
     if (project.hasProperty('visualTestMode')) {
         jvmArgs("-DVISUAL_TEST_MODE=true")
     }
+
+    // Enable MCP mode (auto-join test world for AI-controlled testing)
+    if (project.hasProperty('mcpMode')) {
+        jvmArgs("-DMCP_MODE=true")
+    }
 }

@@ -385,21 +385,15 @@ ${depsBuffer.toString()}''';
     buffer.writeln("import 'package:redstone_test/redstone_test.dart';");
     buffer.writeln();
 
-    // Import the mod's client entry point to register blocks, items, and entities
-    // Use configured client entry point or fall back to main.dart
-    // Skip if the client package depends on Flutter SDK (can't be imported by system Dart)
-    final modMainPath = File(project.clientEntry).existsSync()
-        ? project.clientEntry
+    // Import the mod's SERVER entry point to register blocks, items, and entities
+    // The server package doesn't depend on Flutter SDK, so it can always be imported
+    // Client tests still need server-side block registration for blocks to work
+    final modMainPath = File(project.serverEntry).existsSync()
+        ? project.serverEntry
         : project.entryPoint;
-    final hasFlutterDep = _hasFlutterSdkDependency(modMainPath);
-
-    if (!hasFlutterDep) {
-      final modMainUri = _getModMainImportUri(modMainPath);
-      buffer.writeln("import '$modMainUri' as mod_main;");
-      buffer.writeln();
-    } else {
-      Logger.debug('Skipping client package import (depends on Flutter SDK)');
-    }
+    final modMainUri = _getModMainImportUri(modMainPath);
+    buffer.writeln("import '$modMainUri' as mod_main;");
+    buffer.writeln();
 
     // Generate imports for each test file with unique aliases
     for (var i = 0; i < testFiles.length; i++) {
@@ -467,17 +461,10 @@ ${depsBuffer.toString()}''';
     buffer.writeln('  ServerBridge.initialize();');
     buffer.writeln();
 
-    // Only call mod_main.main() if the client package doesn't depend on Flutter SDK
-    if (!hasFlutterDep) {
-      buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
-      buffer.writeln('  // This is important for visual tests that need custom entities to be registered');
-      buffer.writeln('  mod_main.main();');
-      buffer.writeln();
-    } else {
-      buffer.writeln('  // Note: Client package depends on Flutter SDK and cannot be imported');
-      buffer.writeln('  // Custom blocks, items, and entities will need to be registered by the Flutter runtime');
-      buffer.writeln();
-    }
+    buffer.writeln('  // Run mod initialization to register blocks, items, and entities');
+    buffer.writeln('  // This calls the SERVER entry point to register blocks (not the Flutter client)');
+    buffer.writeln('  mod_main.main();');
+    buffer.writeln();
     buffer.writeln('  // Enable visual test mode to auto-join test world');
     buffer.writeln('  // TODO: ClientBridge needs to be imported from dart_mod_client when available');
     buffer.writeln('  // ClientBridge.setVisualTestMode(true);');
@@ -511,38 +498,6 @@ ${depsBuffer.toString()}''';
         ? filePath
         : p.join(project.rootDir, filePath);
     return Uri.file(absolutePath).toString();
-  }
-
-  /// Check if a file's containing package depends on Flutter SDK.
-  ///
-  /// This is used to determine whether we can import the client package
-  /// in the test harness. Packages that depend on Flutter SDK cannot be
-  /// imported by the system Dart runtime.
-  bool _hasFlutterSdkDependency(String filePath) {
-    final packagesDir = p.join(project.rootDir, 'packages');
-
-    // Check if this is in a workspace package
-    if (filePath.startsWith(packagesDir)) {
-      final relativeToPkgs = p.relative(filePath, from: packagesDir);
-      final parts = p.split(relativeToPkgs);
-
-      if (parts.isNotEmpty) {
-        final packageDir = parts[0];
-        final pubspecPath = p.join(packagesDir, packageDir, 'pubspec.yaml');
-        final pubspecFile = File(pubspecPath);
-
-        if (pubspecFile.existsSync()) {
-          final content = pubspecFile.readAsStringSync();
-          // Check for Flutter SDK dependency
-          if (content.contains('sdk: flutter')) {
-            Logger.debug('Package $packageDir depends on Flutter SDK');
-            return true;
-          }
-        }
-      }
-    }
-
-    return false;
   }
 
   /// Get the import URI for the mod main entry point.

@@ -9,3 +9,4 @@ export 'src/commands/run_command.dart';
 export 'src/commands/build_command.dart';
 export 'src/commands/devices_command.dart';
 export 'src/commands/doctor_command.dart';
+export 'src/test/template_world_generator.dart';

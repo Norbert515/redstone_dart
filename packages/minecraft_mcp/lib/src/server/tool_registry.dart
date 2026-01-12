@@ -1,0 +1,875 @@
+import '../minecraft/game_client.dart';
+import '../minecraft/minecraft_controller.dart';
+
+/// Registry for MCP tools.
+///
+/// Defines tool schemas and dispatches tool execution requests.
+class ToolRegistry {
+  /// Controller for Minecraft lifecycle.
+  final MinecraftController? minecraftController;
+
+  /// HTTP client for game server communication.
+  GameClient? gameClient;
+
+  ToolRegistry({
+    this.minecraftController,
+    this.gameClient,
+  });
+
+  /// Tool definitions.
+  final List<ToolDefinition> _tools = [
+    // Lifecycle tools
+    ToolDefinition(
+      name: 'startMinecraft',
+      description: 'Start Minecraft client with the specified mod',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'modPath': {
+            'type': 'string',
+            'description': 'Path to the mod directory',
+          },
+        },
+        'required': ['modPath'],
+      },
+    ),
+    ToolDefinition(
+      name: 'stopMinecraft',
+      description: 'Stop the running Minecraft instance',
+      inputSchema: {
+        'type': 'object',
+        'properties': <String, Object>{},
+      },
+    ),
+    ToolDefinition(
+      name: 'getStatus',
+      description: 'Get the current status of Minecraft (running, stopped, etc.)',
+      inputSchema: {
+        'type': 'object',
+        'properties': <String, Object>{},
+      },
+    ),
+
+    // World tools
+    ToolDefinition(
+      name: 'placeBlock',
+      description: 'Place a block at the specified coordinates',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'x': {'type': 'integer', 'description': 'X coordinate'},
+          'y': {'type': 'integer', 'description': 'Y coordinate'},
+          'z': {'type': 'integer', 'description': 'Z coordinate'},
+          'blockId': {
+            'type': 'string',
+            'description': 'Block identifier (e.g., "minecraft:stone")',
+          },
+        },
+        'required': ['x', 'y', 'z', 'blockId'],
+      },
+    ),
+    ToolDefinition(
+      name: 'getBlock',
+      description: 'Get the block at the specified coordinates',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'x': {'type': 'integer', 'description': 'X coordinate'},
+          'y': {'type': 'integer', 'description': 'Y coordinate'},
+          'z': {'type': 'integer', 'description': 'Z coordinate'},
+        },
+        'required': ['x', 'y', 'z'],
+      },
+    ),
+    ToolDefinition(
+      name: 'fillBlocks',
+      description: 'Fill a region with blocks',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'fromX': {'type': 'integer', 'description': 'Starting X coordinate'},
+          'fromY': {'type': 'integer', 'description': 'Starting Y coordinate'},
+          'fromZ': {'type': 'integer', 'description': 'Starting Z coordinate'},
+          'toX': {'type': 'integer', 'description': 'Ending X coordinate'},
+          'toY': {'type': 'integer', 'description': 'Ending Y coordinate'},
+          'toZ': {'type': 'integer', 'description': 'Ending Z coordinate'},
+          'blockId': {
+            'type': 'string',
+            'description': 'Block identifier (e.g., "minecraft:stone")',
+          },
+        },
+        'required': ['fromX', 'fromY', 'fromZ', 'toX', 'toY', 'toZ', 'blockId'],
+      },
+    ),
+
+    // Entity tools
+    ToolDefinition(
+      name: 'spawnEntity',
+      description: 'Spawn an entity at the specified location',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'entityType': {
+            'type': 'string',
+            'description': 'Entity type (e.g., "minecraft:zombie")',
+          },
+          'x': {'type': 'number', 'description': 'X coordinate'},
+          'y': {'type': 'number', 'description': 'Y coordinate'},
+          'z': {'type': 'number', 'description': 'Z coordinate'},
+        },
+        'required': ['entityType', 'x', 'y', 'z'],
+      },
+    ),
+    ToolDefinition(
+      name: 'getEntities',
+      description: 'Query entities within a radius of a position',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'centerX': {'type': 'number', 'description': 'Center X coordinate'},
+          'centerY': {'type': 'number', 'description': 'Center Y coordinate'},
+          'centerZ': {'type': 'number', 'description': 'Center Z coordinate'},
+          'radius': {'type': 'number', 'description': 'Search radius'},
+          'entityType': {
+            'type': 'string',
+            'description': 'Optional filter by entity type',
+          },
+        },
+        'required': ['centerX', 'centerY', 'centerZ', 'radius'],
+      },
+    ),
+
+    // Player/Camera tools
+    ToolDefinition(
+      name: 'teleportPlayer',
+      description: 'Teleport the player to the specified coordinates',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'x': {'type': 'number', 'description': 'X coordinate'},
+          'y': {'type': 'number', 'description': 'Y coordinate'},
+          'z': {'type': 'number', 'description': 'Z coordinate'},
+        },
+        'required': ['x', 'y', 'z'],
+      },
+    ),
+    ToolDefinition(
+      name: 'positionCamera',
+      description: 'Set the camera position and orientation',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'x': {'type': 'number', 'description': 'X coordinate'},
+          'y': {'type': 'number', 'description': 'Y coordinate'},
+          'z': {'type': 'number', 'description': 'Z coordinate'},
+          'yaw': {'type': 'number', 'description': 'Yaw rotation (horizontal)'},
+          'pitch': {'type': 'number', 'description': 'Pitch rotation (vertical)'},
+        },
+        'required': ['x', 'y', 'z', 'yaw', 'pitch'],
+      },
+    ),
+    ToolDefinition(
+      name: 'lookAt',
+      description: 'Make the player look at a specific position',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'x': {'type': 'number', 'description': 'Target X coordinate'},
+          'y': {'type': 'number', 'description': 'Target Y coordinate'},
+          'z': {'type': 'number', 'description': 'Target Z coordinate'},
+        },
+        'required': ['x', 'y', 'z'],
+      },
+    ),
+
+    // Visual tools
+    ToolDefinition(
+      name: 'takeScreenshot',
+      description: 'Capture a screenshot of the current view',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'name': {
+            'type': 'string',
+            'description': 'Name for the screenshot file',
+          },
+        },
+        'required': ['name'],
+      },
+    ),
+    ToolDefinition(
+      name: 'getScreenshot',
+      description: 'Get a previously captured screenshot as base64',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'name': {
+            'type': 'string',
+            'description': 'Name of the screenshot to retrieve',
+          },
+        },
+        'required': ['name'],
+      },
+    ),
+
+    // Input tools
+    ToolDefinition(
+      name: 'pressKey',
+      description: 'Simulate a key press',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'keyCode': {
+            'type': 'integer',
+            'description': 'GLFW key code to press',
+          },
+          'hold': {
+            'type': 'boolean',
+            'description': 'Whether to hold the key (default: false)',
+          },
+          'duration': {
+            'type': 'integer',
+            'description': 'Duration to hold in milliseconds (if hold is true)',
+          },
+        },
+        'required': ['keyCode'],
+      },
+    ),
+    ToolDefinition(
+      name: 'click',
+      description: 'Simulate a mouse click',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'button': {
+            'type': 'integer',
+            'description': 'Mouse button (0=left, 1=right, 2=middle)',
+          },
+          'x': {'type': 'integer', 'description': 'Screen X coordinate'},
+          'y': {'type': 'integer', 'description': 'Screen Y coordinate'},
+        },
+        'required': ['button', 'x', 'y'],
+      },
+    ),
+    ToolDefinition(
+      name: 'typeText',
+      description: 'Type text into the current input field',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'text': {
+            'type': 'string',
+            'description': 'Text to type',
+          },
+        },
+        'required': ['text'],
+      },
+    ),
+
+    // Time/Command tools
+    ToolDefinition(
+      name: 'waitTicks',
+      description: 'Wait for a specified number of game ticks (20 ticks = 1 second)',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'ticks': {
+            'type': 'integer',
+            'description': 'Number of game ticks to wait',
+          },
+        },
+        'required': ['ticks'],
+      },
+    ),
+    ToolDefinition(
+      name: 'setTimeOfDay',
+      description: 'Set the in-game time of day',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'time': {
+            'type': 'integer',
+            'description': 'Time in ticks (0=dawn, 6000=noon, 12000=dusk, 18000=midnight)',
+          },
+        },
+        'required': ['time'],
+      },
+    ),
+    ToolDefinition(
+      name: 'executeCommand',
+      description: 'Execute a Minecraft command',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'command': {
+            'type': 'string',
+            'description': 'Command to execute (without leading slash)',
+          },
+        },
+        'required': ['command'],
+      },
+    ),
+  ];
+
+  /// List all available tools.
+  List<Map<String, dynamic>> listTools() {
+    return _tools.map((tool) => tool.toJson()).toList();
+  }
+
+  /// Call a tool by name with the given arguments.
+  Future<Map<String, dynamic>> callTool(
+    String name,
+    Map<String, dynamic> arguments,
+  ) async {
+    final tool = _tools.where((t) => t.name == name).firstOrNull;
+    if (tool == null) {
+      return _errorResult('Unknown tool "$name"');
+    }
+
+    try {
+      final result = await _executeTool(name, arguments);
+      return _successResult(result);
+    } on GameClientException catch (e) {
+      return _errorResult('Game server error: ${e.message}', code: e.statusCode);
+    } on StateError catch (e) {
+      return _errorResult(e.message);
+    } catch (e) {
+      return _errorResult('Tool execution failed: $e');
+    }
+  }
+
+  /// Execute a tool and return its result.
+  Future<Map<String, dynamic>> _executeTool(
+    String name,
+    Map<String, dynamic> args,
+  ) async {
+    switch (name) {
+      // =========================================================================
+      // Lifecycle Tools
+      // =========================================================================
+      case 'startMinecraft':
+        return _handleStartMinecraft(args);
+
+      case 'stopMinecraft':
+        return _handleStopMinecraft();
+
+      case 'getStatus':
+        return _handleGetStatus();
+
+      // =========================================================================
+      // World Tools
+      // =========================================================================
+      case 'placeBlock':
+        return _handlePlaceBlock(args);
+
+      case 'getBlock':
+        return _handleGetBlock(args);
+
+      case 'fillBlocks':
+        return _handleFillBlocks(args);
+
+      // =========================================================================
+      // Entity Tools
+      // =========================================================================
+      case 'spawnEntity':
+        return _handleSpawnEntity(args);
+
+      case 'getEntities':
+        return _handleGetEntities(args);
+
+      // =========================================================================
+      // Player/Camera Tools
+      // =========================================================================
+      case 'teleportPlayer':
+        return _handleTeleportPlayer(args);
+
+      case 'positionCamera':
+        return _handlePositionCamera(args);
+
+      case 'lookAt':
+        return _handleLookAt(args);
+
+      // =========================================================================
+      // Visual Tools
+      // =========================================================================
+      case 'takeScreenshot':
+        return _handleTakeScreenshot(args);
+
+      case 'getScreenshot':
+        return _handleGetScreenshot(args);
+
+      // =========================================================================
+      // Input Tools
+      // =========================================================================
+      case 'pressKey':
+        return _handlePressKey(args);
+
+      case 'click':
+        return _handleClick(args);
+
+      case 'typeText':
+        return _handleTypeText(args);
+
+      // =========================================================================
+      // Time/Command Tools
+      // =========================================================================
+      case 'waitTicks':
+        return _handleWaitTicks(args);
+
+      case 'setTimeOfDay':
+        return _handleSetTimeOfDay(args);
+
+      case 'executeCommand':
+        return _handleExecuteCommand(args);
+
+      default:
+        throw StateError('Tool "$name" has no implementation');
+    }
+  }
+
+  // ===========================================================================
+  // Lifecycle Tool Handlers
+  // ===========================================================================
+
+  Future<Map<String, dynamic>> _handleStartMinecraft(Map<String, dynamic> args) async {
+    if (minecraftController == null) {
+      throw StateError('Minecraft controller not configured. Provide --mod-path when starting the MCP server.');
+    }
+
+    if (minecraftController!.isRunning) {
+      throw StateError('Minecraft is already running');
+    }
+
+    await minecraftController!.start();
+
+    // Wait for Minecraft to be ready
+    final ready = await minecraftController!.waitForReady();
+    if (!ready) {
+      throw StateError('Minecraft failed to start or timed out');
+    }
+
+    // Update game client reference
+    gameClient = minecraftController!.gameClient;
+
+    return {
+      'success': true,
+      'message': 'Minecraft started successfully',
+      'status': minecraftController!.status.name,
+      'worldName': minecraftController!.worldName,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleStopMinecraft() async {
+    if (minecraftController == null) {
+      throw StateError('Minecraft controller not configured');
+    }
+
+    await minecraftController!.stop();
+    gameClient = null;
+
+    return {
+      'success': true,
+      'message': 'Minecraft stopped',
+    };
+  }
+
+  Map<String, dynamic> _handleGetStatus() {
+    if (minecraftController == null) {
+      return {
+        'configured': false,
+        'status': 'not_configured',
+        'message': 'Minecraft controller not configured. Provide --mod-path when starting the MCP server.',
+      };
+    }
+
+    return {
+      'configured': true,
+      'status': minecraftController!.status.name,
+      'isRunning': minecraftController!.isRunning,
+      'worldName': minecraftController!.worldName,
+    };
+  }
+
+  // ===========================================================================
+  // World Tool Handlers
+  // ===========================================================================
+
+  Future<Map<String, dynamic>> _handlePlaceBlock(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final x = args['x'] as int;
+    final y = args['y'] as int;
+    final z = args['z'] as int;
+    final blockId = args['blockId'] as String;
+
+    await gameClient!.placeBlock(x, y, z, blockId);
+
+    return {
+      'success': true,
+      'x': x,
+      'y': y,
+      'z': z,
+      'blockId': blockId,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleGetBlock(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final x = args['x'] as int;
+    final y = args['y'] as int;
+    final z = args['z'] as int;
+
+    final blockId = await gameClient!.getBlock(x, y, z);
+
+    return {
+      'blockId': blockId,
+      'x': x,
+      'y': y,
+      'z': z,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleFillBlocks(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final fromX = args['fromX'] as int;
+    final fromY = args['fromY'] as int;
+    final fromZ = args['fromZ'] as int;
+    final toX = args['toX'] as int;
+    final toY = args['toY'] as int;
+    final toZ = args['toZ'] as int;
+    final blockId = args['blockId'] as String;
+
+    await gameClient!.fillBlocks(fromX, fromY, fromZ, toX, toY, toZ, blockId);
+
+    return {
+      'success': true,
+      'from': {'x': fromX, 'y': fromY, 'z': fromZ},
+      'to': {'x': toX, 'y': toY, 'z': toZ},
+      'blockId': blockId,
+    };
+  }
+
+  // ===========================================================================
+  // Entity Tool Handlers
+  // ===========================================================================
+
+  Future<Map<String, dynamic>> _handleSpawnEntity(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final entityType = args['entityType'] as String;
+    final x = (args['x'] as num).toDouble();
+    final y = (args['y'] as num).toDouble();
+    final z = (args['z'] as num).toDouble();
+
+    final entity = await gameClient!.spawnEntity(entityType, x, y, z);
+
+    return entity.toJson();
+  }
+
+  Future<Map<String, dynamic>> _handleGetEntities(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final centerX = (args['centerX'] as num).toDouble();
+    final centerY = (args['centerY'] as num).toDouble();
+    final centerZ = (args['centerZ'] as num).toDouble();
+    final radius = (args['radius'] as num).toDouble();
+    final entityType = args['entityType'] as String?;
+
+    final entities = await gameClient!.getEntities(
+      centerX,
+      centerY,
+      centerZ,
+      radius,
+      entityType: entityType,
+    );
+
+    return {
+      'entities': entities.map((e) => e.toJson()).toList(),
+      'count': entities.length,
+    };
+  }
+
+  // ===========================================================================
+  // Player/Camera Tool Handlers
+  // ===========================================================================
+
+  Future<Map<String, dynamic>> _handleTeleportPlayer(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final x = (args['x'] as num).toDouble();
+    final y = (args['y'] as num).toDouble();
+    final z = (args['z'] as num).toDouble();
+
+    await gameClient!.teleportPlayer(x, y, z);
+
+    return {
+      'success': true,
+      'x': x,
+      'y': y,
+      'z': z,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handlePositionCamera(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final x = (args['x'] as num).toDouble();
+    final y = (args['y'] as num).toDouble();
+    final z = (args['z'] as num).toDouble();
+    final yaw = (args['yaw'] as num).toDouble();
+    final pitch = (args['pitch'] as num).toDouble();
+
+    await gameClient!.positionCamera(x, y, z, yaw, pitch);
+
+    return {
+      'success': true,
+      'x': x,
+      'y': y,
+      'z': z,
+      'yaw': yaw,
+      'pitch': pitch,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleLookAt(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final x = (args['x'] as num).toDouble();
+    final y = (args['y'] as num).toDouble();
+    final z = (args['z'] as num).toDouble();
+
+    await gameClient!.lookAt(x, y, z);
+
+    return {
+      'success': true,
+      'lookingAt': {'x': x, 'y': y, 'z': z},
+    };
+  }
+
+  // ===========================================================================
+  // Visual Tool Handlers
+  // ===========================================================================
+
+  Future<Map<String, dynamic>> _handleTakeScreenshot(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final name = args['name'] as String;
+
+    final path = await gameClient!.takeScreenshot(name);
+
+    return {
+      'success': true,
+      'name': name,
+      'path': path,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleGetScreenshot(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final name = args['name'] as String;
+
+    final base64Data = await gameClient!.getScreenshotBase64(name);
+
+    if (base64Data == null) {
+      throw StateError('Screenshot "$name" not found');
+    }
+
+    return {
+      'name': name,
+      'base64': base64Data,
+    };
+  }
+
+  // ===========================================================================
+  // Input Tool Handlers
+  // ===========================================================================
+
+  Future<Map<String, dynamic>> _handlePressKey(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final keyCode = args['keyCode'] as int;
+    final hold = args['hold'] as bool? ?? false;
+    final duration = args['duration'] as int?;
+
+    if (hold && duration != null) {
+      await gameClient!.holdKeyFor(keyCode, duration);
+    } else {
+      await gameClient!.pressKey(keyCode);
+    }
+
+    return {
+      'success': true,
+      'keyCode': keyCode,
+      'held': hold,
+      'duration': duration,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleClick(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final button = args['button'] as int;
+    final x = args['x'] as int;
+    final y = args['y'] as int;
+
+    await gameClient!.click(button, x, y);
+
+    return {
+      'success': true,
+      'button': button,
+      'x': x,
+      'y': y,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleTypeText(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final text = args['text'] as String;
+
+    await gameClient!.typeText(text);
+
+    return {
+      'success': true,
+      'text': text,
+      'length': text.length,
+    };
+  }
+
+  // ===========================================================================
+  // Time/Command Tool Handlers
+  // ===========================================================================
+
+  Future<Map<String, dynamic>> _handleWaitTicks(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final ticks = args['ticks'] as int;
+
+    await gameClient!.waitTicks(ticks);
+
+    return {
+      'success': true,
+      'ticksWaited': ticks,
+      'approximateMs': ticks * 50, // 20 ticks = 1 second = 1000ms
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleSetTimeOfDay(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final time = args['time'] as int;
+
+    await gameClient!.setTimeOfDay(time);
+
+    return {
+      'success': true,
+      'time': time,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleExecuteCommand(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final command = args['command'] as String;
+
+    final result = await gameClient!.executeCommand(command);
+
+    return {
+      'success': true,
+      'command': command,
+      'result': result,
+    };
+  }
+
+  // ===========================================================================
+  // Helper Methods
+  // ===========================================================================
+
+  /// Ensure game client is available.
+  void _ensureGameClient() {
+    if (gameClient == null) {
+      throw StateError('Minecraft is not running. Call startMinecraft first.');
+    }
+  }
+
+  /// Create a success result in MCP format.
+  Map<String, dynamic> _successResult(Map<String, dynamic> data) {
+    return {
+      'content': [
+        {
+          'type': 'text',
+          'text': _formatResultText(data),
+        },
+      ],
+    };
+  }
+
+  /// Create an error result in MCP format.
+  Map<String, dynamic> _errorResult(String message, {int? code}) {
+    return {
+      'content': [
+        {
+          'type': 'text',
+          'text': 'Error: $message${code != null ? ' (code: $code)' : ''}',
+        },
+      ],
+      'isError': true,
+    };
+  }
+
+  /// Format result data as readable text.
+  String _formatResultText(Map<String, dynamic> data) {
+    final buffer = StringBuffer();
+    for (final entry in data.entries) {
+      final value = entry.value;
+      if (value is Map || value is List) {
+        buffer.writeln('${entry.key}: ${_formatJson(value)}');
+      } else {
+        buffer.writeln('${entry.key}: $value');
+      }
+    }
+    return buffer.toString().trimRight();
+  }
+
+  /// Format complex values as compact JSON.
+  String _formatJson(dynamic value) {
+    if (value is Map) {
+      final parts = value.entries.map((e) => '${e.key}: ${_formatJson(e.value)}');
+      return '{${parts.join(', ')}}';
+    } else if (value is List) {
+      final parts = value.map(_formatJson);
+      return '[${parts.join(', ')}]';
+    }
+    return value.toString();
+  }
+}
+
+/// Definition of an MCP tool.
+class ToolDefinition {
+  /// Unique name for the tool.
+  final String name;
+
+  /// Human-readable description.
+  final String description;
+
+  /// JSON Schema for the input parameters.
+  final Map<String, dynamic> inputSchema;
+
+  ToolDefinition({
+    required this.name,
+    required this.description,
+    required this.inputSchema,
+  });
+
+  /// Convert to JSON for the MCP protocol.
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'description': description,
+      'inputSchema': inputSchema,
+    };
+  }
+}

@@ -306,6 +306,69 @@ class _RegisteredCommand {
 }
 
 // =============================================================================
+// Command Execution
+// =============================================================================
+
+/// Utilities for executing Minecraft commands from Dart.
+///
+/// This class provides methods to execute Minecraft commands programmatically,
+/// similar to typing commands in the game chat or console.
+///
+/// ## Example
+///
+/// ```dart
+/// // Execute as server console
+/// CommandExecutor.execute('give @p minecraft:diamond 64');
+/// CommandExecutor.execute('tp @p 0 100 0');
+/// CommandExecutor.execute('kill @e[type=zombie]');
+/// CommandExecutor.execute('time set day');
+///
+/// // Execute as a specific player (respects their permission level)
+/// CommandExecutor.executeAsPlayer(player.id, 'gamemode creative');
+/// ```
+class CommandExecutor {
+  CommandExecutor._();
+
+  /// Execute a Minecraft command as the server console.
+  ///
+  /// The command should NOT include the leading slash.
+  ///
+  /// Example:
+  /// ```dart
+  /// CommandExecutor.execute('give @p minecraft:diamond 64');
+  /// CommandExecutor.execute('tp @p 0 100 0');
+  /// CommandExecutor.execute('kill @e[type=zombie]');
+  /// CommandExecutor.execute('time set day');
+  /// ```
+  static void execute(String command) {
+    GenericJniBridge.callStaticVoidMethod(
+      'com/redstone/DartBridge',
+      'executeCommand',
+      '(Ljava/lang/String;)V',
+      [command],
+    );
+  }
+
+  /// Execute a Minecraft command as a specific player.
+  ///
+  /// This respects the player's permission level - commands will fail
+  /// if the player doesn't have permission to run them.
+  ///
+  /// Example:
+  /// ```dart
+  /// CommandExecutor.executeAsPlayer(player.id, 'gamemode creative');
+  /// ```
+  static void executeAsPlayer(int playerId, String command) {
+    GenericJniBridge.callStaticVoidMethod(
+      'com/redstone/DartBridge',
+      'executeCommandAsPlayer',
+      '(ILjava/lang/String;)V',
+      [playerId, command],
+    );
+  }
+}
+
+// =============================================================================
 // FFI Callback Type Definitions
 // =============================================================================
 

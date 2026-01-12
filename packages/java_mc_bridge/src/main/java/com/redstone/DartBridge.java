@@ -1,5 +1,6 @@
 package com.redstone;
 
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -893,6 +894,84 @@ public class DartBridge {
         } else {
             LOGGER.warn("Cannot stop server: no server instance available");
         }
+    }
+
+    // ==========================================================================
+    // Command Execution APIs
+    // ==========================================================================
+
+    /**
+     * Execute a Minecraft command as the server console.
+     *
+     * @param command The command to execute (without leading slash)
+     */
+    public static void executeCommand(String command) {
+        if (serverInstance == null) {
+            LOGGER.warn("Cannot execute command - no server instance");
+            return;
+        }
+        try {
+            CommandSourceStack source = serverInstance.createCommandSourceStack();
+            serverInstance.getCommands().performPrefixedCommand(source, command);
+        } catch (Exception e) {
+            LOGGER.error("Error executing command '{}': {}", command, e.getMessage());
+        }
+    }
+
+    /**
+     * Execute a Minecraft command as a specific player.
+     *
+     * @param playerId The player's entity ID
+     * @param command The command to execute (without leading slash)
+     */
+    public static void executeCommandAsPlayer(int playerId, String command) {
+        if (serverInstance == null) {
+            LOGGER.warn("Cannot execute command - no server instance");
+            return;
+        }
+        try {
+            ServerPlayer player = getPlayerById(playerId);
+            if (player == null) {
+                LOGGER.warn("Cannot execute command - player not found: {}", playerId);
+                return;
+            }
+            CommandSourceStack source = player.createCommandSourceStack();
+            serverInstance.getCommands().performPrefixedCommand(source, command);
+        } catch (Exception e) {
+            LOGGER.error("Error executing command '{}': {}", command, e.getMessage());
+        }
+    }
+
+    // ==========================================================================
+    // MCP Mode APIs
+    // ==========================================================================
+
+    /**
+     * Check if MCP mode is enabled.
+     *
+     * Returns true if the MCP_MODE system property is set to "true".
+     * This is used by the Dart MCP runtime to know if it should start.
+     */
+    public static boolean isMcpModeEnabled() {
+        return "true".equals(System.getProperty("MCP_MODE"));
+    }
+
+    /**
+     * Get the MCP server port.
+     *
+     * Returns the MCP_SERVER_PORT system property as an int,
+     * or the default port (8765) if not set.
+     */
+    public static int getMcpServerPort() {
+        String portStr = System.getProperty("MCP_SERVER_PORT");
+        if (portStr != null) {
+            try {
+                return Integer.parseInt(portStr);
+            } catch (NumberFormatException e) {
+                return 8765;
+            }
+        }
+        return 8765;
     }
 
     // ==========================================================================

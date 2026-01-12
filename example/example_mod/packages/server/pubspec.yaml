@@ -16,6 +16,8 @@ dependencies:
     path: ../../../../packages/dart_mod_common
   example_mod_common:
     path: ../common
+  minecraft_mcp:
+    path: ../../../../packages/minecraft_mcp
 
 dev_dependencies:
   redstone_test:

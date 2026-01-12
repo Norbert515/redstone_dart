@@ -13,6 +13,9 @@
 // Server-side Dart mod API
 import 'package:dart_mod_server/dart_mod_server.dart';
 
+// MCP runtime for AI-controlled testing
+import 'package:minecraft_mcp/runtime.dart';
+
 // Feature modules
 import 'block_entities/block_entities.dart';
 import 'blocks/blocks.dart';
@@ -115,5 +118,9 @@ void main() {
     print('          ExampleFurnace (block entity demo with smelting!)');
     print('  Entities: DartZombie, DartCow, DartFireball, CustomGoalZombie (with Dart AI!)');
     print('  Containers: TestChest (Flutter slot integration demo)');
+
+    // Initialize MCP runtime for AI-controlled testing (if enabled)
+    // This starts an HTTP server that allows external AI agents to control Minecraft
+    initializeMcpRuntime();
   });
 }

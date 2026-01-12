@@ -95,7 +95,13 @@ class MinecraftRunner {
 
   /// Start Minecraft with the mod
   /// If [quickPlayWorld] is provided, Minecraft will auto-join that world on startup.
-  Future<void> start({String? quickPlayWorld}) async {
+  /// If [mcpMode] is true, enables the MCP HTTP server for AI-controlled testing.
+  /// If [mcpPort] is provided, specifies the port for the MCP HTTP server.
+  Future<void> start({
+    String? quickPlayWorld,
+    bool mcpMode = false,
+    int? mcpPort,
+  }) async {
     // Reset VM service detections
     _serverVmService = null;
     _clientVmService = null;
@@ -134,6 +140,15 @@ class MinecraftRunner {
     if (quickPlayWorld != null) {
       gradleArgs.add('-PquickPlayWorld=$quickPlayWorld');
       Logger.debug('Quick play world: $quickPlayWorld');
+    }
+
+    // Enable MCP mode if specified
+    if (mcpMode) {
+      gradleArgs.add('-PmcpMode=true');
+      if (mcpPort != null) {
+        gradleArgs.add('-PmcpServerPort=$mcpPort');
+      }
+      Logger.debug('MCP mode enabled on port ${mcpPort ?? 8765}');
     }
 
     // Enable dual runtime mode if specified
@@ -383,6 +398,7 @@ class MinecraftRunner {
     final settings = <String, String>{
       // Core test settings
       'pauseOnLostFocus': 'false',
+      'onboardAccessibility': 'false', // Skip accessibility onboarding screen
 
       // Performance settings for faster tests
       'renderDistance': '2',

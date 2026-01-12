@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "minecraft": {
+      "type": "stdio",
+      "command": "dart",
+      "args": [
+        "run",
+        "packages/minecraft_mcp/bin/minecraft_mcp.dart",
+        "--mod-path",
+        "example/example_mod"
+      ],
+      "env": {}
+    }
+  }
+}

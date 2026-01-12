@@ -1,0 +1,14 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    unused_element_parameter: ignore
+
+linter:
+  rules:
+    - avoid_print
+    - prefer_single_quotes

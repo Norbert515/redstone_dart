@@ -122,6 +122,16 @@ class RunCommand extends Command<int> {
       abbr: 'w',
       help: 'World to auto-join on startup (uses Quick Play).',
     );
+    argParser.addFlag(
+      'mcp-mode',
+      help: 'Enable MCP mode for AI-controlled testing.',
+      negatable: false,
+    );
+    argParser.addOption(
+      'mcp-port',
+      help: 'Port for MCP HTTP server (default: 8765).',
+      defaultsTo: '8765',
+    );
   }
 
   @override
@@ -195,7 +205,15 @@ class RunCommand extends Command<int> {
       // Get optional world name for Quick Play
       final worldName = argResults!['world'] as String?;
 
-      await runner.start(quickPlayWorld: worldName);
+      // Get MCP mode settings
+      final mcpMode = argResults!['mcp-mode'] as bool;
+      final mcpPort = argResults!['mcp-port'] as String;
+
+      await runner.start(
+        quickPlayWorld: worldName,
+        mcpMode: mcpMode,
+        mcpPort: mcpMode ? int.parse(mcpPort) : null,
+      );
 
       if (hotReloadEnabled) {
         if (dualRuntimeEnabled) {

@@ -20,6 +20,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.renderer.entity.NoopRenderer;
 import net.minecraft.resources.Identifier;
@@ -234,6 +235,14 @@ public class DartModClientLoader implements ClientModInitializer {
             LOGGER.info("[DartModClientLoader] Visual test mode enabled via system property");
         }
 
+        // Skip accessibility onboarding screen for automated testing/development
+        // This screen blocks automated tests and manual debugging workflows
+        skipAccessibilityOnboarding();
+
+        // Log MCP mode status for debugging
+        LOGGER.info("[DartModClientLoader] MCP_MODE system property: {}", System.getProperty("MCP_MODE"));
+        LOGGER.info("[DartModClientLoader] MCP mode enabled: {}", isMcpModeEnabled());
+
         // Initialize Flutter client runtime
         // This runs AFTER DartModLoader.onInitialize() has initialized the server runtime
         initializeFlutterClientRuntime();
@@ -314,14 +323,36 @@ public class DartModClientLoader implements ClientModInitializer {
 
         LOGGER.info("[DartModClientLoader] Client tick and ready events registered!");
 
-        // Register screen event for visual test mode auto-join
+        // Register screen event for visual test mode and MCP auto-join
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            // Auto-join test world if visual test mode OR MCP mode is enabled
+            // Check both the flag AND the system properties directly for robustness
+            boolean visualTestMode = DartBridgeClient.isVisualTestMode() || "true".equals(System.getProperty("VISUAL_TEST_MODE"));
+            boolean mcpMode = isMcpModeEnabled();
+            boolean shouldAutoJoin = visualTestMode || mcpMode;
+
+            // Log on every screen for debugging
+            LOGGER.info("[DartModClientLoader] Screen opened: {}, visualTestMode={}, mcpMode={}, shouldAutoJoin={}",
+                screen.getClass().getSimpleName(), visualTestMode, mcpMode, shouldAutoJoin);
+
+            // Auto-dismiss accessibility onboarding screen if it somehow still appears
+            if (screen instanceof AccessibilityOnboardingScreen && shouldAutoJoin) {
+                LOGGER.info("[DartModClientLoader] Auto-dismissing accessibility onboarding screen...");
+                client.execute(() -> {
+                    // Call onboardingAccessibilityFinished to dismiss and go to TitleScreen
+                    client.options.onboardingAccessibilityFinished();
+                    client.setScreen(new TitleScreen());
+                });
+                return;
+            }
+
             if (screen instanceof TitleScreen
-                && DartBridgeClient.isVisualTestMode()
+                && shouldAutoJoin
                 && !DartBridgeClient.hasAttemptedJoinTestWorld()) {
 
                 DartBridgeClient.markJoinTestWorldAttempted();
-                LOGGER.info("[DartModClientLoader] Visual test mode detected - auto-joining test world...");
+                String mode = DartBridgeClient.isVisualTestMode() ? "Visual test" : "MCP";
+                LOGGER.info("[DartModClientLoader] {} mode detected - auto-joining test world...", mode);
                 client.execute(() -> autoJoinTestWorld(client));
             }
         });
@@ -475,6 +506,46 @@ public class DartModClientLoader implements ClientModInitializer {
             WorldPresets::createFlatWorldDimensions,
             new TitleScreen()
         );
+    }
+
+    // ==========================================================================
+    // MCP Mode Detection
+    // ==========================================================================
+
+    /**
+     * Check if MCP mode is enabled via system property.
+     *
+     * MCP mode is enabled when the MCP_MODE system property is set to "true".
+     * This is set by the MCP server when starting Minecraft via Gradle property.
+     */
+    private static boolean isMcpModeEnabled() {
+        return "true".equals(System.getProperty("MCP_MODE"));
+    }
+
+    // ==========================================================================
+    // Accessibility Onboarding Skip
+    // ==========================================================================
+
+    /**
+     * Skip the accessibility onboarding screen that appears on first launch.
+     *
+     * This screen asks about narrator/accessibility settings and blocks automated
+     * testing. We disable it by setting the onboardAccessibility option to false.
+     *
+     * This is safe to call even if it's not the first launch - it just ensures
+     * the option is set to false.
+     */
+    private void skipAccessibilityOnboarding() {
+        try {
+            Minecraft client = Minecraft.getInstance();
+            if (client.options != null && client.options.onboardAccessibility) {
+                // Use the built-in method that sets onboardAccessibility = false and saves
+                client.options.onboardingAccessibilityFinished();
+                LOGGER.info("[DartModClientLoader] Accessibility onboarding screen disabled");
+            }
+        } catch (Exception e) {
+            LOGGER.warn("[DartModClientLoader] Failed to disable accessibility onboarding: {}", e.getMessage());
+        }
     }
 
     // ==========================================================================
