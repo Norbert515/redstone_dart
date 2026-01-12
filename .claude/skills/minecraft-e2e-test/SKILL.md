@@ -151,6 +151,19 @@ Common key codes for input simulation:
 - `68` - D (Right)
 - `340` - Left Shift (Sneak)
 
+## Coordinate System
+
+Modern Minecraft (1.18+) uses an extended height range:
+- World extends from Y=-64 to Y=320
+- Sea level is approximately Y=63
+- **Superflat test worlds have ground at Y=-60**
+
+When testing in the dart_visual_test world (superflat):
+- Ground level: Y=-60
+- Player spawn: teleport to Y=-59 or Y=-60
+- Place blocks starting at Y=-60
+- Spawn entities at Y=-59 (one block above ground)
+
 ## Tips
 
 1. **Always wait after actions** - Use `waitTicks` after placing blocks, spawning entities, or any world modification
@@ -161,19 +174,19 @@ Common key codes for input simulation:
 
 ## Example Test Session
 
-Testing a custom diamond sword that deals extra damage:
+Testing a custom diamond sword that deals extra damage (in superflat test world):
 
 ```
 1. getStatus - Verify Minecraft running
-2. teleportPlayer(100, 64, 100) - Move to test area
-3. fillBlocks(95, 60, 95, 105, 70, 105, "minecraft:air") - Clear area
+2. teleportPlayer(100, -59, 100) - Move to test area (standing on ground at Y=-60)
+3. fillBlocks(95, -60, 95, 105, -50, 105, "minecraft:air") - Clear area above ground
 4. waitTicks(20)
 5. executeCommand("give @p mymod:super_sword") - Give custom item
-6. spawnEntity("minecraft:zombie", 100, 64, 103) - Spawn test target
+6. spawnEntity("minecraft:zombie", 100, -59, 103) - Spawn test target (on ground)
 7. waitTicks(10)
 8. takeScreenshot("before_attack")
 9. // Simulate attack with click/key presses
 10. waitTicks(20)
-11. getEntities(100, 64, 100, 10) - Check if zombie was killed
+11. getEntities(100, -59, 100, 10) - Check if zombie was killed
 12. takeScreenshot("after_attack")
 ```

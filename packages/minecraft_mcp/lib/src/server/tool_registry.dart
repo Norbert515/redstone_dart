@@ -58,7 +58,10 @@ class ToolRegistry {
         'type': 'object',
         'properties': {
           'x': {'type': 'integer', 'description': 'X coordinate'},
-          'y': {'type': 'integer', 'description': 'Y coordinate'},
+          'y': {
+            'type': 'integer',
+            'description': 'Y coordinate (world range: -64 to 320, superflat ground: Y=-60, sea level: ~Y=63)',
+          },
           'z': {'type': 'integer', 'description': 'Z coordinate'},
           'blockId': {
             'type': 'string',
@@ -75,7 +78,10 @@ class ToolRegistry {
         'type': 'object',
         'properties': {
           'x': {'type': 'integer', 'description': 'X coordinate'},
-          'y': {'type': 'integer', 'description': 'Y coordinate'},
+          'y': {
+            'type': 'integer',
+            'description': 'Y coordinate (world range: -64 to 320, superflat ground: Y=-60, sea level: ~Y=63)',
+          },
           'z': {'type': 'integer', 'description': 'Z coordinate'},
         },
         'required': ['x', 'y', 'z'],
@@ -88,10 +94,16 @@ class ToolRegistry {
         'type': 'object',
         'properties': {
           'fromX': {'type': 'integer', 'description': 'Starting X coordinate'},
-          'fromY': {'type': 'integer', 'description': 'Starting Y coordinate'},
+          'fromY': {
+            'type': 'integer',
+            'description': 'Starting Y coordinate (world range: -64 to 320, superflat ground: Y=-60)',
+          },
           'fromZ': {'type': 'integer', 'description': 'Starting Z coordinate'},
           'toX': {'type': 'integer', 'description': 'Ending X coordinate'},
-          'toY': {'type': 'integer', 'description': 'Ending Y coordinate'},
+          'toY': {
+            'type': 'integer',
+            'description': 'Ending Y coordinate (world range: -64 to 320, superflat ground: Y=-60)',
+          },
           'toZ': {'type': 'integer', 'description': 'Ending Z coordinate'},
           'blockId': {
             'type': 'string',
@@ -114,7 +126,10 @@ class ToolRegistry {
             'description': 'Entity type (e.g., "minecraft:zombie")',
           },
           'x': {'type': 'number', 'description': 'X coordinate'},
-          'y': {'type': 'number', 'description': 'Y coordinate'},
+          'y': {
+            'type': 'number',
+            'description': 'Y coordinate (world range: -64 to 320, superflat ground: Y=-60, sea level: ~Y=63)',
+          },
           'z': {'type': 'number', 'description': 'Z coordinate'},
         },
         'required': ['entityType', 'x', 'y', 'z'],
@@ -127,7 +142,10 @@ class ToolRegistry {
         'type': 'object',
         'properties': {
           'centerX': {'type': 'number', 'description': 'Center X coordinate'},
-          'centerY': {'type': 'number', 'description': 'Center Y coordinate'},
+          'centerY': {
+            'type': 'number',
+            'description': 'Center Y coordinate (world range: -64 to 320, superflat ground: Y=-60)',
+          },
           'centerZ': {'type': 'number', 'description': 'Center Z coordinate'},
           'radius': {'type': 'number', 'description': 'Search radius'},
           'entityType': {
@@ -147,7 +165,10 @@ class ToolRegistry {
         'type': 'object',
         'properties': {
           'x': {'type': 'number', 'description': 'X coordinate'},
-          'y': {'type': 'number', 'description': 'Y coordinate'},
+          'y': {
+            'type': 'number',
+            'description': 'Y coordinate (world range: -64 to 320, superflat ground: Y=-60, sea level: ~Y=63)',
+          },
           'z': {'type': 'number', 'description': 'Z coordinate'},
         },
         'required': ['x', 'y', 'z'],
@@ -160,7 +181,10 @@ class ToolRegistry {
         'type': 'object',
         'properties': {
           'x': {'type': 'number', 'description': 'X coordinate'},
-          'y': {'type': 'number', 'description': 'Y coordinate'},
+          'y': {
+            'type': 'number',
+            'description': 'Y coordinate (world range: -64 to 320, superflat ground: Y=-60, sea level: ~Y=63)',
+          },
           'z': {'type': 'number', 'description': 'Z coordinate'},
           'yaw': {'type': 'number', 'description': 'Yaw rotation (horizontal)'},
           'pitch': {'type': 'number', 'description': 'Pitch rotation (vertical)'},
@@ -175,7 +199,10 @@ class ToolRegistry {
         'type': 'object',
         'properties': {
           'x': {'type': 'number', 'description': 'Target X coordinate'},
-          'y': {'type': 'number', 'description': 'Target Y coordinate'},
+          'y': {
+            'type': 'number',
+            'description': 'Target Y coordinate (world range: -64 to 320, superflat ground: Y=-60)',
+          },
           'z': {'type': 'number', 'description': 'Target Z coordinate'},
         },
         'required': ['x', 'y', 'z'],

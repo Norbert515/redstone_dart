@@ -230,13 +230,16 @@ class MinecraftController {
           _process!.kill(ProcessSignal.sigterm);
         }
 
-        // Also try to find and kill any Minecraft Java processes we spawned
-        // This is a backup in case process group kill doesn't work
+        // Try graceful shutdown first using SIGTERM
+        // Fabric Loader uses fabric.dli.main (DevLaunchInjector)
         try {
-          await Process.run('pkill', ['-f', 'net.minecraft.client.main.Main']);
+          await Process.run('pkill', ['-TERM', '-f', 'fabric.dli.main']);
         } catch (_) {
           // Ignore errors
         }
+
+        // Wait a moment for graceful shutdown
+        await Future<void>.delayed(const Duration(seconds: 2));
       } else {
         // On Windows, try taskkill with /T to kill the tree
         try {
@@ -253,10 +256,17 @@ class MinecraftController {
       if (exited == -1) {
         // Force kill if didn't exit gracefully
         if (!Platform.isWindows) {
+          // Force kill the Fabric/Minecraft process
           try {
-            Process.killPid(-pid, ProcessSignal.sigkill);
+            await Process.run('pkill', ['-9', '-f', 'fabric.dli.main']);
           } catch (_) {
-            _process!.kill(ProcessSignal.sigkill);
+            // Ignore errors
+          }
+          // Also kill gradle wrapper if still running
+          try {
+            await Process.run('pkill', ['-9', '-f', 'gradle.*runClient']);
+          } catch (_) {
+            // Ignore errors
           }
         } else {
           _process!.kill(ProcessSignal.sigkill);
