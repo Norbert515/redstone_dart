@@ -9,20 +9,31 @@ This skill enables you to control a Minecraft client for end-to-end testing of m
 
 ## Prerequisites
 
-The Minecraft MCP server must be running. Start it with:
+The Minecraft MCP server must be configured in Claude Code settings. It does NOT need a mod path at startup - you provide that when starting Minecraft.
 
-```bash
-dart run packages/minecraft_mcp/bin/minecraft_mcp.dart --mod-path <path-to-mod>
+## Starting Minecraft
+
+To start Minecraft for testing, call `startMinecraft` with the absolute path to your mod:
+
+```
+startMinecraft(modPath: "/absolute/path/to/your/mod")
 ```
 
-Or if configured as an MCP server in Claude Code settings, it will be available automatically.
+**What happens automatically:**
+- Builds the mod with `redstone run`
+- Creates and loads a superflat test world (`dart_visual_test`)
+- Starts the MCP game server inside Minecraft
+- Runs in background mode (won't steal window focus)
+- Disables hot reload for stability
+
+Just provide the mod path and everything else is handled!
 
 ## Available Tools
 
 When the Minecraft MCP is connected, you have access to these tools:
 
 ### Lifecycle Management
-- `startMinecraft` - Start the Minecraft client
+- `startMinecraft(modPath)` - Start Minecraft with the specified mod (provide absolute path)
 - `stopMinecraft` - Stop the Minecraft client
 - `getStatus` - Check if Minecraft is running
 
@@ -46,8 +57,12 @@ When the Minecraft MCP is connected, you have access to these tools:
 
 ### Input Simulation
 - `pressKey(keyCode)` - Press a keyboard key
-- `click(button, x, y)` - Click mouse at screen coordinates
-- `typeText(text)` - Type text
+- `click(button, x, y)` - Click mouse at screen coordinates (button: 0=left, 1=right, 2=middle)
+- `holdMouse(button)` - Hold mouse button down (for breaking blocks, using items)
+- `releaseMouse(button)` - Release held mouse button
+- `moveMouse(x, y)` - Move cursor to screen coordinates
+- `scroll(horizontal, vertical)` - Scroll mouse wheel (positive vertical = scroll up)
+- `typeText(text)` - Type text into input field
 
 ### Time & Commands
 - `waitTicks(ticks)` - Wait for game ticks (20 ticks = 1 second)
