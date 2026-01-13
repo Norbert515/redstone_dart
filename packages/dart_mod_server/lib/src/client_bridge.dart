@@ -8,7 +8,7 @@
 /// complexity of additional FFI callback bindings.
 library;
 
-import 'package:dart_mod_common/dart_mod_common.dart';
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
 
 /// Client-side bridge for Minecraft client operations.
 ///

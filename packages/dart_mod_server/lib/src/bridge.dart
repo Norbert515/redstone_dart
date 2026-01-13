@@ -6,7 +6,7 @@ library;
 import 'dart:ffi';
 import 'dart:io';
 
-import 'package:dart_mod_common/dart_mod_common.dart' show GenericJniBridge;
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
 import 'package:ffi/ffi.dart';
 
 /// Type alias for backward compatibility with code using Bridge.

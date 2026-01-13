@@ -1,6 +1,7 @@
 /// API for defining custom blocks in Dart.
 library;
 
+import '../registry/registrable.dart';
 import '../types.dart';
 import 'block_model.dart';
 import 'block_settings.dart';
@@ -24,7 +25,7 @@ import 'block_settings.dart';
 ///   }
 /// }
 /// ```
-abstract class CustomBlock {
+abstract class CustomBlock implements Registrable {
   /// The block identifier in format "namespace:path" (e.g., "mymod:custom_block").
   final String id;
 
@@ -57,6 +58,7 @@ abstract class CustomBlock {
   }
 
   /// Check if this block has been registered.
+  @override
   bool get isRegistered => _handlerId != null;
 
   /// Called when the block is broken by a player.
@@ -126,6 +128,7 @@ abstract class CustomBlock {
   }
 
   /// Internal: Set the handler ID after registration.
+  @override
   void setHandlerId(int id) {
     _handlerId = id;
   }

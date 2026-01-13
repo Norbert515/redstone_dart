@@ -9,6 +9,138 @@ import 'package:dart_mod_common/dart_mod_common.dart';
 import 'bridge.dart';
 
 // =============================================================================
+// Abstract Registry Base Class
+// =============================================================================
+
+/// Abstract base class for all registries.
+///
+/// Provides common registration logic, manifest writing, and lookup functionality.
+/// Subclasses must implement the type-specific registration queue method and
+/// manifest entry conversion.
+abstract class Registry<T extends Registrable> {
+  final Map<String, T> _byId = {};
+  final Map<int, T> _byHandler = {};
+  bool _frozen = false;
+
+  /// The key used in the manifest file (e.g., 'blocks', 'items', 'entities').
+  String get manifestKey;
+
+  /// The type name for error messages (e.g., 'block', 'item', 'entity').
+  String get typeName;
+
+  /// Queue the registration with the native bridge and return the handler ID.
+  /// Returns 0 on failure.
+  int queueRegistration(T item);
+
+  /// Convert an item to its manifest entry representation.
+  Map<String, dynamic> toManifestEntry(T item);
+
+  /// Register an item.
+  void registerItem(T item) {
+    if (_frozen) {
+      throw StateError(
+        'Cannot register ${typeName}s after initialization. ${_capitalize(typeName)}: ${item.id}',
+      );
+    }
+
+    if (_byId.containsKey(item.id)) {
+      throw StateError('${_capitalize(typeName)} ${item.id} is already registered');
+    }
+
+    if (item.isRegistered) {
+      throw StateError('${_capitalize(typeName)} already registered: ${item.id}');
+    }
+
+    // Parse namespace:path
+    final parts = item.id.split(':');
+    if (parts.length != 2) {
+      throw ArgumentError(
+        'Invalid $typeName ID: ${item.id}. Must be namespace:path',
+      );
+    }
+
+    final handlerId = queueRegistration(item);
+
+    if (handlerId == 0) {
+      throw StateError('Failed to queue $typeName registration for: ${item.id}');
+    }
+
+    item.setHandlerId(handlerId);
+    _byId[item.id] = item;
+    _byHandler[handlerId] = item;
+
+    // Write manifest after each registration
+    _writeManifest();
+
+    print('${_capitalize(typeName)}Registry: Queued ${item.id} with handler ID $handlerId');
+  }
+
+  /// Write the manifest to `.redstone/manifest.json`.
+  void _writeManifest() {
+    final entries = <Map<String, dynamic>>[];
+
+    for (final item in _byId.values) {
+      entries.add(toManifestEntry(item));
+    }
+
+    // Read existing manifest to preserve other registry entries
+    Map<String, dynamic> manifest = {};
+    final manifestFile = File('.redstone/manifest.json');
+    if (manifestFile.existsSync()) {
+      try {
+        manifest =
+            jsonDecode(manifestFile.readAsStringSync()) as Map<String, dynamic>;
+      } catch (_) {
+        // Ignore parse errors
+      }
+    }
+
+    manifest[manifestKey] = entries;
+
+    // Create .redstone directory if it doesn't exist
+    final redstoneDir = Directory('.redstone');
+    if (!redstoneDir.existsSync()) {
+      redstoneDir.createSync(recursive: true);
+    }
+
+    // Write manifest with pretty formatting
+    final encoder = JsonEncoder.withIndent('  ');
+    manifestFile.writeAsStringSync(encoder.convert(manifest));
+
+    print('${_capitalize(typeName)}Registry: Wrote manifest with ${entries.length} ${typeName}s');
+  }
+
+  /// Get an item by its ID.
+  T? getById(String id) => _byId[id];
+
+  /// Get an item by its handler ID.
+  T? getByHandler(int handlerId) => _byHandler[handlerId];
+
+  /// Check if an item is registered.
+  bool isRegistered(String id) => _byId.containsKey(id);
+
+  /// Get all registered IDs.
+  Iterable<String> get registeredIds => _byId.keys;
+
+  /// Get all registered items.
+  Iterable<T> get all => _byId.values;
+
+  /// Get the count of registered items.
+  int get count => _byId.length;
+
+  /// Check if the registry is frozen.
+  bool get isFrozen => _frozen;
+
+  /// Freeze the registry (internal implementation).
+  void _freeze() {
+    _frozen = true;
+    print('${_capitalize(typeName)}Registry: Frozen with ${_byId.length} ${typeName}s registered');
+  }
+
+  String _capitalize(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+}
+
+// =============================================================================
 // Block Registry
 // =============================================================================
 
@@ -16,54 +148,35 @@ import 'bridge.dart';
 ///
 /// All blocks must be registered during mod initialization (before Minecraft's
 /// registry freezes). Attempting to register blocks after initialization will fail.
-class BlockRegistry {
+class BlockRegistry extends Registry<CustomBlock> {
   static final BlockRegistry _instance = BlockRegistry._();
   static BlockRegistry get instance => _instance;
 
   BlockRegistry._();
 
-  final Map<String, CustomBlock> _blocks = {};
-  final Map<int, CustomBlock> _blocksByHandler = {};
-  bool _frozen = false;
+  @override
+  String get manifestKey => 'blocks';
+
+  @override
+  String get typeName => 'block';
 
   // ===========================================================================
   // Static API for backward compatibility
   // ===========================================================================
 
   /// Register a block (static convenience method).
-  static void register(CustomBlock block) => _instance._register(block);
+  static void register(CustomBlock block) => _instance.registerItem(block);
 
   /// Freeze the registry (static convenience method).
-  static void freeze() => _instance._freeze();
+  static void freeze() => _instance._freezeWithDatagenCheck();
 
   /// Get the number of registered blocks (static convenience getter).
-  static int get blockCount => _instance._blocks.length;
+  static int get blockCount => _instance.count;
 
-
-  void _register(CustomBlock block) {
-    if (_frozen) {
-      throw StateError(
-        'Cannot register blocks after initialization. Block: ${block.id}',
-      );
-    }
-
-    if (_blocks.containsKey(block.id)) {
-      throw StateError('Block ${block.id} is already registered');
-    }
-
-    if (block.isRegistered) {
-      throw StateError('Block already registered: ${block.id}');
-    }
-
-    // Parse namespace:path
+  @override
+  int queueRegistration(CustomBlock block) {
     final parts = block.id.split(':');
-    if (parts.length != 2) {
-      throw ArgumentError(
-        'Invalid block ID: ${block.id}. Must be namespace:path',
-      );
-    }
-
-    final handlerId = ServerBridge.queueBlockRegistration(
+    return ServerBridge.queueBlockRegistration(
       namespace: parts[0],
       path: parts[1],
       hardness: block.settings.hardness,
@@ -78,88 +191,39 @@ class BlockRegistry {
       replaceable: block.settings.replaceable,
       burnable: block.settings.burnable,
     );
-
-    if (handlerId == 0) {
-      throw StateError('Failed to queue block registration for: ${block.id}');
-    }
-
-    block.setHandlerId(handlerId);
-    _blocks[block.id] = block;
-    _blocksByHandler[handlerId] = block;
-
-    // Write manifest after each registration
-    _writeManifest();
-
-    print('BlockRegistry: Queued ${block.id} with handler ID $handlerId');
   }
 
-  /// Write the block manifest to `.redstone/manifest.json`.
-  ///
-  /// This file is read by the CLI to generate Minecraft resource files.
-  void _writeManifest() {
-    final blocks = <Map<String, dynamic>>[];
+  @override
+  Map<String, dynamic> toManifestEntry(CustomBlock block) {
+    final blockEntry = <String, dynamic>{
+      'id': block.id,
+    };
 
-    for (final block in _blocks.values) {
-      final blockEntry = <String, dynamic>{
-        'id': block.id,
-      };
-
-      // Only include model if present
-      if (block.model != null) {
-        blockEntry['model'] = block.model!.toJson();
-      }
-
-      // Include drops if specified
-      if (block.drops != null) {
-        blockEntry['drops'] = block.drops;
-      }
-
-      blocks.add(blockEntry);
+    // Only include model if present
+    if (block.model != null) {
+      blockEntry['model'] = block.model!.toJson();
     }
 
-    // Read existing manifest to preserve items and entities
-    Map<String, dynamic> manifest = {};
-    final manifestFile = File('.redstone/manifest.json');
-    if (manifestFile.existsSync()) {
-      try {
-        manifest =
-            jsonDecode(manifestFile.readAsStringSync()) as Map<String, dynamic>;
-      } catch (_) {
-        // Ignore parse errors
-      }
+    // Include drops if specified
+    if (block.drops != null) {
+      blockEntry['drops'] = block.drops;
     }
 
-    manifest['blocks'] = blocks;
-
-    // Create .redstone directory if it doesn't exist
-    final redstoneDir = Directory('.redstone');
-    if (!redstoneDir.existsSync()) {
-      redstoneDir.createSync(recursive: true);
-    }
-
-    // Write manifest with pretty formatting
-    final encoder = JsonEncoder.withIndent('  ');
-    manifestFile.writeAsStringSync(encoder.convert(manifest));
-
-    print('BlockRegistry: Wrote manifest with ${blocks.length} blocks');
+    return blockEntry;
   }
-
-  CustomBlock? getById(String id) => _blocks[id];
-
-  /// Get a block by its handler ID.
-  CustomBlock? getByHandler(int handlerId) => _blocksByHandler[handlerId];
-
-  bool isBlockRegistered(String id) => _blocks.containsKey(id);
-
-  Iterable<String> get registeredBlockIds => _blocks.keys;
 
   /// Get all registered blocks.
-  Iterable<CustomBlock> get allBlocks => _blocks.values;
+  Iterable<CustomBlock> get allBlocks => all;
 
-  /// Internal freeze implementation.
-  void _freeze() {
-    _frozen = true;
-    print('BlockRegistry: Frozen with ${_blocks.length} blocks registered');
+  /// Check if a block is registered.
+  bool isBlockRegistered(String id) => isRegistered(id);
+
+  /// Get all registered block IDs.
+  Iterable<String> get registeredBlockIds => registeredIds;
+
+  /// Internal freeze implementation with datagen mode check.
+  void _freezeWithDatagenCheck() {
+    _freeze();
 
     // In datagen mode, exit cleanly after registration is complete
     if (ServerBridge.isDatagenMode) {
@@ -167,9 +231,6 @@ class BlockRegistry {
       exit(0);
     }
   }
-
-  /// Check if the registry is frozen.
-  bool get isFrozen => _frozen;
 
   // ===========================================================================
   // Internal dispatch methods - called from native code
@@ -187,7 +248,7 @@ class BlockRegistry {
     int z,
     int playerId,
   ) {
-    final block = _instance._blocksByHandler[handlerId];
+    final block = _instance.getByHandler(handlerId);
     if (block != null) {
       return block.onBreak(worldId, x, y, z, playerId);
     }
@@ -207,7 +268,7 @@ class BlockRegistry {
     int playerId,
     int hand,
   ) {
-    final block = _instance._blocksByHandler[handlerId];
+    final block = _instance.getByHandler(handlerId);
     if (block != null) {
       final result = block.onUse(worldId, x, y, z, playerId, hand);
       return result.index;
@@ -226,7 +287,7 @@ class BlockRegistry {
     int z,
     int entityId,
   ) {
-    final block = _instance._blocksByHandler[handlerId];
+    final block = _instance.getByHandler(handlerId);
     block?.onSteppedOn(worldId, x, y, z, entityId);
   }
 
@@ -242,7 +303,7 @@ class BlockRegistry {
     int entityId,
     double fallDistance,
   ) {
-    final block = _instance._blocksByHandler[handlerId];
+    final block = _instance.getByHandler(handlerId);
     block?.onFallenUpon(worldId, x, y, z, entityId, fallDistance);
   }
 
@@ -256,7 +317,7 @@ class BlockRegistry {
     int y,
     int z,
   ) {
-    final block = _instance._blocksByHandler[handlerId];
+    final block = _instance.getByHandler(handlerId);
     block?.randomTick(worldId, x, y, z);
   }
 
@@ -271,7 +332,7 @@ class BlockRegistry {
     int z,
     int playerId,
   ) {
-    final block = _instance._blocksByHandler[handlerId];
+    final block = _instance.getByHandler(handlerId);
     block?.onPlaced(worldId, x, y, z, playerId);
   }
 
@@ -285,7 +346,7 @@ class BlockRegistry {
     int y,
     int z,
   ) {
-    final block = _instance._blocksByHandler[handlerId];
+    final block = _instance.getByHandler(handlerId);
     block?.onRemoved(worldId, x, y, z);
   }
 
@@ -302,7 +363,7 @@ class BlockRegistry {
     int neighborY,
     int neighborZ,
   ) {
-    final block = _instance._blocksByHandler[handlerId];
+    final block = _instance.getByHandler(handlerId);
     block?.neighborChanged(worldId, x, y, z, neighborX, neighborY, neighborZ);
   }
 
@@ -317,7 +378,7 @@ class BlockRegistry {
     int z,
     int entityId,
   ) {
-    final block = _instance._blocksByHandler[handlerId];
+    final block = _instance.getByHandler(handlerId);
     block?.entityInside(worldId, x, y, z, entityId);
   }
 }
@@ -330,50 +391,34 @@ class BlockRegistry {
 ///
 /// All items must be registered during mod initialization (before Minecraft's
 /// registry freezes). Attempting to register items after initialization will fail.
-class ItemRegistry {
+class ItemRegistry extends Registry<CustomItem> {
   static final ItemRegistry _instance = ItemRegistry._();
   static ItemRegistry get instance => _instance;
 
   ItemRegistry._();
 
-  final Map<String, CustomItem> _items = {};
-  final Map<int, CustomItem> _itemsByHandler = {};
-  bool _frozen = false;
+  @override
+  String get manifestKey => 'items';
+
+  @override
+  String get typeName => 'item';
 
   // ===========================================================================
   // Static API for backward compatibility
   // ===========================================================================
 
   /// Register an item (static convenience method).
-  static void register(CustomItem item) => _instance._register(item);
+  static void register(CustomItem item) => _instance.registerItem(item);
 
   /// Freeze the registry (static convenience method).
   static void freeze() => _instance._freeze();
 
   /// Get the number of registered items.
-  static int get itemCount => _instance._items.length;
+  static int get itemCount => _instance.count;
 
-  void _register(CustomItem item) {
-    if (_frozen) {
-      throw StateError(
-        'Cannot register items after initialization. Item: ${item.id}',
-      );
-    }
-
-    if (_items.containsKey(item.id)) {
-      throw StateError('Item ${item.id} is already registered');
-    }
-
-    if (item.isRegistered) {
-      throw StateError('Item already registered: ${item.id}');
-    }
-
+  @override
+  int queueRegistration(CustomItem item) {
     final parts = item.id.split(':');
-    if (parts.length != 2) {
-      throw ArgumentError(
-        'Invalid item ID: ${item.id}. Must be namespace:path',
-      );
-    }
 
     // Extract combat values (use NaN for "not set")
     final combat = item.combat;
@@ -381,7 +426,7 @@ class ItemRegistry {
     final attackSpeed = combat?.attackSpeed ?? double.nan;
     final attackKnockback = combat?.attackKnockback ?? double.nan;
 
-    final handlerId = ServerBridge.queueItemRegistration(
+    return ServerBridge.queueItemRegistration(
       namespace: parts[0],
       path: parts[1],
       maxStackSize: item.settings.maxStackSize,
@@ -391,82 +436,24 @@ class ItemRegistry {
       attackSpeed: attackSpeed,
       attackKnockback: attackKnockback,
     );
-
-    if (handlerId == 0) {
-      throw StateError('Failed to queue item registration for: ${item.id}');
-    }
-
-    item.setHandlerId(handlerId);
-    _items[item.id] = item;
-    _itemsByHandler[handlerId] = item;
-
-    // Write manifest after each registration
-    _writeManifest();
-
-    print('ItemRegistry: Queued ${item.id} with handler ID $handlerId');
   }
 
-  /// Write the item manifest to `.redstone/manifest.json`.
-  ///
-  /// This updates the existing manifest (which may contain blocks).
-  void _writeManifest() {
-    // Read existing manifest or create new
-    Map<String, dynamic> manifest = {};
-    final manifestFile = File('.redstone/manifest.json');
-    if (manifestFile.existsSync()) {
-      try {
-        manifest =
-            jsonDecode(manifestFile.readAsStringSync()) as Map<String, dynamic>;
-      } catch (_) {
-        // Ignore parse errors, start fresh
-      }
-    }
-
-    // Build items list
-    final items = <Map<String, dynamic>>[];
-    for (final item in _items.values) {
-      final itemEntry = <String, dynamic>{
-        'id': item.id,
-        'model': item.model.toJson(),
-      };
-      items.add(itemEntry);
-    }
-
-    manifest['items'] = items;
-
-    // Create .redstone directory if it doesn't exist
-    final redstoneDir = Directory('.redstone');
-    if (!redstoneDir.existsSync()) {
-      redstoneDir.createSync(recursive: true);
-    }
-
-    // Write manifest with pretty formatting
-    final encoder = JsonEncoder.withIndent('  ');
-    manifestFile.writeAsStringSync(encoder.convert(manifest));
-
-    print('ItemRegistry: Wrote manifest with ${items.length} items');
+  @override
+  Map<String, dynamic> toManifestEntry(CustomItem item) {
+    return <String, dynamic>{
+      'id': item.id,
+      'model': item.model.toJson(),
+    };
   }
-
-  CustomItem? getById(String id) => _items[id];
-
-  /// Get an item by its handler ID.
-  CustomItem? getByHandler(int handlerId) => _itemsByHandler[handlerId];
-
-  bool isItemRegistered(String id) => _items.containsKey(id);
-
-  Iterable<String> get registeredItemIds => _items.keys;
 
   /// Get all registered items.
-  Iterable<CustomItem> get allItems => _items.values;
+  Iterable<CustomItem> get allItems => all;
 
-  /// Freeze the registry (instance method, called internally).
-  void _freeze() {
-    _frozen = true;
-    print('ItemRegistry: Frozen with ${_items.length} items registered');
-  }
+  /// Check if an item is registered.
+  bool isItemRegistered(String id) => isRegistered(id);
 
-  /// Check if the registry is frozen.
-  bool get isFrozen => _frozen;
+  /// Get all registered item IDs.
+  Iterable<String> get registeredItemIds => registeredIds;
 
   // ===========================================================================
   // Internal dispatch methods - called from native code
@@ -475,7 +462,7 @@ class ItemRegistry {
   /// Dispatch an item use event.
   @pragma('vm:entry-point')
   static int dispatchItemUse(int handlerId, int worldId, int playerId, int hand) {
-    final item = _instance._itemsByHandler[handlerId];
+    final item = _instance.getByHandler(handlerId);
     if (item != null) {
       final result = item.onUse(worldId, playerId, hand);
       return result.index;
@@ -494,7 +481,7 @@ class ItemRegistry {
     int playerId,
     int hand,
   ) {
-    final item = _instance._itemsByHandler[handlerId];
+    final item = _instance.getByHandler(handlerId);
     if (item != null) {
       final result = item.onUseOnBlock(worldId, x, y, z, playerId, hand);
       return result.index;
@@ -511,7 +498,7 @@ class ItemRegistry {
     int playerId,
     int hand,
   ) {
-    final item = _instance._itemsByHandler[handlerId];
+    final item = _instance.getByHandler(handlerId);
     if (item != null) {
       final result = item.onUseOnEntity(worldId, entityId, playerId, hand);
       return result.index;
@@ -528,7 +515,7 @@ class ItemRegistry {
     int attackerId,
     int targetId,
   ) {
-    final item = _instance._itemsByHandler[handlerId];
+    final item = _instance.getByHandler(handlerId);
     if (item != null) {
       return item.onAttackEntity(worldId, attackerId, targetId);
     }
@@ -544,15 +531,17 @@ class ItemRegistry {
 ///
 /// All entities must be registered during mod initialization (before Minecraft's
 /// registry freezes). Attempting to register entities after initialization will fail.
-class EntityRegistry {
+class EntityRegistry extends Registry<CustomEntity> {
   static final EntityRegistry _instance = EntityRegistry._();
   static EntityRegistry get instance => _instance;
 
   EntityRegistry._();
 
-  final Map<String, CustomEntity> _entities = {};
-  final Map<int, CustomEntity> _entitiesByHandler = {};
-  bool _frozen = false;
+  @override
+  String get manifestKey => 'entities';
+
+  @override
+  String get typeName => 'entity';
 
   /// Serialize a list of goals to JSON string, or null if empty/null.
   static String? _serializeGoals(List<EntityGoal>? goals) {
@@ -565,35 +554,17 @@ class EntityRegistry {
   // ===========================================================================
 
   /// Register an entity (static convenience method).
-  static void register(CustomEntity entity) => _instance._register(entity);
+  static void register(CustomEntity entity) => _instance.registerItem(entity);
 
   /// Freeze the registry (static convenience method).
   static void freeze() => _instance._freeze();
 
   /// Get the number of registered entities (static convenience getter).
-  static int get entityCount => _instance._entities.length;
+  static int get entityCount => _instance.count;
 
-  void _register(CustomEntity entity) {
-    if (_frozen) {
-      throw StateError(
-        'Cannot register entities after initialization. Entity: ${entity.id}',
-      );
-    }
-
-    if (_entities.containsKey(entity.id)) {
-      throw StateError('Entity ${entity.id} is already registered');
-    }
-
-    if (entity.isRegistered) {
-      throw StateError('Entity already registered: ${entity.id}');
-    }
-
+  @override
+  int queueRegistration(CustomEntity entity) {
     final parts = entity.id.split(':');
-    if (parts.length != 2) {
-      throw ArgumentError(
-        'Invalid entity ID: ${entity.id}. Must be namespace:path',
-      );
-    }
 
     // Extract model info if present
     String modelType = '';
@@ -624,7 +595,7 @@ class EntityRegistry {
       breedingItem = entity.settings.breedingItem ?? '';
     }
 
-    final handlerId = ServerBridge.queueEntityRegistration(
+    return ServerBridge.queueEntityRegistration(
       namespace: parts[0],
       path: parts[1],
       width: entity.settings.width,
@@ -641,90 +612,31 @@ class EntityRegistry {
       goalsJson: goalsJson,
       targetGoalsJson: targetGoalsJson,
     );
-
-    if (handlerId == 0) {
-      throw StateError('Failed to queue entity registration for: ${entity.id}');
-    }
-
-    entity.setHandlerId(handlerId);
-    _entities[entity.id] = entity;
-    _entitiesByHandler[handlerId] = entity;
-
-    // Write manifest after each registration
-    _writeManifest();
-
-    print('EntityRegistry: Queued ${entity.id} with handler ID $handlerId');
   }
 
-  /// Write the entity manifest to `.redstone/manifest.json`.
-  ///
-  /// This file is read by the CLI to generate Minecraft resource files.
-  void _writeManifest() {
-    final entities = <Map<String, dynamic>>[];
+  @override
+  Map<String, dynamic> toManifestEntry(CustomEntity entity) {
+    final entityEntry = <String, dynamic>{
+      'id': entity.id,
+      'baseType': entity.settings.baseType.name,
+    };
 
-    for (final entity in _entities.values) {
-      final entityEntry = <String, dynamic>{
-        'id': entity.id,
-        'baseType': entity.settings.baseType.name,
-      };
-
-      // Only include model if present
-      if (entity.settings.model != null) {
-        entityEntry['model'] = entity.settings.model!.toJson();
-      }
-
-      entities.add(entityEntry);
+    // Only include model if present
+    if (entity.settings.model != null) {
+      entityEntry['model'] = entity.settings.model!.toJson();
     }
 
-    // Read existing manifest to preserve blocks and items
-    Map<String, dynamic> manifest = {};
-    final manifestFile = File('.redstone/manifest.json');
-    if (manifestFile.existsSync()) {
-      try {
-        manifest =
-            jsonDecode(manifestFile.readAsStringSync()) as Map<String, dynamic>;
-      } catch (_) {
-        // Ignore parse errors
-      }
-    }
-
-    manifest['entities'] = entities;
-
-    // Create .redstone directory if it doesn't exist
-    final redstoneDir = Directory('.redstone');
-    if (!redstoneDir.existsSync()) {
-      redstoneDir.createSync(recursive: true);
-    }
-
-    // Write manifest with pretty formatting
-    final encoder = JsonEncoder.withIndent('  ');
-    manifestFile.writeAsStringSync(encoder.convert(manifest));
-
-    print('EntityRegistry: Wrote manifest with ${entities.length} entities');
+    return entityEntry;
   }
-
-  CustomEntity? getById(String id) => _entities[id];
-
-  /// Get an entity by its handler ID.
-  CustomEntity? getByHandler(int handlerId) => _entitiesByHandler[handlerId];
-
-  bool isEntityRegistered(String id) => _entities.containsKey(id);
-
-  Iterable<String> get registeredEntityIds => _entities.keys;
 
   /// Get all registered entities.
-  Iterable<CustomEntity> get allEntities => _entities.values;
+  Iterable<CustomEntity> get allEntities => all;
 
-  /// Freeze the registry (instance method, called internally).
-  ///
-  /// After this is called, no more entities can be registered.
-  void _freeze() {
-    _frozen = true;
-    print('EntityRegistry: Frozen with ${_entities.length} entities registered');
-  }
+  /// Check if an entity is registered.
+  bool isEntityRegistered(String id) => isRegistered(id);
 
-  /// Check if the registry is frozen.
-  bool get isFrozen => _frozen;
+  /// Get all registered entity IDs.
+  Iterable<String> get registeredEntityIds => registeredIds;
 
   // ===========================================================================
   // Internal dispatch methods - called from native code via events.dart
@@ -733,7 +645,7 @@ class EntityRegistry {
   /// Dispatch an entity spawn event to the appropriate handler.
   @pragma('vm:entry-point')
   static void dispatchSpawn(int handlerId, int entityId, int worldId) {
-    final entity = _instance._entitiesByHandler[handlerId];
+    final entity = _instance.getByHandler(handlerId);
     if (entity != null) {
       entity.onSpawn(entityId, worldId);
     }
@@ -742,7 +654,7 @@ class EntityRegistry {
   /// Dispatch an entity tick event to the appropriate handler.
   @pragma('vm:entry-point')
   static void dispatchTick(int handlerId, int entityId) {
-    final entity = _instance._entitiesByHandler[handlerId];
+    final entity = _instance.getByHandler(handlerId);
     if (entity != null) {
       entity.onTick(entityId);
     }
@@ -751,7 +663,7 @@ class EntityRegistry {
   /// Dispatch an entity death event to the appropriate handler.
   @pragma('vm:entry-point')
   static void dispatchDeath(int handlerId, int entityId, String damageSource) {
-    final entity = _instance._entitiesByHandler[handlerId];
+    final entity = _instance.getByHandler(handlerId);
     if (entity != null) {
       entity.onDeath(entityId, damageSource);
     }
@@ -766,7 +678,7 @@ class EntityRegistry {
     String damageSource,
     double amount,
   ) {
-    final entity = _instance._entitiesByHandler[handlerId];
+    final entity = _instance.getByHandler(handlerId);
     if (entity != null) {
       return entity.onDamage(entityId, damageSource, amount);
     }
@@ -776,7 +688,7 @@ class EntityRegistry {
   /// Dispatch an entity attack event to the appropriate handler.
   @pragma('vm:entry-point')
   static void dispatchAttack(int handlerId, int entityId, int targetId) {
-    final entity = _instance._entitiesByHandler[handlerId];
+    final entity = _instance.getByHandler(handlerId);
     if (entity != null) {
       entity.onAttack(entityId, targetId);
     }
@@ -785,7 +697,7 @@ class EntityRegistry {
   /// Dispatch a target acquired event to the appropriate handler.
   @pragma('vm:entry-point')
   static void dispatchTargetAcquired(int handlerId, int entityId, int targetId) {
-    final entity = _instance._entitiesByHandler[handlerId];
+    final entity = _instance.getByHandler(handlerId);
     if (entity != null) {
       entity.onTargetAcquired(entityId, targetId);
     }
@@ -802,7 +714,7 @@ class EntityRegistry {
     int projectileId,
     int targetId,
   ) {
-    final entity = _instance._entitiesByHandler[handlerId];
+    final entity = _instance.getByHandler(handlerId);
     if (entity is CustomProjectile) {
       entity.onHitEntity(projectileId, targetId);
     }
@@ -818,7 +730,7 @@ class EntityRegistry {
     int z,
     String side,
   ) {
-    final entity = _instance._entitiesByHandler[handlerId];
+    final entity = _instance.getByHandler(handlerId);
     if (entity is CustomProjectile) {
       entity.onHitBlock(projectileId, x, y, z, side);
     }
@@ -836,7 +748,7 @@ class EntityRegistry {
     int partnerId,
     int babyId,
   ) {
-    final entity = _instance._entitiesByHandler[handlerId];
+    final entity = _instance.getByHandler(handlerId);
     if (entity is CustomAnimal) {
       entity.onBreed(entityId, partnerId, babyId);
     }

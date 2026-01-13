@@ -364,7 +364,18 @@ class JavaStatic {
 class JniException implements Exception {
   final String message;
 
-  JniException(this.message);
+  /// The Java exception class name, if available (e.g., "java.lang.NullPointerException").
+  final String? javaClassName;
+
+  JniException(this.message) : javaClassName = _extractClassName(message);
+
+  static String? _extractClassName(String message) {
+    final colonIndex = message.indexOf(':');
+    if (colonIndex > 0) {
+      return message.substring(0, colonIndex);
+    }
+    return null;
+  }
 
   @override
   String toString() => 'JniException: $message';

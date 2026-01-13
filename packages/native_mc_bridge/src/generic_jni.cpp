@@ -9,6 +9,13 @@
 #include <iostream>
 
 // ============================================================================
+// Thread-Local Error Storage
+// ============================================================================
+
+static thread_local std::string g_last_jni_error;
+static thread_local bool g_has_jni_error = false;
+
+// ============================================================================
 // Global State
 // ============================================================================
 
@@ -307,13 +314,58 @@ static std::vector<jvalue> convert_args(JNIEnv* env, const char* sig,
 }
 
 /**
+ * Extract exception class name and message from a throwable.
+ */
+static std::string extract_exception_message(JNIEnv* env, jthrowable exc) {
+    if (!exc) return "Unknown error";
+
+    jclass cls = env->GetObjectClass(exc);
+
+    // Get exception class name
+    jclass classClass = env->FindClass("java/lang/Class");
+    jmethodID getClassName = env->GetMethodID(classClass, "getName", "()Ljava/lang/String;");
+    jstring classNameStr = (jstring)env->CallObjectMethod(cls, getClassName);
+
+    const char* classNameChars = env->GetStringUTFChars(classNameStr, nullptr);
+    std::string className = classNameChars ? classNameChars : "UnknownClass";
+    if (classNameChars) env->ReleaseStringUTFChars(classNameStr, classNameChars);
+
+    // Get exception message
+    jmethodID getMessage = env->GetMethodID(cls, "getMessage", "()Ljava/lang/String;");
+    jstring messageStr = (jstring)env->CallObjectMethod(exc, getMessage);
+
+    std::string message = "";
+    if (messageStr) {
+        const char* messageChars = env->GetStringUTFChars(messageStr, nullptr);
+        if (messageChars) {
+            message = messageChars;
+            env->ReleaseStringUTFChars(messageStr, messageChars);
+        }
+    }
+
+    env->DeleteLocalRef(classNameStr);
+    if (messageStr) env->DeleteLocalRef(messageStr);
+    env->DeleteLocalRef(classClass);
+    env->DeleteLocalRef(cls);
+
+    if (message.empty()) {
+        return className;
+    }
+    return className + ": " + message;
+}
+
+/**
  * Check for and handle JNI exceptions.
  * Returns true if an exception occurred.
  */
 static bool check_exception(JNIEnv* env) {
     if (env->ExceptionCheck()) {
-        env->ExceptionDescribe();
+        jthrowable exc = env->ExceptionOccurred();
+        g_last_jni_error = extract_exception_message(env, exc);
+        g_has_jni_error = true;
+        env->ExceptionDescribe();  // Still print for debugging
         env->ExceptionClear();
+        if (exc) env->DeleteLocalRef(exc);
         return true;
     }
     return false;
@@ -1110,6 +1162,24 @@ void jni_release_object(int64_t handle) {
 
 void jni_free_string(const char* str) {
     free(const_cast<char*>(str));
+}
+
+// ============================================================================
+// Error Handling
+// ============================================================================
+
+bool jni_has_error() {
+    return g_has_jni_error;
+}
+
+const char* jni_get_last_error() {
+    if (!g_has_jni_error) return nullptr;
+    return strdup(g_last_jni_error.c_str());  // Caller must free
+}
+
+void jni_clear_error() {
+    g_has_jni_error = false;
+    g_last_jni_error.clear();
 }
 
 } // extern "C"

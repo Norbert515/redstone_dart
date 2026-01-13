@@ -5,6 +5,7 @@
 library;
 
 import 'package:dart_mod_common/dart_mod_common.dart';
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
 
 // =============================================================================
 // Click Type Enumeration

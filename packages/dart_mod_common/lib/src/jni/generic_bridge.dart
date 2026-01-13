@@ -9,6 +9,8 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import 'java_object.dart' show JniException;
+
 // ============================================================================
 // Native Function Type Definitions
 // ============================================================================
@@ -415,6 +417,16 @@ typedef DartReleaseObject = void Function(int handle);
 typedef NativeFreeString = Void Function(Pointer<Utf8> str);
 typedef DartFreeString = void Function(Pointer<Utf8> str);
 
+// Error Handling
+typedef NativeHasError = Bool Function();
+typedef DartHasError = bool Function();
+
+typedef NativeGetLastError = Pointer<Utf8> Function();
+typedef DartGetLastError = Pointer<Utf8> Function();
+
+typedef NativeClearError = Void Function();
+typedef DartClearError = void Function();
+
 // ============================================================================
 // GenericJniBridge Class
 // ============================================================================
@@ -475,6 +487,11 @@ class GenericJniBridge {
   // Function pointers - Lifecycle
   static late DartReleaseObject _releaseObject;
   static late DartFreeString _freeString;
+
+  // Function pointers - Error Handling
+  static late DartHasError _hasError;
+  static late DartGetLastError _getLastError;
+  static late DartClearError _clearError;
 
   /// Initialize the bridge. Call once at startup.
   static void init() {
@@ -575,11 +592,37 @@ class GenericJniBridge {
     _freeString =
         _lib.lookupFunction<NativeFreeString, DartFreeString>('jni_free_string');
 
+    // Error Handling
+    _hasError = _lib.lookupFunction<NativeHasError, DartHasError>('jni_has_error');
+    _getLastError =
+        _lib.lookupFunction<NativeGetLastError, DartGetLastError>('jni_get_last_error');
+    _clearError =
+        _lib.lookupFunction<NativeClearError, DartClearError>('jni_clear_error');
+
     _initialized = true;
   }
 
   /// Check if the bridge is initialized.
   static bool get isInitialized => _initialized;
+
+  // ==========================================================================
+  // Error Handling
+  // ==========================================================================
+
+  /// Check if the last JNI call resulted in an error and throw if so.
+  static void checkError() {
+    if (!_initialized) return;
+    if (_hasError()) {
+      final errorPtr = _getLastError();
+      String message = 'Unknown JNI error';
+      if (errorPtr != nullptr) {
+        message = errorPtr.toDartString();
+        calloc.free(errorPtr);
+      }
+      _clearError();
+      throw JniException(message);
+    }
+  }
 
   // ==========================================================================
   // Argument Encoding Helpers
@@ -650,12 +693,14 @@ class GenericJniBridge {
     final encodedArgs = _encodeArgs(args);
 
     try {
-      return _createObject(
+      final result = _createObject(
         classNamePtr,
         ctorSigPtr,
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
+      return result;
     } finally {
       calloc.free(classNamePtr);
       calloc.free(ctorSigPtr);
@@ -689,6 +734,7 @@ class GenericJniBridge {
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
     } finally {
       calloc.free(classNamePtr);
       calloc.free(methodNamePtr);
@@ -711,7 +757,7 @@ class GenericJniBridge {
     final encodedArgs = _encodeArgs(args);
 
     try {
-      return _callIntMethod(
+      final result = _callIntMethod(
         handle,
         classNamePtr,
         methodNamePtr,
@@ -719,6 +765,8 @@ class GenericJniBridge {
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
+      return result;
     } finally {
       calloc.free(classNamePtr);
       calloc.free(methodNamePtr);
@@ -741,7 +789,7 @@ class GenericJniBridge {
     final encodedArgs = _encodeArgs(args);
 
     try {
-      return _callLongMethod(
+      final result = _callLongMethod(
         handle,
         classNamePtr,
         methodNamePtr,
@@ -749,6 +797,8 @@ class GenericJniBridge {
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
+      return result;
     } finally {
       calloc.free(classNamePtr);
       calloc.free(methodNamePtr);
@@ -863,7 +913,7 @@ class GenericJniBridge {
     final encodedArgs = _encodeArgs(args);
 
     try {
-      return _callObjectMethod(
+      final result = _callObjectMethod(
         handle,
         classNamePtr,
         methodNamePtr,
@@ -871,6 +921,8 @@ class GenericJniBridge {
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
+      return result;
     } finally {
       calloc.free(classNamePtr);
       calloc.free(methodNamePtr);
@@ -903,6 +955,7 @@ class GenericJniBridge {
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
 
       if (resultPtr == nullptr) return null;
 
@@ -946,6 +999,7 @@ class GenericJniBridge {
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
     } finally {
       calloc.free(classNamePtr);
       calloc.free(methodNamePtr);
@@ -985,6 +1039,7 @@ class GenericJniBridge {
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
       return result;
     } finally {
       calloc.free(classNamePtr);
@@ -1012,13 +1067,15 @@ class GenericJniBridge {
     final encodedArgs = _encodeArgs(args);
 
     try {
-      return _callStaticLongMethod(
+      final result = _callStaticLongMethod(
         classNamePtr,
         methodNamePtr,
         sigPtr,
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
+      return result;
     } finally {
       calloc.free(classNamePtr);
       calloc.free(methodNamePtr);
@@ -1045,13 +1102,15 @@ class GenericJniBridge {
     final encodedArgs = _encodeArgs(args);
 
     try {
-      return _callStaticObjectMethod(
+      final result = _callStaticObjectMethod(
         classNamePtr,
         methodNamePtr,
         sigPtr,
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
+      return result;
     } finally {
       calloc.free(classNamePtr);
       calloc.free(methodNamePtr);
@@ -1085,6 +1144,7 @@ class GenericJniBridge {
         encodedArgs.ptr,
         args.length,
       );
+      checkError();
 
       if (resultPtr == nullptr) return null;
 

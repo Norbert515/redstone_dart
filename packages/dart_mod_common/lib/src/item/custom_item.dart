@@ -1,6 +1,7 @@
 /// API for defining custom items in Dart.
 library;
 
+import '../registry/registrable.dart';
 import 'item_model.dart';
 import 'item_settings.dart';
 
@@ -73,7 +74,7 @@ class CombatAttributes {
 ///   );
 /// }
 /// ```
-abstract class CustomItem {
+abstract class CustomItem implements Registrable {
   /// The item identifier (e.g., 'mymod:dart_item')
   final String id;
 
@@ -97,6 +98,7 @@ abstract class CustomItem {
   });
 
   /// Whether this item has been registered
+  @override
   bool get isRegistered => _handlerId != null;
 
   /// Get the handler ID (only valid after registration)
@@ -108,6 +110,7 @@ abstract class CustomItem {
   }
 
   /// Set the handler ID (called by ItemRegistry)
+  @override
   void setHandlerId(int id) {
     if (_handlerId != null) {
       throw StateError('Handler ID already set for item: ${this.id}');

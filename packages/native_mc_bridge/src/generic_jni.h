@@ -176,6 +176,26 @@ int32_t generic_jni_capture_classloader();
  */
 void generic_jni_shutdown();
 
+// ============================================================================
+// Error Handling
+// ============================================================================
+
+/**
+ * Check if the last JNI call resulted in an error.
+ */
+bool jni_has_error();
+
+/**
+ * Get the last error message.
+ * Returns nullptr if no error. Caller must free the returned string.
+ */
+const char* jni_get_last_error();
+
+/**
+ * Clear the last error state.
+ */
+void jni_clear_error();
+
 } // extern "C"
 
 #endif // GENERIC_JNI_H

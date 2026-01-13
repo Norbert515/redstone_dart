@@ -4,11 +4,6 @@
 /// It is used by both dart_mod_server and dart_mod_client.
 library;
 
-// JNI utilities
-export 'src/jni/generic_bridge.dart';
-export 'src/jni/jni.dart';
-export 'src/jni/java_object.dart';
-
 // Input
 export 'src/input/keys.dart';
 
@@ -39,6 +34,7 @@ export 'src/entity/entity_goal.dart';
 export 'src/world/world.dart';
 
 // Registry interfaces
+export 'src/registry/registrable.dart';
 export 'src/registry/block_registry.dart';
 export 'src/registry/item_registry.dart';
 export 'src/registry/entity_registry.dart';

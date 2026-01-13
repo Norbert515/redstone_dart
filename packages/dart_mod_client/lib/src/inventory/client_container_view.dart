@@ -2,6 +2,7 @@
 library;
 
 import 'package:dart_mod_common/dart_mod_common.dart';
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
 
 /// The Java class name for DartBridgeClient.
 const _dartBridgeClient = 'com/redstone/DartBridgeClient';

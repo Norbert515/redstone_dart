@@ -11,6 +11,7 @@
 import 'dart:developer' as developer;
 
 import 'package:dart_mod_client/dart_mod_client.dart';
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
 import 'package:example_mod_common/example_mod_common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';

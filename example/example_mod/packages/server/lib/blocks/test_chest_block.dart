@@ -1,3 +1,4 @@
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
 import 'package:dart_mod_server/dart_mod_server.dart';
 
 /// A test chest block that opens a Flutter-based container UI.

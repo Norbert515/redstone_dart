@@ -1,6 +1,7 @@
 /// API for defining custom entities in Dart.
 library;
 
+import '../registry/registrable.dart';
 import 'entity_goal.dart';
 import 'entity_settings.dart';
 
@@ -87,7 +88,7 @@ class ProjectileSettings extends EntitySettings {
 }
 
 /// Base class for Dart-defined entities.
-abstract class CustomEntity {
+abstract class CustomEntity implements Registrable {
   /// The entity identifier in format "namespace:path".
   final String id;
 
@@ -111,6 +112,7 @@ abstract class CustomEntity {
   }
 
   /// Check if this entity has been registered.
+  @override
   bool get isRegistered => _handlerId != null;
 
   // ==========================================================================
@@ -151,6 +153,7 @@ abstract class CustomEntity {
   // ==========================================================================
 
   /// Internal: Set the handler ID after registration.
+  @override
   void setHandlerId(int id) {
     _handlerId = id;
   }

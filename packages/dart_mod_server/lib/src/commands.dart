@@ -28,7 +28,7 @@ library;
 import 'dart:convert';
 import 'dart:ffi';
 
-import 'package:dart_mod_common/dart_mod_common.dart';
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
 import 'package:ffi/ffi.dart';
 
 import 'bridge.dart';

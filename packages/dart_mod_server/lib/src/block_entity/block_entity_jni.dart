@@ -7,6 +7,7 @@ library;
 import 'dart:convert';
 
 import 'package:dart_mod_common/dart_mod_common.dart';
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
 
 /// The Java class name for DartBridge.
 const _dartBridge = 'com/redstone/DartBridge';

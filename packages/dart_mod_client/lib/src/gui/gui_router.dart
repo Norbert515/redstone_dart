@@ -3,7 +3,7 @@ library;
 
 import 'dart:async';
 
-import 'package:dart_mod_common/dart_mod_common.dart';
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
 import 'package:flutter/widgets.dart';
 
 import '../container/container_scope.dart';
