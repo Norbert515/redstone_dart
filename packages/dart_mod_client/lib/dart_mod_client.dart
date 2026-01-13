@@ -18,3 +18,5 @@ export 'src/inventory/client_container_view.dart';
 export 'src/events/container_events.dart';
 export 'src/events/container_data_events.dart';
 export 'src/container/container.dart';
+export 'src/surface/surface_router.dart';
+export 'src/surface/surface_app.dart';

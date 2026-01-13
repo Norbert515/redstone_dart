@@ -20,6 +20,9 @@ import org.joml.Matrix4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * Renderer for Flutter display entities.
  *
@@ -43,9 +46,75 @@ public class FlutterDisplayRenderer extends DisplayRenderer<
     // Flutter texture identifier - we'll register a dynamic texture here
     private static final Identifier FLUTTER_DISPLAY_TEXTURE = Identifier.fromNamespaceAndPath("redstone", "flutter_display");
 
+    // Default surface resolution for route-based displays
+    private static final int DEFAULT_SURFACE_WIDTH = 256;
+    private static final int DEFAULT_SURFACE_HEIGHT = 256;
+
+    // Cache of entity ID -> surface ID for entities with routes
+    // This ensures we don't create duplicate surfaces for the same entity
+    private static final Map<Integer, Long> entitySurfaceCache = new ConcurrentHashMap<>();
+
     public FlutterDisplayRenderer(EntityRendererProvider.Context context) {
         super(context);
         LOGGER.info("FlutterDisplayRenderer created");
+    }
+
+    /**
+     * Get or create a surface for an entity with a route.
+     * Returns 0 if no route is set (use main surface).
+     */
+    private long getOrCreateSurface(FlutterDisplayRenderState state) {
+        String route = state.route;
+        int entityId = state.entityId;
+
+        // No route = use main surface (0)
+        if (route == null || route.isEmpty()) {
+            return 0;
+        }
+
+        // Check if we already have a surface for this entity
+        Long existingSurface = entitySurfaceCache.get(entityId);
+        if (existingSurface != null && existingSurface > 0) {
+            // Verify the surface still exists
+            if (DartBridgeClient.surfaceExists(existingSurface)) {
+                return existingSurface;
+            }
+            // Surface was destroyed, remove from cache
+            entitySurfaceCache.remove(entityId);
+        }
+
+        // Create a new surface for this route via FlutterTextureManager
+        // This ensures multi-surface system is initialized before creating surfaces
+        FlutterTextureManager manager = FlutterTextureManager.getInstance();
+        if (manager == null) {
+            LOGGER.warn("Failed to create surface: FlutterTextureManager not available");
+            return 0;
+        }
+
+        long surfaceId = manager.createSurface(DEFAULT_SURFACE_WIDTH, DEFAULT_SURFACE_HEIGHT, route);
+        if (surfaceId > 0) {
+            LOGGER.info("Created surface {} for entity {} with route '{}'", surfaceId, entityId, route);
+            entitySurfaceCache.put(entityId, surfaceId);
+        } else {
+            LOGGER.warn("Failed to create surface for entity {} with route '{}'", entityId, route);
+        }
+
+        return surfaceId;
+    }
+
+    /**
+     * Clean up surface when entity is removed.
+     * Should be called when entity is unloaded/destroyed.
+     */
+    public static void cleanupEntitySurface(int entityId) {
+        Long surfaceId = entitySurfaceCache.remove(entityId);
+        if (surfaceId != null && surfaceId > 0) {
+            FlutterTextureManager manager = FlutterTextureManager.getInstance();
+            if (manager != null) {
+                manager.destroySurface(surfaceId);
+            }
+            LOGGER.info("Cleaned up surface {} for entity {}", surfaceId, entityId);
+        }
     }
 
     @Override
@@ -57,17 +126,22 @@ public class FlutterDisplayRenderer extends DisplayRenderer<
     public void extractRenderState(FlutterDisplayEntity entity, FlutterDisplayRenderState state, float partialTick) {
         super.extractRenderState(entity, state, partialTick);
 
+        // Extract entity ID for surface caching
+        state.entityId = entity.getId();
+
         // Extract Flutter-specific state
         FlutterDisplayEntity.FlutterRenderState flutterState = entity.flutterRenderState();
         if (flutterState != null) {
             state.surfaceId = flutterState.surfaceId();
             state.displayWidth = flutterState.displayWidth();
             state.displayHeight = flutterState.displayHeight();
+            state.route = flutterState.route();
         } else {
             // Default values
             state.surfaceId = 0;
             state.displayWidth = 1.0f;
             state.displayHeight = 1.0f;
+            state.route = "";
         }
     }
 
@@ -79,13 +153,15 @@ public class FlutterDisplayRenderer extends DisplayRenderer<
         int lightCoords,
         float partialTick
     ) {
-        System.out.println("[FlutterDisplayRenderer] submitInner called! surfaceId=" + state.surfaceId +
+        // Get or create surface for this entity's route
+        long surfaceId = getOrCreateSurface(state);
+
+        System.out.println("[FlutterDisplayRenderer] submitInner called! entityId=" + state.entityId +
+            ", surfaceId=" + surfaceId + ", route='" + state.route + "'" +
             ", width=" + state.displayWidth + ", height=" + state.displayHeight);
 
-        // Get the texture to render
-        // For now, we use surface 0 (main Flutter surface) regardless of surfaceId
-        // Multi-surface support will come later
-        Identifier texture = getFlutterTexture(state.surfaceId);
+        // Get the texture to render using the resolved surface ID
+        Identifier texture = getFlutterTexture(surfaceId);
         System.out.println("[FlutterDisplayRenderer] Using texture: " + texture);
 
         // Calculate quad dimensions (centered at origin)

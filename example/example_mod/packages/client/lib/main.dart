@@ -26,6 +26,13 @@ import 'screens/simple_furnace_screen.dart';
 void main() {
   print('Client mod initialized!');
 
+  // Ensure surfaceMain is included in the kernel (prevents tree-shaking)
+  // This is a no-op reference that the compiler can't optimize away
+  // ignore: unnecessary_null_comparison
+  if (surfaceMain == null) {
+    throw StateError('surfaceMain should never be null');
+  }
+
   // Print VM service URL for hot reload detection
   // The CLI looks for "flutter: The Dart VM service is listening on ..." pattern
   // We explicitly add the "flutter:" prefix since the embedder doesn't add it
@@ -39,6 +46,10 @@ void main() {
 
   // Initialize the JNI bridge for calling Java methods from Dart
   GenericJniBridge.init();
+
+  // Register surface widgets for multi-surface rendering
+  // These can be displayed on FlutterDisplayEntity in the world
+  _registerSurfaceWidgets();
 
   // Start the Flutter app for UI rendering
   // The Flutter embedder will capture frames from this app and display
@@ -195,6 +206,211 @@ class TestChestScreen extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Surface Widget Registration & Multi-Surface Entry Point
+// =============================================================================
+
+/// Entry point for spawned Flutter surface engines (multi-surface rendering).
+///
+/// This is called by the Flutter embedder when a new surface engine starts.
+/// It must register the same routes as main() before running SurfaceApp.
+///
+/// **CRITICAL:** Each spawned engine is an independent Dart isolate that doesn't
+/// share memory with the main engine. We must register routes here too!
+@pragma('vm:entry-point')
+void surfaceMain(List<String> args) {
+  print('[surfaceMain] Starting spawned surface engine with args: $args');
+
+  // Register the same surface widgets as main()
+  // This is critical because spawned engines don't share memory with main
+  _registerSurfaceWidgets();
+
+  // Parse route from entry point arguments (passed via dart_entrypoint_argv)
+  final route = SurfaceRouter.parseRouteFromArgs(args);
+  print('[surfaceMain] Parsed route: $route');
+
+  // Run the SurfaceApp with the parsed route
+  runApp(SurfaceApp(route: route));
+
+  print('[surfaceMain] Spawned surface engine running.');
+}
+
+/// Register widgets that can be displayed on FlutterDisplayEntity surfaces.
+///
+/// Each route maps to a widget builder. When a FlutterDisplay is spawned
+/// with a route, the corresponding widget is rendered on that surface.
+///
+/// **Note:** This function is called by both main() and surfaceMain() to ensure
+/// routes are available in all Flutter engines (main and spawned surfaces).
+void _registerSurfaceWidgets() {
+  // Clock widget - shows current time
+  SurfaceRouter.register('/clock', () => const ClockWidget());
+
+  // Health bar widget - shows a sample health display
+  SurfaceRouter.register('/health', () => const HealthBarWidget());
+
+  // Color test widget - cycles through colors
+  SurfaceRouter.register('/colors', () => const ColorTestWidget());
+
+  print('[Client] Registered ${SurfaceRouter.routes.length} surface widgets');
+}
+
+// =============================================================================
+// Sample Surface Widgets
+// =============================================================================
+
+/// A clock widget showing the current time.
+class ClockWidget extends StatefulWidget {
+  const ClockWidget({super.key});
+
+  @override
+  State<ClockWidget> createState() => _ClockWidgetState();
+}
+
+class _ClockWidgetState extends State<ClockWidget> {
+  late Stream<DateTime> _timeStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _timeStream = Stream.periodic(
+      const Duration(seconds: 1),
+      (_) => DateTime.now(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black87,
+      child: Center(
+        child: StreamBuilder<DateTime>(
+          stream: _timeStream,
+          builder: (context, snapshot) {
+            final time = snapshot.data ?? DateTime.now();
+            final timeStr =
+                '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:${time.second.toString().padLeft(2, '0')}';
+            return Text(
+              timeStr,
+              style: const TextStyle(
+                color: Colors.greenAccent,
+                fontSize: 48,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.bold,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// A health bar widget showing a sample health display.
+class HealthBarWidget extends StatelessWidget {
+  const HealthBarWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.grey[900],
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text(
+            'HEALTH',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: 200,
+            height: 24,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white, width: 2),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: 0.75,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '15 / 20',
+            style: TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A widget that cycles through colors for testing.
+class ColorTestWidget extends StatefulWidget {
+  const ColorTestWidget({super.key});
+
+  @override
+  State<ColorTestWidget> createState() => _ColorTestWidgetState();
+}
+
+class _ColorTestWidgetState extends State<ColorTestWidget> {
+  int _colorIndex = 0;
+  static const _colors = [
+    Colors.red,
+    Colors.green,
+    Colors.blue,
+    Colors.yellow,
+    Colors.purple,
+    Colors.orange,
+    Colors.cyan,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Cycle colors every 2 seconds
+    Stream.periodic(const Duration(seconds: 2)).listen((_) {
+      if (mounted) {
+        setState(() {
+          _colorIndex = (_colorIndex + 1) % _colors.length;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
+      color: _colors[_colorIndex],
+      child: Center(
+        child: Text(
+          'Color ${_colorIndex + 1}/${_colors.length}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            shadows: [
+              Shadow(color: Colors.black, blurRadius: 4),
+            ],
           ),
         ),
       ),

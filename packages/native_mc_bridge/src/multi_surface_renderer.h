@@ -124,6 +124,14 @@ void multi_surface_shutdown();
 // Check if the multi-surface system is initialized.
 bool multi_surface_is_initialized();
 
+// ==========================================================================
+// Configuration
+// ==========================================================================
+
+// Store assets paths from main engine for spawning additional surfaces.
+// Must be called after main engine initializes, before creating surfaces.
+void multi_surface_set_assets_paths(const char* assets_path, const char* icu_data_path);
+
 } // extern "C"
 
 #endif // __APPLE__

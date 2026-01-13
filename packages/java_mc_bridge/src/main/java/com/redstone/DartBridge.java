@@ -2018,10 +2018,11 @@ public class DartBridge {
      * @param billboardMode Billboard mode (0=fixed, 1=vertical, 2=horizontal, 3=center)
      * @param width Display width in world units
      * @param height Display height in world units
+     * @param route Flutter route for widget content (null or empty = main surface)
      * @return Entity ID on success, -1 on failure
      */
     public static int spawnFlutterDisplay(String dimension, double x, double y, double z,
-            float yaw, float pitch, int billboardMode, float width, float height) {
+            float yaw, float pitch, int billboardMode, float width, float height, String route) {
         if (serverInstance == null) {
             LOGGER.warn("spawnFlutterDisplay: Server not initialized");
             return -1;
@@ -2056,6 +2057,7 @@ public class DartBridge {
         entity.setXRot(pitch);
         entity.setDisplayWidth(width);
         entity.setDisplayHeight(height);
+        entity.setRoute(route != null ? route : "");
 
         // Set billboard mode via the Display base class
         // Billboard modes: FIXED=0, VERTICAL=1, HORIZONTAL=2, CENTER=3
@@ -2074,8 +2076,8 @@ public class DartBridge {
             recentlySpawnedEntities.put(entity.getId(), entity);
         }
 
-        LOGGER.debug("Spawned Flutter display entity at ({}, {}, {}), ID: {}, size: {}x{}",
-            x, y, z, entity.getId(), width, height);
+        LOGGER.debug("Spawned Flutter display entity at ({}, {}, {}), ID: {}, size: {}x{}, route: {}",
+            x, y, z, entity.getId(), width, height, route);
         return entity.getId();
     }
 

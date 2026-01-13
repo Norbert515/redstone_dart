@@ -72,22 +72,29 @@ enum BillboardMode {
 /// widget content. They support billboard modes for automatic camera-facing
 /// and can be positioned anywhere in the world.
 ///
-/// Note: Multi-surface support (different content per display) is planned.
-/// Currently all displays share the main Flutter surface.
+/// Each display can render different content by specifying a route.
+/// The route is passed to the Flutter app running on that surface.
 class FlutterDisplay {
   /// The Minecraft entity ID for this display.
   final int entityId;
 
   /// The Flutter surface ID this display renders.
   ///
-  /// Currently always 0 (main surface). Multi-surface support coming soon.
+  /// 0 = main surface (no route specified)
+  /// > 0 = dedicated surface created for this display's route
   final int surfaceId;
 
-  FlutterDisplay._internal(this.entityId, this.surfaceId);
+  /// The route this display renders, if any.
+  final String? route;
+
+  FlutterDisplay._internal(this.entityId, this.surfaceId, this.route);
 
   /// Spawn a new Flutter display entity.
   ///
   /// [position] - World position to spawn the display
+  /// [route] - Optional Flutter route for widget content (e.g., '/clock')
+  ///           If specified, a dedicated Flutter surface will be created
+  ///           for this display running the `surfaceMain` entry point.
   /// [width] - Width in world units (blocks), default 1.0
   /// [height] - Height in world units (blocks), default 1.0
   /// [mode] - Billboard mode for camera-facing behavior
@@ -96,8 +103,21 @@ class FlutterDisplay {
   /// [world] - Optional world to spawn in (default: overworld)
   ///
   /// Returns the spawned FlutterDisplay, or null if spawn failed.
+  ///
+  /// Example:
+  /// ```dart
+  /// // Display showing the main Flutter UI
+  /// final mainDisplay = FlutterDisplay.spawn(position: Vec3(0, 65, 0));
+  ///
+  /// // Display showing a specific widget route
+  /// final clockDisplay = FlutterDisplay.spawn(
+  ///   position: Vec3(5, 65, 0),
+  ///   route: '/clock',
+  /// );
+  /// ```
   static FlutterDisplay? spawn({
     required Vec3 position,
+    String? route,
     double width = 1.0,
     double height = 1.0,
     BillboardMode mode = BillboardMode.fixed,
@@ -108,10 +128,11 @@ class FlutterDisplay {
     final targetWorld = world ?? World.overworld;
 
     // Spawn the Flutter display entity via JNI
+    // JNI signature: (Ljava/lang/String;DDDFFIFFLjava/lang/String;)I
     final entityId = GenericJniBridge.callStaticIntMethod(
       _dartBridge,
       'spawnFlutterDisplay',
-      '(Ljava/lang/String;DDDFFIFF)I',
+      '(Ljava/lang/String;DDDFFIFFLjava/lang/String;)I',
       [
         targetWorld.dimensionId,
         position.x,
@@ -122,6 +143,7 @@ class FlutterDisplay {
         mode.value,
         width,
         height,
+        route, // Can be null
       ],
     );
 
@@ -129,8 +151,9 @@ class FlutterDisplay {
       return null;
     }
 
-    // Surface ID 0 = main Flutter surface
-    return FlutterDisplay._internal(entityId, 0);
+    // Surface ID will be assigned by the renderer when it creates
+    // the surface for this route (on the client side)
+    return FlutterDisplay._internal(entityId, 0, route);
   }
 
   /// Get the display's current position.
@@ -271,8 +294,10 @@ class FlutterDisplay {
   Entity toEntity() => Entity(entityId);
 
   @override
-  String toString() =>
-      'FlutterDisplay($entityId, ${width}x$height, surface=$surfaceId)';
+  String toString() {
+    final routeInfo = route != null ? ", route='$route'" : '';
+    return 'FlutterDisplay($entityId, ${width}x$height$routeInfo)';
+  }
 
   @override
   bool operator ==(Object other) =>

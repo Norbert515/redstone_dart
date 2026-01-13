@@ -25,6 +25,7 @@ static bool g_use_hardware_renderer = true;
 #ifdef __APPLE__
     // macOS uses Metal for Flutter rendering (OpenGL is deprecated since 2018)
     #include "metal_renderer.h"
+    #include "multi_surface_renderer.h"
     #define METAL_SUPPORTED 1
     #define OPENGL_SUPPORTED 0
 
@@ -760,6 +761,13 @@ bool dart_client_init(const char* assets_path, const char* icu_data_path, const 
 
     g_client_initialized = true;
     std::cout << "Flutter client engine initialized successfully" << std::endl;
+
+#if METAL_SUPPORTED
+    // Initialize multi-surface system with the same assets paths
+    // This allows spawning additional Flutter surfaces for in-world rendering
+    multi_surface_set_assets_paths(assets_path, icu_data_path);
+#endif
+
     return true;
 }
 

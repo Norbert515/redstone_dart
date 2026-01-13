@@ -34,11 +34,15 @@ public class FlutterDisplayEntity extends Display {
     private static final EntityDataAccessor<Float> DATA_DISPLAY_HEIGHT = SynchedEntityData.defineId(
         FlutterDisplayEntity.class, EntityDataSerializers.FLOAT
     );
+    private static final EntityDataAccessor<String> DATA_ROUTE = SynchedEntityData.defineId(
+        FlutterDisplayEntity.class, EntityDataSerializers.STRING
+    );
 
     // NBT tags
     public static final String TAG_SURFACE_ID = "surface_id";
     public static final String TAG_DISPLAY_WIDTH = "display_width";
     public static final String TAG_DISPLAY_HEIGHT = "display_height";
+    public static final String TAG_ROUTE = "route";
 
     // Client-side render state
     private FlutterRenderState flutterRenderState;
@@ -55,6 +59,7 @@ public class FlutterDisplayEntity extends Display {
         builder.define(DATA_SURFACE_ID, 0L);  // Default to main Flutter surface
         builder.define(DATA_DISPLAY_WIDTH, 1.0f);  // 1 meter wide
         builder.define(DATA_DISPLAY_HEIGHT, 1.0f);  // 1 meter tall
+        builder.define(DATA_ROUTE, "");  // Empty route = use main surface
     }
 
     @Override
@@ -62,7 +67,8 @@ public class FlutterDisplayEntity extends Display {
         super.onSyncedDataUpdated(accessor);
         if (DATA_SURFACE_ID.equals(accessor) ||
             DATA_DISPLAY_WIDTH.equals(accessor) ||
-            DATA_DISPLAY_HEIGHT.equals(accessor)) {
+            DATA_DISPLAY_HEIGHT.equals(accessor) ||
+            DATA_ROUTE.equals(accessor)) {
             this.updateRenderState = true;
         }
     }
@@ -118,6 +124,27 @@ public class FlutterDisplayEntity extends Display {
     }
 
     // ==========================================================================
+    // Route
+    // ==========================================================================
+
+    /**
+     * Get the Flutter route for this display.
+     * Empty string means use the main Flutter surface.
+     */
+    public String getRoute() {
+        return this.entityData.get(DATA_ROUTE);
+    }
+
+    /**
+     * Set the Flutter route for this display.
+     * The route determines which widget content to render.
+     * Empty string or null means use the main Flutter surface.
+     */
+    public void setRoute(String route) {
+        this.entityData.set(DATA_ROUTE, route != null ? route : "");
+    }
+
+    // ==========================================================================
     // Persistence
     // ==========================================================================
 
@@ -127,6 +154,7 @@ public class FlutterDisplayEntity extends Display {
         this.setSurfaceId(input.getLongOr(TAG_SURFACE_ID, 0L));
         this.setDisplayWidth(input.getFloatOr(TAG_DISPLAY_WIDTH, 1.0f));
         this.setDisplayHeight(input.getFloatOr(TAG_DISPLAY_HEIGHT, 1.0f));
+        this.setRoute(input.getStringOr(TAG_ROUTE, ""));
     }
 
     @Override
@@ -135,6 +163,7 @@ public class FlutterDisplayEntity extends Display {
         output.putLong(TAG_SURFACE_ID, this.getSurfaceId());
         output.putFloat(TAG_DISPLAY_WIDTH, this.getDisplayWidth());
         output.putFloat(TAG_DISPLAY_HEIGHT, this.getDisplayHeight());
+        output.putString(TAG_ROUTE, this.getRoute());
     }
 
     // ==========================================================================
@@ -146,7 +175,8 @@ public class FlutterDisplayEntity extends Display {
         this.flutterRenderState = new FlutterRenderState(
             this.getSurfaceId(),
             this.getDisplayWidth(),
-            this.getDisplayHeight()
+            this.getDisplayHeight(),
+            this.getRoute()
         );
     }
 
@@ -160,5 +190,5 @@ public class FlutterDisplayEntity extends Display {
     /**
      * Flutter-specific render state containing surface and dimension info.
      */
-    public record FlutterRenderState(long surfaceId, float displayWidth, float displayHeight) {}
+    public record FlutterRenderState(long surfaceId, float displayWidth, float displayHeight, String route) {}
 }

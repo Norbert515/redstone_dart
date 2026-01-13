@@ -586,13 +586,21 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_multiSurfaceShutdown(
 JNIEXPORT jlong JNICALL Java_com_redstone_DartBridgeClient_createSurface(
     JNIEnv* env, jclass /* cls */, jint width, jint height, jstring initialRoute) {
 
-    const char* route = initialRoute ? env->GetStringUTFChars(initialRoute, nullptr) : nullptr;
+    const char* route = nullptr;
+    if (initialRoute != nullptr) {
+        route = env->GetStringUTFChars(initialRoute, nullptr);
+        std::cout << "[JNI] createSurface called with route: '" << (route ? route : "NULL") << "'" << std::endl;
+    } else {
+        std::cout << "[JNI] createSurface called with NULL initialRoute" << std::endl;
+    }
 
     int64_t surface_id = multi_surface_create(
         static_cast<int32_t>(width),
         static_cast<int32_t>(height),
         route
     );
+
+    std::cout << "[JNI] multi_surface_create returned surface_id=" << surface_id << std::endl;
 
     if (route) {
         env->ReleaseStringUTFChars(initialRoute, route);

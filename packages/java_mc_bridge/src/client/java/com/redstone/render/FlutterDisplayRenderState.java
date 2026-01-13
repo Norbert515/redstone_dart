@@ -17,6 +17,7 @@ public class FlutterDisplayRenderState extends DisplayEntityRenderState {
     /**
      * The Flutter surface ID to render.
      * Surface 0 is typically the main Flutter surface.
+     * This may be updated by the renderer when a surface is created for a route.
      */
     public long surfaceId;
 
@@ -29,6 +30,18 @@ public class FlutterDisplayRenderState extends DisplayEntityRenderState {
      * The display height in world units (meters).
      */
     public float displayHeight;
+
+    /**
+     * The Flutter route for this display.
+     * Empty string means use the main Flutter surface.
+     * Non-empty route causes the renderer to create a dedicated surface.
+     */
+    public String route = "";
+
+    /**
+     * The entity ID, used by the renderer for surface caching.
+     */
+    public int entityId;
 
     /**
      * Whether this render state has valid sub-state data.

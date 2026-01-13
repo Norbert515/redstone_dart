@@ -324,6 +324,12 @@ public class DartModClientLoader implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // Process Flutter client tasks (pumps the Flutter event loop)
             DartBridgeClient.safeProcessClientTasks();
+            // Process multi-surface Flutter tasks (spawned surface engines)
+            try {
+                DartBridgeClient.processAllSurfaceTasks();
+            } catch (UnsatisfiedLinkError e) {
+                // Multi-surface API not available - ignore
+            }
             // Also call the test synchronization tick
             DartBridgeClient.onClientTick();
         });

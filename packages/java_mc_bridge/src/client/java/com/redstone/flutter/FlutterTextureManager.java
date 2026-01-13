@@ -65,19 +65,21 @@ public class FlutterTextureManager implements AutoCloseable {
      * @return true if initialization succeeded
      */
     public static boolean initMultiSurface() {
+        LOGGER.info("initMultiSurface() called, current state: {}", multiSurfaceInitialized);
         if (multiSurfaceInitialized) {
             return true;
         }
         try {
+            LOGGER.info("Calling DartBridgeClient.multiSurfaceInit()...");
             multiSurfaceInitialized = DartBridgeClient.multiSurfaceInit();
             if (multiSurfaceInitialized) {
-                LOGGER.info("Multi-surface system initialized");
+                LOGGER.info("Multi-surface system initialized successfully!");
             } else {
-                LOGGER.warn("Failed to initialize multi-surface system");
+                LOGGER.warn("Failed to initialize multi-surface system (native returned false)");
             }
             return multiSurfaceInitialized;
         } catch (UnsatisfiedLinkError e) {
-            LOGGER.warn("Multi-surface API not available (native methods not found)");
+            LOGGER.warn("Multi-surface API not available (native methods not found)", e);
             return false;
         }
     }

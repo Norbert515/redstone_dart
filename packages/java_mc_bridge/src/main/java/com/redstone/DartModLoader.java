@@ -12,8 +12,10 @@ import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
@@ -425,6 +427,43 @@ public class DartModLoader implements ModInitializer {
             DartBridge.safeShutdownServerRuntime();
             DartBridge.setServerInstance(null);
             serverInstance = null;
+        });
+
+        // Register /flutterdisplay command to spawn flutter display entities with routes
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            dispatcher.register(Commands.literal("flutterdisplay")
+                .then(Commands.argument("route", StringArgumentType.string())
+                    .executes(context -> {
+                        ServerPlayer player = context.getSource().getPlayer();
+                        if (player == null) {
+                            context.getSource().sendFailure(Component.literal("Command must be run by a player"));
+                            return 0;
+                        }
+
+                        String route = StringArgumentType.getString(context, "route");
+                        Vec3 pos = player.position().add(0, 1, 0);  // 1 block above player
+
+                        int entityId = DartBridge.spawnFlutterDisplay(
+                            player.level().dimension().identifier().toString(),
+                            pos.x, pos.y, pos.z,
+                            player.getYRot(), 0,  // Face same direction as player
+                            3,  // CENTER billboard mode
+                            1.5f, 1.5f,  // 1.5x1.5 blocks
+                            route
+                        );
+
+                        if (entityId >= 0) {
+                            context.getSource().sendSuccess(
+                                () -> Component.literal("[Flutter] Spawned display with route: " + route),
+                                false
+                            );
+                        } else {
+                            context.getSource().sendFailure(
+                                Component.literal("[Flutter] Failed to spawn display")
+                            );
+                        }
+                        return entityId >= 0 ? 1 : 0;
+                    })));
         });
 
         // Register /darturl command to show service URL

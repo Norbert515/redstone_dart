@@ -34,6 +34,13 @@
 #include "multi_surface_renderer.h"
 
 // ==========================================================================
+// Assets paths storage (set by main engine, used for spawning surfaces)
+// ==========================================================================
+
+static std::string g_assets_path;
+static std::string g_icu_data_path;
+
+// ==========================================================================
 // Forward declarations
 // ==========================================================================
 
@@ -88,6 +95,7 @@ struct FlutterSurface {
 
 static std::mutex g_surfaces_mutex;
 static std::unordered_map<int64_t, std::unique_ptr<FlutterSurface>> g_surfaces;
+static std::unordered_map<int64_t, std::string> g_route_args;  // Route args per surface
 static std::atomic<int64_t> g_next_surface_id{1};  // Start at 1, 0 is reserved for main surface
 static std::atomic<bool> g_multi_surface_initialized{false};
 
@@ -249,20 +257,42 @@ static void SurfaceVsyncCallback(void* user_data, intptr_t baton) {
 }
 
 // ==========================================================================
+// Configuration
+// ==========================================================================
+
+extern "C" void multi_surface_set_assets_paths(const char* assets_path, const char* icu_data_path) {
+    if (assets_path) g_assets_path = assets_path;
+    if (icu_data_path) g_icu_data_path = icu_data_path;
+    std::cout << "[MultiSurface] Assets paths set:" << std::endl;
+    std::cout << "  Assets: " << g_assets_path << std::endl;
+    std::cout << "  ICU: " << g_icu_data_path << std::endl;
+}
+
+// ==========================================================================
 // Lifecycle
 // ==========================================================================
 
 extern "C" bool multi_surface_init() {
+    std::cout << "[MultiSurface] multi_surface_init() called" << std::endl;
+
     if (g_multi_surface_initialized.load()) {
+        std::cout << "[MultiSurface] Already initialized, returning true" << std::endl;
         return true;
     }
 
     // Get shared Metal resources from main renderer
-    g_metal_device = (__bridge id<MTLDevice>)metal_renderer_get_device();
-    g_metal_command_queue = (__bridge id<MTLCommandQueue>)metal_renderer_get_command_queue();
+    void* device_ptr = metal_renderer_get_device();
+    void* queue_ptr = metal_renderer_get_command_queue();
+
+    std::cout << "[MultiSurface] Got Metal device: " << device_ptr
+              << ", queue: " << queue_ptr << std::endl;
+
+    g_metal_device = (__bridge id<MTLDevice>)device_ptr;
+    g_metal_command_queue = (__bridge id<MTLCommandQueue>)queue_ptr;
 
     if (g_metal_device == nil || g_metal_command_queue == nil) {
         std::cerr << "[MultiSurface] Failed to get Metal device/queue from main renderer" << std::endl;
+        std::cerr << "[MultiSurface]   device_ptr=" << device_ptr << ", queue_ptr=" << queue_ptr << std::endl;
         return false;
     }
 
@@ -307,6 +337,7 @@ extern "C" void multi_surface_shutdown() {
     }
 
     g_surfaces.clear();
+    g_route_args.clear();
     g_multi_surface_initialized = false;
 
     std::cout << "[MultiSurface] Shutdown complete" << std::endl;
@@ -356,27 +387,45 @@ extern "C" int64_t multi_surface_create(int32_t width, int32_t height, const cha
     renderer.metal.get_next_drawable_callback = SurfaceGetNextDrawable;
     renderer.metal.present_drawable_callback = SurfacePresentDrawable;
 
-    // Configure project args
-    // Note: In a full implementation, we would use FlutterEngineGroup to spawn
-    // child engines that share the Dart isolate. For now, we create independent
-    // engines (each with its own isolate).
-    //
-    // TODO: Implement FlutterEngineGroup once Flutter embedder API supports it
-    // properly for headless/offscreen rendering scenarios.
+    // Validate assets paths are set
+    if (g_assets_path.empty() || g_icu_data_path.empty()) {
+        std::cerr << "[MultiSurface] Assets paths not set. Call multi_surface_set_assets_paths() first." << std::endl;
+        return 0;
+    }
 
+    // Configure project args
     FlutterProjectArgs args = {};
     args.struct_size = sizeof(FlutterProjectArgs);
+    args.assets_path = g_assets_path.c_str();
+    args.icu_data_path = g_icu_data_path.c_str();
 
-    // Get assets paths from main runtime
-    // For now, these need to be passed in or shared from the main engine
-    // This is a limitation - ideally we'd use FlutterEngineGroup
-    args.assets_path = "/path/to/flutter_assets";  // TODO: Get from main engine
-    args.icu_data_path = "/path/to/icudtl.dat";    // TODO: Get from main engine
+    // Use surfaceMain as the entry point for spawned surfaces
+    // This allows them to run independent widget content
+    args.custom_dart_entrypoint = "surfaceMain";
+    std::cout << "[MultiSurface] Using custom entry point: surfaceMain" << std::endl;
 
-    // Set initial route if provided
+    // Set log callback to capture Dart print statements from spawned engines
+    args.log_message_callback = [](const char* tag, const char* message, void* user_data) {
+        std::cout << "[MultiSurface Dart] [" << (tag ? tag : "?") << "] " << (message ? message : "") << std::endl;
+    };
+    args.log_tag = "surface";
+
+    // Build VM command line args (these go to the Dart VM, not the entry point)
+    std::vector<const char*> vm_args;
+    vm_args.push_back("--enable-dart-profiling");
+    args.command_line_argc = static_cast<int>(vm_args.size());
+    args.command_line_argv = vm_args.data();
+
+    // Build Dart entrypoint args (these are passed to surfaceMain via Platform.executableArguments)
+    // Store the route argument to ensure it persists for the lifetime of the surface
+    std::vector<const char*> dart_args;
     if (initial_route && initial_route[0] != '\0') {
-        args.custom_dart_entrypoint = initial_route;
+        g_route_args[surface_id] = std::string("--route=") + initial_route;
+        dart_args.push_back(g_route_args[surface_id].c_str());
+        std::cout << "[MultiSurface] Setting dart entrypoint arg: " << g_route_args[surface_id] << std::endl;
     }
+    args.dart_entrypoint_argc = static_cast<int>(dart_args.size());
+    args.dart_entrypoint_argv = dart_args.empty() ? nullptr : dart_args.data();
 
     // Configure vsync
     args.vsync_callback = SurfaceVsyncCallback;
@@ -397,17 +446,24 @@ extern "C" int64_t multi_surface_create(int32_t width, int32_t height, const cha
 
     args.custom_task_runners = &custom_task_runners;
 
-    // Note: For now, we skip actual engine creation since we need the main
-    // engine's assets paths and ideally FlutterEngineGroup support.
-    // This is a stub implementation that sets up the infrastructure.
-    //
-    // In a real implementation with FlutterEngineGroup:
-    // 1. Create engine group from main engine
-    // 2. Spawn child engine with custom entry point
-    // 3. Child engines share isolate, fonts, GPU context
+    // Run the Flutter engine for this surface
+    FlutterEngineResult result = FlutterEngineRun(
+        FLUTTER_ENGINE_VERSION,
+        &renderer,
+        &args,
+        surface.get(),  // user_data
+        &surface->engine
+    );
 
-    std::cout << "[MultiSurface] Surface " << surface_id << " created (stub - engine not started)" << std::endl;
-    std::cout << "[MultiSurface] NOTE: Full implementation requires FlutterEngineGroup support" << std::endl;
+    if (result != kSuccess) {
+        std::cerr << "[MultiSurface] Failed to start engine for surface " << surface_id
+                  << ", error: " << result << std::endl;
+        // Clean up route arg storage
+        g_route_args.erase(surface_id);
+        return 0;  // Return 0 to indicate failure
+    }
+
+    std::cout << "[MultiSurface] Surface " << surface_id << " engine started successfully" << std::endl;
 
     // Store surface
     auto* surface_ptr = surface.get();
@@ -464,6 +520,9 @@ extern "C" void multi_surface_destroy(int64_t surface_id) {
         free(surface->pixel_buffer);
         surface->pixel_buffer = nullptr;
     }
+
+    // Clean up route arg storage
+    g_route_args.erase(surface_id);
 
     g_surfaces.erase(it);
     std::cout << "[MultiSurface] Surface " << surface_id << " destroyed" << std::endl;
