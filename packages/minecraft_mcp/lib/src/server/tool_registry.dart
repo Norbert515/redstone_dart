@@ -479,6 +479,34 @@ class ToolRegistry {
         'properties': <String, Object>{},
       },
     ),
+
+    // Player Inventory tools
+    ToolDefinition(
+      name: 'clearInventory',
+      description: "Clear the player's inventory completely.",
+      inputSchema: {
+        'type': 'object',
+        'properties': <String, Object>{},
+      },
+    ),
+    ToolDefinition(
+      name: 'giveItem',
+      description: 'Give an item to the player. If inventory is full, excess items are dropped.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'itemId': {
+            'type': 'string',
+            'description': 'Item ID (e.g., "minecraft:diamond", "minecraft:diamond_sword")',
+          },
+          'count': {
+            'type': 'integer',
+            'description': 'Number of items to give (default 1)',
+          },
+        },
+        'required': ['itemId'],
+      },
+    ),
   ];
 
   /// List all available tools.
@@ -627,6 +655,15 @@ class ToolRegistry {
 
       case 'getTickState':
         return _handleGetTickState();
+
+      // =========================================================================
+      // Player Inventory Tools
+      // =========================================================================
+      case 'clearInventory':
+        return _handleClearInventory();
+
+      case 'giveItem':
+        return _handleGiveItem(args);
 
       default:
         throw StateError('Tool "$name" has no implementation');
@@ -1160,6 +1197,40 @@ class ToolRegistry {
       'stepping': state.stepping,
       'sprinting': state.sprinting,
       'frozenTicksToRun': state.frozenTicksToRun,
+    };
+  }
+
+  // ===========================================================================
+  // Player Inventory Tool Handlers
+  // ===========================================================================
+
+  Future<Map<String, dynamic>> _handleClearInventory() async {
+    _ensureGameClient();
+
+    await gameClient!.clearInventory();
+
+    return {
+      'success': true,
+      'message': 'Inventory cleared',
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleGiveItem(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final itemId = args['itemId'] as String;
+    final count = args['count'] as int? ?? 1;
+
+    final success = await gameClient!.giveItem(itemId, count);
+
+    if (!success) {
+      throw StateError('Invalid item ID: $itemId');
+    }
+
+    return {
+      'success': true,
+      'itemId': itemId,
+      'count': count,
     };
   }
 

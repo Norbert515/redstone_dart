@@ -451,6 +451,36 @@ class McpRuntime implements GameContextProvider {
   }
 
   // ---------------------------------------------------------------------------
+  // Player Inventory Operations
+  // ---------------------------------------------------------------------------
+
+  @override
+  void clearInventory() {
+    _ensureReady();
+    final players = Players.getAllPlayers();
+    if (players.isEmpty) return;
+    GenericJniBridge.callStaticVoidMethod(
+      'com/redstone/DartBridge',
+      'clearPlayerInventory',
+      '(I)V',
+      [players.first.id],
+    );
+  }
+
+  @override
+  bool giveItem(String itemId, int count) {
+    _ensureReady();
+    final players = Players.getAllPlayers();
+    if (players.isEmpty) return false;
+    return GenericJniBridge.callStaticBoolMethod(
+      'com/redstone/DartBridge',
+      'givePlayerItem',
+      '(ILjava/lang/String;I)Z',
+      [players.first.id, itemId, count],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Helper Methods
   // ---------------------------------------------------------------------------
 

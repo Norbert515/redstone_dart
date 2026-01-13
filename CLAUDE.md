@@ -305,6 +305,76 @@ See `packages/framework_tests/test/` for comprehensive examples:
 - `recipes_test.dart` - Recipe registration
 - `loot_tables_test.dart` - Loot table testing
 
+## MCP Tools for Testing & Automation
+
+The framework provides MCP (Model Context Protocol) tools for controlling Minecraft programmatically. These are useful for E2E testing and automation.
+
+### Tick Control Tools
+
+Control game tick execution for precise testing:
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `freezeTicks` | Freeze game ticks (players still move) | None |
+| `unfreezeTicks` | Resume normal ticking | None |
+| `stepTicks` | Step N ticks while frozen (auto-freezes) | `count`: int |
+| `setTickRate` | Set tick rate (default 20, range 1-10000) | `rate`: number |
+| `sprintTicks` | Run N ticks at max speed | `count`: int |
+| `getTickState` | Query current tick state | None |
+
+**Example use cases:**
+- Freeze time to inspect game state
+- Step through ticks one-by-one for debugging
+- Speed up tests with `sprintTicks` or high tick rate
+- Slow down for visual inspection with low tick rate
+
+### Inventory Tools
+
+Control player inventory:
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `clearInventory` | Clear player's entire inventory | None |
+| `giveItem` | Give item to player | `itemId`: string, `count`: int (optional, default 1) |
+
+**Item ID format:** `"minecraft:diamond"`, `"minecraft:diamond_sword"`, `"minecraft:cooked_beef"`
+
+**Example:**
+```
+giveItem(itemId: "minecraft:diamond_pickaxe", count: 1)
+giveItem(itemId: "minecraft:cobblestone", count: 64)
+clearInventory()
+```
+
+### World & Entity Tools
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `placeBlock` | Place a block | `x`, `y`, `z`: int, `blockId`: string |
+| `getBlock` | Get block at position | `x`, `y`, `z`: int |
+| `fillBlocks` | Fill region with blocks | `fromX/Y/Z`, `toX/Y/Z`: int, `blockId`: string |
+| `spawnEntity` | Spawn an entity | `entityType`: string, `x`, `y`, `z`: number |
+| `getEntities` | Query entities in radius | `centerX/Y/Z`: number, `radius`: number |
+| `teleportPlayer` | Teleport player | `x`, `y`, `z`: number |
+| `executeCommand` | Run Minecraft command | `command`: string |
+
+### Screenshot & Input Tools
+
+| Tool | Description |
+|------|-------------|
+| `takeScreenshot` | Capture screenshot |
+| `getScreenshot` | Get screenshot as base64 |
+| `pressKey` | Simulate key press |
+| `click` | Simulate mouse click |
+| `typeText` | Type text into input |
+
+### Time & Environment
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `setTimeOfDay` | Set game time | `time`: int (0=dawn, 6000=noon, 18000=midnight) |
+| `waitTicks` | Wait for N game ticks | `ticks`: int |
+
 ## Adding New Features
 
 ### Adding a New Entity Model Type

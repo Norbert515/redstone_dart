@@ -372,6 +372,33 @@ class GameClient {
     final response = await _get('/tick/state');
     return TickStateResponse.fromJson(response);
   }
+
+  // ===========================================================================
+  // Player Inventory Operations
+  // ===========================================================================
+
+  /// Clear the player's inventory completely.
+  Future<void> clearInventory() async {
+    await _post('/player/clear-inventory');
+  }
+
+  /// Give an item to the player.
+  ///
+  /// Returns true if the item was successfully given, false if the item ID is invalid.
+  Future<bool> giveItem(String itemId, int count) async {
+    try {
+      await _post('/player/give-item', {
+        'itemId': itemId,
+        'count': count,
+      });
+      return true;
+    } on GameClientException catch (e) {
+      if (e.statusCode == 400) {
+        return false;
+      }
+      rethrow;
+    }
+  }
 }
 
 /// Exception thrown by the game client.

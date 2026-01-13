@@ -119,6 +119,10 @@ class GameServer {
     router.post('/tick/sprint', _sprintTicks);
     router.get('/tick/state', _getTickState);
 
+    // Player Inventory operations
+    router.post('/player/clear-inventory', _clearInventory);
+    router.post('/player/give-item', _giveItem);
+
     // Status
     router.get('/status', _getStatus);
 
@@ -695,6 +699,44 @@ class GameServer {
       return _errorResponse('Failed to get tick state: $e', statusCode: 400);
     }
   }
+
+  // ===========================================================================
+  // Player Inventory Endpoints
+  // ===========================================================================
+
+  Future<Response> _clearInventory(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final context = _getContext()!;
+      context.clearInventory();
+      return _jsonResponse(SuccessResponse(message: 'Inventory cleared').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to clear inventory: $e', statusCode: 400);
+    }
+  }
+
+  Future<Response> _giveItem(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final body = await _parseBody(request);
+      final req = GiveItemRequest.fromJson(body);
+      final context = _getContext()!;
+
+      final success = context.giveItem(req.itemId, req.count);
+
+      if (!success) {
+        return _errorResponse('Failed to give item: invalid item ID', statusCode: 400);
+      }
+
+      return _jsonResponse(SuccessResponse(message: 'Item given').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to give item: $e', statusCode: 400);
+    }
+  }
 }
 
 /// Provider interface for game context operations.
@@ -756,4 +798,8 @@ abstract class GameContextProvider {
   void setTickRate(double rate);
   void sprintTicks(int count);
   TickStateResponse getTickState();
+
+  // Player Inventory operations
+  void clearInventory();
+  bool giveItem(String itemId, int count);
 }

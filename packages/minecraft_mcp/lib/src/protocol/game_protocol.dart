@@ -787,6 +787,33 @@ class SprintTicksRequest {
       };
 }
 
+// =============================================================================
+// Player Inventory Operations
+// =============================================================================
+
+/// Request to give an item to the player.
+class GiveItemRequest {
+  final String itemId;
+  final int count;
+
+  GiveItemRequest({
+    required this.itemId,
+    this.count = 1,
+  });
+
+  factory GiveItemRequest.fromJson(Map<String, dynamic> json) {
+    return GiveItemRequest(
+      itemId: json['itemId'] as String,
+      count: json['count'] as int? ?? 1,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'itemId': itemId,
+        'count': count,
+      };
+}
+
 /// Response containing tick state information.
 class TickStateResponse {
   final bool frozen;
