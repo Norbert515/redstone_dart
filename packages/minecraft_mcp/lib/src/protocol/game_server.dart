@@ -111,6 +111,14 @@ class GameServer {
     router.post('/time', _setTimeOfDay);
     router.post('/command', _executeCommand);
 
+    // Tick Control operations
+    router.post('/tick/freeze', _freezeTicks);
+    router.post('/tick/unfreeze', _unfreezeTicks);
+    router.post('/tick/step', _stepTicks);
+    router.post('/tick/rate', _setTickRate);
+    router.post('/tick/sprint', _sprintTicks);
+    router.get('/tick/state', _getTickState);
+
     // Status
     router.get('/status', _getStatus);
 
@@ -592,6 +600,101 @@ class GameServer {
       );
     }
   }
+
+  // ===========================================================================
+  // Tick Control Endpoints
+  // ===========================================================================
+
+  Future<Response> _freezeTicks(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final context = _getContext()!;
+      context.freezeTicks();
+      return _jsonResponse(SuccessResponse(message: 'Ticks frozen').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to freeze ticks: $e', statusCode: 400);
+    }
+  }
+
+  Future<Response> _unfreezeTicks(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final context = _getContext()!;
+      context.unfreezeTicks();
+      return _jsonResponse(SuccessResponse(message: 'Ticks unfrozen').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to unfreeze ticks: $e', statusCode: 400);
+    }
+  }
+
+  Future<Response> _stepTicks(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final body = await _parseBody(request);
+      final req = StepTicksRequest.fromJson(body);
+      final context = _getContext()!;
+
+      context.stepTicks(req.count);
+
+      return _jsonResponse(SuccessResponse(message: 'Stepped ${req.count} ticks').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to step ticks: $e', statusCode: 400);
+    }
+  }
+
+  Future<Response> _setTickRate(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final body = await _parseBody(request);
+      final req = SetTickRateRequest.fromJson(body);
+      final context = _getContext()!;
+
+      context.setTickRate(req.rate);
+
+      return _jsonResponse(SuccessResponse(message: 'Tick rate set to ${req.rate}').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to set tick rate: $e', statusCode: 400);
+    }
+  }
+
+  Future<Response> _sprintTicks(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final body = await _parseBody(request);
+      final req = SprintTicksRequest.fromJson(body);
+      final context = _getContext()!;
+
+      context.sprintTicks(req.count);
+
+      return _jsonResponse(SuccessResponse(message: 'Sprinting ${req.count} ticks').toJson());
+    } catch (e) {
+      return _errorResponse('Failed to sprint ticks: $e', statusCode: 400);
+    }
+  }
+
+  Future<Response> _getTickState(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final context = _getContext()!;
+      final state = context.getTickState();
+
+      return _jsonResponse(state.toJson());
+    } catch (e) {
+      return _errorResponse('Failed to get tick state: $e', statusCode: 400);
+    }
+  }
 }
 
 /// Provider interface for game context operations.
@@ -645,4 +748,12 @@ abstract class GameContextProvider {
   Future<void> waitTicks(int ticks);
   void setTime(int time);
   Future<String?> executeCommand(String command);
+
+  // Tick Control operations
+  void freezeTicks();
+  void unfreezeTicks();
+  void stepTicks(int count);
+  void setTickRate(double rate);
+  void sprintTicks(int count);
+  TickStateResponse getTickState();
 }

@@ -731,3 +731,93 @@ class ErrorResponse {
         if (code != null) 'code': code,
       };
 }
+
+// =============================================================================
+// Tick Control Operations
+// =============================================================================
+
+/// Request to step forward by a number of ticks.
+class StepTicksRequest {
+  final int count;
+
+  StepTicksRequest({required this.count});
+
+  factory StepTicksRequest.fromJson(Map<String, dynamic> json) {
+    return StepTicksRequest(
+      count: json['count'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'count': count,
+      };
+}
+
+/// Request to set the tick rate.
+class SetTickRateRequest {
+  final double rate;
+
+  SetTickRateRequest({required this.rate});
+
+  factory SetTickRateRequest.fromJson(Map<String, dynamic> json) {
+    return SetTickRateRequest(
+      rate: (json['rate'] as num).toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'rate': rate,
+      };
+}
+
+/// Request to sprint through a number of ticks.
+class SprintTicksRequest {
+  final int count;
+
+  SprintTicksRequest({required this.count});
+
+  factory SprintTicksRequest.fromJson(Map<String, dynamic> json) {
+    return SprintTicksRequest(
+      count: json['count'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'count': count,
+      };
+}
+
+/// Response containing tick state information.
+class TickStateResponse {
+  final bool frozen;
+  final double tickRate;
+  final bool stepping;
+  final bool sprinting;
+  final int frozenTicksToRun;
+
+  TickStateResponse({
+    required this.frozen,
+    required this.tickRate,
+    required this.stepping,
+    required this.sprinting,
+    required this.frozenTicksToRun,
+  });
+
+  factory TickStateResponse.fromJson(Map<String, dynamic> json) {
+    return TickStateResponse(
+      frozen: json['frozen'] as bool,
+      tickRate: (json['tickRate'] as num).toDouble(),
+      stepping: json['stepping'] as bool,
+      sprinting: json['sprinting'] as bool,
+      frozenTicksToRun: json['frozenTicksToRun'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'frozen': frozen,
+        'tickRate': tickRate,
+        'stepping': stepping,
+        'sprinting': sprinting,
+        'frozenTicksToRun': frozenTicksToRun,
+      };
+}

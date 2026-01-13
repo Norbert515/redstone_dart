@@ -411,6 +411,74 @@ class ToolRegistry {
         'required': ['command'],
       },
     ),
+
+    // Tick Control tools
+    ToolDefinition(
+      name: 'freezeTicks',
+      description: 'Freeze game ticks. Players continue to move but world stops updating.',
+      inputSchema: {
+        'type': 'object',
+        'properties': <String, Object>{},
+      },
+    ),
+    ToolDefinition(
+      name: 'unfreezeTicks',
+      description: 'Unfreeze game ticks and resume normal game execution.',
+      inputSchema: {
+        'type': 'object',
+        'properties': <String, Object>{},
+      },
+    ),
+    ToolDefinition(
+      name: 'stepTicks',
+      description: 'Step forward by a specific number of ticks while frozen. Auto-freezes if not already frozen.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'count': {
+            'type': 'integer',
+            'description': 'Number of ticks to step forward',
+          },
+        },
+        'required': ['count'],
+      },
+    ),
+    ToolDefinition(
+      name: 'setTickRate',
+      description: 'Set the game tick rate. Default is 20 ticks/second. Range: 1-10000.',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'rate': {
+            'type': 'number',
+            'description': 'Ticks per second (1-10000, default 20)',
+          },
+        },
+        'required': ['rate'],
+      },
+    ),
+    ToolDefinition(
+      name: 'sprintTicks',
+      description: 'Run a number of ticks as fast as possible (no delay between ticks).',
+      inputSchema: {
+        'type': 'object',
+        'properties': {
+          'count': {
+            'type': 'integer',
+            'description': 'Number of ticks to sprint through',
+          },
+        },
+        'required': ['count'],
+      },
+    ),
+    ToolDefinition(
+      name: 'getTickState',
+      description: 'Get the current tick state (frozen, tick rate, stepping status).',
+      inputSchema: {
+        'type': 'object',
+        'properties': <String, Object>{},
+      },
+    ),
   ];
 
   /// List all available tools.
@@ -538,6 +606,27 @@ class ToolRegistry {
 
       case 'executeCommand':
         return _handleExecuteCommand(args);
+
+      // =========================================================================
+      // Tick Control Tools
+      // =========================================================================
+      case 'freezeTicks':
+        return _handleFreezeTicks();
+
+      case 'unfreezeTicks':
+        return _handleUnfreezeTicks();
+
+      case 'stepTicks':
+        return _handleStepTicks(args);
+
+      case 'setTickRate':
+        return _handleSetTickRate(args);
+
+      case 'sprintTicks':
+        return _handleSprintTicks(args);
+
+      case 'getTickState':
+        return _handleGetTickState();
 
       default:
         throw StateError('Tool "$name" has no implementation');
@@ -992,6 +1081,85 @@ class ToolRegistry {
       'success': true,
       'command': command,
       'result': result,
+    };
+  }
+
+  // ===========================================================================
+  // Tick Control Tool Handlers
+  // ===========================================================================
+
+  Future<Map<String, dynamic>> _handleFreezeTicks() async {
+    _ensureGameClient();
+
+    await gameClient!.freezeTicks();
+
+    return {
+      'success': true,
+      'message': 'Ticks frozen',
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleUnfreezeTicks() async {
+    _ensureGameClient();
+
+    await gameClient!.unfreezeTicks();
+
+    return {
+      'success': true,
+      'message': 'Ticks unfrozen',
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleStepTicks(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final count = args['count'] as int;
+
+    await gameClient!.stepTicks(count);
+
+    return {
+      'success': true,
+      'ticksStepped': count,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleSetTickRate(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final rate = (args['rate'] as num).toDouble();
+
+    await gameClient!.setTickRate(rate);
+
+    return {
+      'success': true,
+      'tickRate': rate,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleSprintTicks(Map<String, dynamic> args) async {
+    _ensureGameClient();
+
+    final count = args['count'] as int;
+
+    await gameClient!.sprintTicks(count);
+
+    return {
+      'success': true,
+      'ticksSprinted': count,
+    };
+  }
+
+  Future<Map<String, dynamic>> _handleGetTickState() async {
+    _ensureGameClient();
+
+    final state = await gameClient!.getTickState();
+
+    return {
+      'frozen': state.frozen,
+      'tickRate': state.tickRate,
+      'stepping': state.stepping,
+      'sprinting': state.sprinting,
+      'frozenTicksToRun': state.frozenTicksToRun,
     };
   }
 

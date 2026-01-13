@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
 import 'package:dart_mod_server/dart_mod_server.dart';
 
 import '../protocol/game_protocol.dart';
@@ -365,6 +366,88 @@ class McpRuntime implements GameContextProvider {
     _ensureReady();
     CommandExecutor.execute(command);
     return 'executed';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tick Control Operations
+  // ---------------------------------------------------------------------------
+
+  @override
+  void freezeTicks() {
+    _ensureReady();
+    GenericJniBridge.callStaticVoidMethod(
+      'com/redstone/DartBridge',
+      'freezeTicks',
+      '()V',
+      [],
+    );
+  }
+
+  @override
+  void unfreezeTicks() {
+    _ensureReady();
+    GenericJniBridge.callStaticVoidMethod(
+      'com/redstone/DartBridge',
+      'unfreezeTicks',
+      '()V',
+      [],
+    );
+  }
+
+  @override
+  void stepTicks(int count) {
+    _ensureReady();
+    GenericJniBridge.callStaticVoidMethod(
+      'com/redstone/DartBridge',
+      'stepTicks',
+      '(I)V',
+      [count],
+    );
+  }
+
+  @override
+  void setTickRate(double rate) {
+    _ensureReady();
+    GenericJniBridge.callStaticVoidMethod(
+      'com/redstone/DartBridge',
+      'setTickRate',
+      '(D)V',
+      [rate],
+    );
+  }
+
+  @override
+  void sprintTicks(int count) {
+    _ensureReady();
+    GenericJniBridge.callStaticVoidMethod(
+      'com/redstone/DartBridge',
+      'sprintTicks',
+      '(I)V',
+      [count],
+    );
+  }
+
+  @override
+  TickStateResponse getTickState() {
+    _ensureReady();
+    final jsonStr = GenericJniBridge.callStaticStringMethod(
+      'com/redstone/DartBridge',
+      'getTickState',
+      '()Ljava/lang/String;',
+      [],
+    );
+    if (jsonStr == null) {
+      // Return default state if Java returns null
+      return TickStateResponse(
+        frozen: false,
+        tickRate: 20.0,
+        stepping: false,
+        sprinting: false,
+        frozenTicksToRun: 0,
+      );
+    }
+    final json = jsonDecode(jsonStr) as Map<String, dynamic>;
+    return TickStateResponse.fromJson(json);
   }
 
   // ---------------------------------------------------------------------------

@@ -325,6 +325,53 @@ class GameClient {
     }
     return result.result;
   }
+
+  // ===========================================================================
+  // Tick Control Operations
+  // ===========================================================================
+
+  /// Freeze game ticks.
+  ///
+  /// Players continue to move but world stops updating.
+  Future<void> freezeTicks() async {
+    await _post('/tick/freeze');
+  }
+
+  /// Unfreeze game ticks.
+  ///
+  /// Resumes normal game execution.
+  Future<void> unfreezeTicks() async {
+    await _post('/tick/unfreeze');
+  }
+
+  /// Step forward by a specific number of ticks.
+  ///
+  /// Auto-freezes if not already frozen.
+  Future<void> stepTicks(int count) async {
+    await _post('/tick/step', {'count': count});
+  }
+
+  /// Set the game tick rate.
+  ///
+  /// Default is 20 ticks per second. Range: 1-10000.
+  Future<void> setTickRate(double rate) async {
+    await _post('/tick/rate', {'rate': rate});
+  }
+
+  /// Sprint through a number of ticks as fast as possible.
+  ///
+  /// No delay between ticks.
+  Future<void> sprintTicks(int count) async {
+    await _post('/tick/sprint', {'count': count});
+  }
+
+  /// Get the current tick state.
+  ///
+  /// Returns information about frozen state, tick rate, stepping, and sprinting.
+  Future<TickStateResponse> getTickState() async {
+    final response = await _get('/tick/state');
+    return TickStateResponse.fromJson(response);
+  }
 }
 
 /// Exception thrown by the game client.

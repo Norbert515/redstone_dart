@@ -628,29 +628,72 @@ class GenericJniBridge {
   // Argument Encoding Helpers
   // ==========================================================================
 
+  /// Parse JNI signature and return list of parameter type chars.
+  ///
+  /// e.g., "(IDF)V" returns ['I', 'D', 'F']
+  /// e.g., "(Ljava/lang/String;I)V" returns ['L', 'I']
+  static List<String> _parseSignatureParams(String sig) {
+    final params = <String>[];
+    if (!sig.startsWith('(')) return params;
+
+    var i = 1; // Skip opening '('
+    while (i < sig.length && sig[i] != ')') {
+      final c = sig[i];
+      if (c == 'L') {
+        // Object type - skip to ';'
+        params.add('L');
+        while (i < sig.length && sig[i] != ';') {
+          i++;
+        }
+        i++; // Skip ';'
+      } else if (c == '[') {
+        // Array - add '[' and continue to get element type
+        params.add('[');
+        i++;
+      } else {
+        // Primitive type (I, D, F, Z, B, C, S, J)
+        params.add(c);
+        i++;
+      }
+    }
+    return params;
+  }
+
   /// Encode a list of arguments into a native int64 array.
   ///
   /// Supports: int, double, bool, String, and JavaObject (via handle property).
+  /// The [sig] parameter is the JNI method signature, used to determine
+  /// whether doubles should be encoded as float (F) or double (D).
   /// Returns a [_EncodedArgs] that must be freed after use.
-  static _EncodedArgs _encodeArgs(List<Object?> args) {
+  static _EncodedArgs _encodeArgs(List<Object?> args, String sig) {
     if (args.isEmpty) {
       return _EncodedArgs(nullptr, []);
     }
 
+    final paramTypes = _parseSignatureParams(sig);
     final ptr = calloc<Int64>(args.length);
     final allocatedStrings = <Pointer<Utf8>>[];
 
     for (var i = 0; i < args.length; i++) {
       final arg = args[i];
+      final expectedType = i < paramTypes.length ? paramTypes[i] : '?';
+
       if (arg == null) {
         ptr[i] = 0; // null object handle
       } else if (arg is int) {
         ptr[i] = arg;
       } else if (arg is double) {
-        // Encode double bits as int64
-        final bd = ByteData(8);
-        bd.setFloat64(0, arg, Endian.host);
-        ptr[i] = bd.getInt64(0, Endian.host);
+        if (expectedType == 'F') {
+          // Encode as 32-bit float bits in lower 32 bits
+          final bd = ByteData(4);
+          bd.setFloat32(0, arg, Endian.host);
+          ptr[i] = bd.getInt32(0, Endian.host);
+        } else {
+          // Encode as 64-bit double bits (for 'D' or unknown)
+          final bd = ByteData(8);
+          bd.setFloat64(0, arg, Endian.host);
+          ptr[i] = bd.getInt64(0, Endian.host);
+        }
       } else if (arg is bool) {
         ptr[i] = arg ? 1 : 0;
       } else if (arg is String) {
@@ -690,7 +733,7 @@ class GenericJniBridge {
   ]) {
     final classNamePtr = className.toNativeUtf8();
     final ctorSigPtr = ctorSig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, ctorSig);
 
     try {
       final result = _createObject(
@@ -723,7 +766,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       _callVoidMethod(
@@ -754,7 +797,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       final result = _callIntMethod(
@@ -786,7 +829,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       final result = _callLongMethod(
@@ -818,7 +861,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       return _callDoubleMethod(
@@ -848,7 +891,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       return _callFloatMethod(
@@ -878,7 +921,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       return _callBoolMethod(
@@ -910,7 +953,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       final result = _callObjectMethod(
@@ -944,7 +987,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       final resultPtr = _callStringMethod(
@@ -989,7 +1032,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       _callStaticVoidMethod(
@@ -1029,7 +1072,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       final result = _callStaticIntMethod(
@@ -1064,7 +1107,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       final result = _callStaticLongMethod(
@@ -1099,7 +1142,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       final result = _callStaticObjectMethod(
@@ -1134,7 +1177,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       final resultPtr = _callStaticStringMethod(
@@ -1174,7 +1217,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       return _callStaticDoubleMethod(
@@ -1207,7 +1250,7 @@ class GenericJniBridge {
     final classNamePtr = className.toNativeUtf8();
     final methodNamePtr = methodName.toNativeUtf8();
     final sigPtr = sig.toNativeUtf8();
-    final encodedArgs = _encodeArgs(args);
+    final encodedArgs = _encodeArgs(args, sig);
 
     try {
       return _callStaticBoolMethod(

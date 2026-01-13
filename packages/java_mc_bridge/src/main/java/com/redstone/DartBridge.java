@@ -12,6 +12,7 @@ import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.ServerTickRateManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -46,6 +47,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -2592,6 +2594,96 @@ public class DartBridge {
         ServerLevel level = getServerLevel(dimension);
         if (level == null) return false;
         return level.isThundering();
+    }
+
+    // --------------------------------------------------------------------------
+    // Tick Control
+    // --------------------------------------------------------------------------
+
+    /**
+     * Freeze game ticks. Players continue to move but world stops updating.
+     */
+    public static void freezeTicks() {
+        if (serverInstance == null) return;
+        serverInstance.execute(() -> {
+            ServerTickRateManager mgr = serverInstance.tickRateManager();
+            if (mgr.isSprinting()) {
+                mgr.stopSprinting();
+            }
+            if (mgr.isSteppingForward()) {
+                mgr.stopStepping();
+            }
+            mgr.setFrozen(true);
+        });
+    }
+
+    /**
+     * Unfreeze game ticks and resume normal game execution.
+     */
+    public static void unfreezeTicks() {
+        if (serverInstance == null) return;
+        serverInstance.execute(() -> {
+            serverInstance.tickRateManager().setFrozen(false);
+        });
+    }
+
+    /**
+     * Step forward by a specific number of ticks while frozen.
+     * Auto-freezes if not already frozen.
+     * @param count Number of ticks to step forward
+     */
+    public static void stepTicks(int count) {
+        if (serverInstance == null) return;
+        serverInstance.execute(() -> {
+            ServerTickRateManager mgr = serverInstance.tickRateManager();
+            if (!mgr.isFrozen()) {
+                mgr.setFrozen(true);
+            }
+            mgr.stepGameIfPaused(count);
+        });
+    }
+
+    /**
+     * Set the game tick rate.
+     * @param rate Ticks per second (1-10000, default 20)
+     */
+    public static void setTickRate(double rate) {
+        if (serverInstance == null) return;
+        float clampedRate = Math.max(1.0f, Math.min(10000.0f, (float) rate));
+        serverInstance.execute(() -> {
+            serverInstance.tickRateManager().setTickRate(clampedRate);
+        });
+    }
+
+    /**
+     * Run a number of ticks as fast as possible (no delay between ticks).
+     * @param count Number of ticks to sprint through
+     */
+    public static void sprintTicks(int count) {
+        if (serverInstance == null) return;
+        serverInstance.execute(() -> {
+            serverInstance.tickRateManager().requestGameToSprint(count);
+        });
+    }
+
+    /**
+     * Get the current tick state as a JSON string.
+     * @return JSON with frozen, tickRate, stepping, sprinting fields
+     */
+    public static String getTickState() {
+        if (serverInstance == null) {
+            return "{\"frozen\":false,\"tickRate\":20.0,\"stepping\":false,\"sprinting\":false,\"frozenTicksToRun\":0}";
+        }
+        ServerTickRateManager mgr = serverInstance.tickRateManager();
+        return String.format(
+            Locale.ROOT,
+            "{\"frozen\":%b,\"tickRate\":%.1f,\"stepping\":%b,\"sprinting\":%b,\"frozenTicksToRun\":%d}",
+            mgr.isFrozen(),
+            mgr.tickrate(),
+            mgr.isSteppingForward(),
+            mgr.isSprinting(),
+            mgr.frozenTicksToRun()
+        );
     }
 
     // --------------------------------------------------------------------------
