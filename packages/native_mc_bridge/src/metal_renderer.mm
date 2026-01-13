@@ -186,11 +186,12 @@ static bool CreateOrResizeTexture(int32_t width, int32_t height) {
 
         // Create IOSurface properties
         // Using BGRA8 format which is supported by both Metal and OpenGL
-        // NOTE: Keep properties minimal - the system handles alignment automatically
+        // NOTE: Explicitly specify pixel format for CPU access compatibility
         NSDictionary* surfaceProperties = @{
             (__bridge NSString*)kIOSurfaceWidth: @(width),
             (__bridge NSString*)kIOSurfaceHeight: @(height),
             (__bridge NSString*)kIOSurfaceBytesPerElement: @4,
+            (__bridge NSString*)kIOSurfacePixelFormat: @(kCVPixelFormatType_32BGRA),  // 'BGRA'
         };
 
         g_io_surface = IOSurfaceCreate((__bridge CFDictionaryRef)surfaceProperties);
@@ -212,8 +213,13 @@ static bool CreateOrResizeTexture(int32_t width, int32_t height) {
             return false;
         }
 
+        // Log IOSurface properties for debugging
+        size_t bytes_per_row = IOSurfaceGetBytesPerRow(g_io_surface);
+        OSType pixel_format = IOSurfaceGetPixelFormat(g_io_surface);
         std::cout << "IOSurface created: ID=" << IOSurfaceGetID(g_io_surface)
-                  << " size=" << actual_width << "x" << actual_height << std::endl;
+                  << " size=" << actual_width << "x" << actual_height
+                  << " bytesPerRow=" << bytes_per_row
+                  << " pixelFormat=0x" << std::hex << pixel_format << std::dec << std::endl;
 
         // Create Metal texture descriptor
         // NOTE: Do NOT set storageMode explicitly - when creating a texture from IOSurface,
@@ -229,6 +235,13 @@ static bool CreateOrResizeTexture(int32_t width, int32_t height) {
         g_flutter_texture = [g_metal_device newTextureWithDescriptor:textureDesc
                                                            iosurface:g_io_surface
                                                                plane:0];
+
+        // Debug: verify the texture is backed by the IOSurface
+        if (g_flutter_texture != nil) {
+            std::cout << "[Metal] Created texture=" << (__bridge void*)g_flutter_texture
+                      << " from iosurface=" << (void*)g_io_surface
+                      << " texture.iosurface=" << (void*)[g_flutter_texture iosurface] << std::endl;
+        }
 
         if (g_flutter_texture == nil) {
             std::cerr << "Failed to create Metal texture from IOSurface" << std::endl;
@@ -266,6 +279,10 @@ static bool CreateOrResizeTexture(int32_t width, int32_t height) {
 // ==========================================================================
 
 extern "C" FlutterMetalTexture metal_renderer_get_next_drawable(void* user_data, const FlutterFrameInfo* frame_info) {
+    std::cout << "[Metal] get_next_drawable called, frame size: "
+              << (frame_info ? frame_info->size.width : 0) << "x"
+              << (frame_info ? frame_info->size.height : 0) << std::endl;
+
     // Return empty texture if in error state
     if (g_metal_error_state.load()) {
         FlutterMetalTexture empty = {};
@@ -316,10 +333,16 @@ extern "C" FlutterMetalTexture metal_renderer_get_next_drawable(void* user_data,
     result.user_data = nullptr;
     result.destruction_callback = nullptr;
 
+    // Debug: log the texture pointer being returned to Flutter
+    std::cout << "[Metal] get_next_drawable returning texture=" << (__bridge void*)g_flutter_texture
+              << " iosurface=" << (void*)g_io_surface << std::endl;
+
     return result;
 }
 
 extern "C" bool metal_renderer_present_drawable(void* user_data, const FlutterMetalTexture* texture) {
+    std::cout << "[Metal] present_drawable called" << std::endl;
+
     // Validate texture parameter
     if (texture == nullptr) {
         std::cerr << "metal_renderer_present_drawable: texture is null" << std::endl;
@@ -403,15 +426,37 @@ extern "C" void metal_renderer_set_size(int32_t width, int32_t height) {
 // ==========================================================================
 
 // Ensure all pending Metal work is complete before OpenGL reads the IOSurface.
-// This creates and commits an empty command buffer and waits for completion,
-// which acts as a fence to guarantee all previous Metal rendering is done.
+// Uses MTLBlitCommandEncoder to synchronize the texture, ensuring GPU writes
+// are visible to CPU memory regardless of which command queue rendered to it.
 extern "C" void metal_renderer_flush_and_wait() {
-    if (g_metal_command_queue == nil) return;
+    std::cout << "[Metal] flush_and_wait starting..." << std::endl;
+    if (g_metal_command_queue == nil) {
+        std::cout << "[Metal] flush_and_wait: command queue is nil!" << std::endl;
+        return;
+    }
 
     @autoreleasepool {
         id<MTLCommandBuffer> commandBuffer = [g_metal_command_queue commandBuffer];
+
+        // Use a blit encoder to synchronize the texture
+        // This ensures any pending GPU writes to the texture are completed
+        // and visible to the CPU
+        if (g_flutter_texture != nil) {
+            std::cout << "[Metal] flush_and_wait synchronizing texture=" << (__bridge void*)g_flutter_texture << std::endl;
+            id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
+
+            // synchronizeTexture ensures CPU sees the latest GPU writes
+            // This is needed on macOS for IOSurface-backed textures
+            #if TARGET_OS_OSX
+            [blitEncoder synchronizeTexture:g_flutter_texture slice:0 level:0];
+            #endif
+
+            [blitEncoder endEncoding];
+        }
+
         [commandBuffer commit];
         [commandBuffer waitUntilCompleted];
+        std::cout << "[Metal] flush_and_wait completed with texture sync" << std::endl;
     }
 }
 

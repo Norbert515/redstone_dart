@@ -28,3 +28,4 @@ export 'src/loot_tables.dart';
 export 'src/custom_goal.dart';
 export 'src/client_bridge.dart';
 export 'src/block_entity/block_entity.dart';
+export 'src/flutter_display.dart';

@@ -22,6 +22,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
+import com.redstone.entity.FlutterDisplayEntityTypes;
 import com.redstone.proxy.DartBlockProxy;
 import com.redstone.proxy.RecipeRegistry;
 import org.slf4j.Logger;
@@ -309,6 +310,9 @@ public class DartModLoader implements ModInitializer {
 
         // Initialize Redstone menu types
         RedstoneMenuTypes.initialize();
+
+        // Initialize Flutter display entity types
+        FlutterDisplayEntityTypes.initialize();
 
         // Note: BlockEntityTypes are now registered per-block in ProxyRegistry.registerBlockWithHandlerId()
         // when blocks with block entities are registered. This ensures each BlockEntityType is

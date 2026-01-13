@@ -85,8 +85,17 @@ class MinecraftGuiApp extends StatelessWidget {
               cacheSlotPositions: true,
             ),
           ],
-          // Show nothing when no container is open
-          background: const SizedBox.shrink(),
+          // Show a test background when no container is open
+          // This helps verify the Metal rendering pipeline is working
+          background: Container(
+            color: Colors.blue,
+            child: const Center(
+              child: Text(
+                'Flutter Rendering Test',
+                style: TextStyle(color: Colors.white, fontSize: 32),
+              ),
+            ),
+          ),
           // Fallback for unknown container types - show a generic screen
           fallback: (context, info) {
             print('[GuiRouter] Unknown container: ${info.containerId}');

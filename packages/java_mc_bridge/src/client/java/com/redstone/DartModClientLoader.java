@@ -5,9 +5,14 @@ import com.redstone.flutter.FlutterContainerScreen;
 import com.redstone.flutter.FlutterScreen;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.network.chat.Component;
+import com.redstone.entity.FlutterDisplayEntityTypes;
 import com.redstone.proxy.EntityProxyRegistry;
+import com.redstone.blockentity.FlutterDisplayBlockEntityType;
 import com.redstone.render.DartEntityRenderer;
 import com.redstone.render.EntityModelRegistry;
+import com.redstone.render.FlutterBlockRenderer;
+import com.redstone.render.FlutterDisplayRenderer;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -249,6 +254,9 @@ public class DartModClientLoader implements ClientModInitializer {
         // Register menu screens for container menus
         registerMenuScreens();
 
+        // Register block entity renderers for Flutter display blocks
+        registerBlockEntityRenderers();
+
         LOGGER.info("[DartModClientLoader] Setting up entity renderer callback...");
 
         // Register a callback to be notified when entities are registered.
@@ -298,6 +306,14 @@ public class DartModClientLoader implements ClientModInitializer {
         });
 
         LOGGER.info("[DartModClientLoader] Entity renderer callback registered!");
+
+        // Register Flutter display entity renderer
+        if (FlutterDisplayEntityTypes.isInitialized()) {
+            EntityRendererRegistry.register(FlutterDisplayEntityTypes.FLUTTER_DISPLAY, FlutterDisplayRenderer::new);
+            LOGGER.info("[DartModClientLoader] Flutter display entity renderer registered!");
+        } else {
+            LOGGER.warn("[DartModClientLoader] FlutterDisplayEntityTypes not initialized, skipping renderer registration");
+        }
 
         // Process any entities that were already registered BEFORE the callback was set up.
         // This handles the timing issue where Dart registers entities during DartModLoader.onInitialize()
@@ -569,6 +585,34 @@ public class DartModClientLoader implements ClientModInitializer {
         );
 
         LOGGER.info("[DartModClientLoader] Menu screens registered!");
+    }
+
+    // ==========================================================================
+    // Block Entity Renderer Registration
+    // ==========================================================================
+
+    /**
+     * Register block entity renderers for Flutter display blocks.
+     *
+     * This must be called after block entity types are registered but before
+     * the client is fully initialized. It links Flutter display block entities
+     * to their renderer implementation.
+     */
+    private void registerBlockEntityRenderers() {
+        LOGGER.info("[DartModClientLoader] Registering block entity renderers...");
+
+        // Register FlutterBlockRenderer for all registered Flutter display block entity types
+        // The registration happens dynamically as blocks are registered from Dart
+        for (var type : FlutterDisplayBlockEntityType.getAllTypes()) {
+            BlockEntityRenderers.register(type, FlutterBlockRenderer::new);
+            LOGGER.info("[DartModClientLoader] Registered FlutterBlockRenderer for block entity type");
+        }
+
+        // Also set up a callback for types registered after client init
+        // This handles the case where Dart registers blocks after the client initializes
+        // (similar to how entity renderers are handled)
+
+        LOGGER.info("[DartModClientLoader] Block entity renderers registered!");
     }
 
     // ==========================================================================

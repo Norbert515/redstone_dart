@@ -7,3 +7,4 @@ export 'block_entity.dart';
 export 'ticking_block_entity.dart';
 export 'block_entity_with_inventory.dart';
 export 'processing_block_entity.dart';
+export 'flutter_display_block_entity.dart';

@@ -2003,6 +2003,172 @@ public class DartBridge {
     }
 
     // --------------------------------------------------------------------------
+    // Flutter Display Entity Spawning
+    // --------------------------------------------------------------------------
+
+    /**
+     * Spawn a Flutter display entity at the specified position.
+     *
+     * @param dimension Dimension ID (e.g., "minecraft:overworld")
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @param z Z coordinate
+     * @param yaw Initial yaw rotation
+     * @param pitch Initial pitch rotation
+     * @param billboardMode Billboard mode (0=fixed, 1=vertical, 2=horizontal, 3=center)
+     * @param width Display width in world units
+     * @param height Display height in world units
+     * @return Entity ID on success, -1 on failure
+     */
+    public static int spawnFlutterDisplay(String dimension, double x, double y, double z,
+            float yaw, float pitch, int billboardMode, float width, float height) {
+        if (serverInstance == null) {
+            LOGGER.warn("spawnFlutterDisplay: Server not initialized");
+            return -1;
+        }
+
+        ServerLevel level = getServerLevel(dimension);
+        if (level == null) {
+            LOGGER.warn("spawnFlutterDisplay: Invalid dimension '{}'", dimension);
+            return -1;
+        }
+
+        // Get the Flutter display entity type
+        if (!com.redstone.entity.FlutterDisplayEntityTypes.isInitialized()) {
+            LOGGER.warn("spawnFlutterDisplay: FlutterDisplayEntityTypes not initialized");
+            return -1;
+        }
+
+        // Create the entity
+        com.redstone.entity.FlutterDisplayEntity entity =
+            com.redstone.entity.FlutterDisplayEntityTypes.FLUTTER_DISPLAY.create(
+                level,
+                net.minecraft.world.entity.EntitySpawnReason.COMMAND
+            );
+        if (entity == null) {
+            LOGGER.warn("spawnFlutterDisplay: Failed to create entity");
+            return -1;
+        }
+
+        // Configure the entity
+        entity.setPos(x, y, z);
+        entity.setYRot(yaw);
+        entity.setXRot(pitch);
+        entity.setDisplayWidth(width);
+        entity.setDisplayHeight(height);
+
+        // Set billboard mode via the Display base class
+        // Billboard modes: FIXED=0, VERTICAL=1, HORIZONTAL=2, CENTER=3
+        net.minecraft.world.entity.Display.BillboardConstraints billboard =
+            switch (billboardMode) {
+                case 1 -> net.minecraft.world.entity.Display.BillboardConstraints.VERTICAL;
+                case 2 -> net.minecraft.world.entity.Display.BillboardConstraints.HORIZONTAL;
+                case 3 -> net.minecraft.world.entity.Display.BillboardConstraints.CENTER;
+                default -> net.minecraft.world.entity.Display.BillboardConstraints.FIXED;
+            };
+        entity.setBillboardConstraints(billboard);
+
+        // Spawn in world
+        boolean added = level.addFreshEntity(entity);
+        if (added) {
+            recentlySpawnedEntities.put(entity.getId(), entity);
+        }
+
+        LOGGER.debug("Spawned Flutter display entity at ({}, {}, {}), ID: {}, size: {}x{}",
+            x, y, z, entity.getId(), width, height);
+        return entity.getId();
+    }
+
+    /**
+     * Get the display width of a Flutter display entity.
+     */
+    public static double getFlutterDisplayWidth(int entityId) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof com.redstone.entity.FlutterDisplayEntity display) {
+            return display.getDisplayWidth();
+        }
+        return 1.0;
+    }
+
+    /**
+     * Set the display width of a Flutter display entity.
+     */
+    public static void setFlutterDisplayWidth(int entityId, float width) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof com.redstone.entity.FlutterDisplayEntity display) {
+            display.setDisplayWidth(width);
+        }
+    }
+
+    /**
+     * Get the display height of a Flutter display entity.
+     */
+    public static double getFlutterDisplayHeight(int entityId) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof com.redstone.entity.FlutterDisplayEntity display) {
+            return display.getDisplayHeight();
+        }
+        return 1.0;
+    }
+
+    /**
+     * Set the display height of a Flutter display entity.
+     */
+    public static void setFlutterDisplayHeight(int entityId, float height) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof com.redstone.entity.FlutterDisplayEntity display) {
+            display.setDisplayHeight(height);
+        }
+    }
+
+    /**
+     * Get the billboard mode of a Flutter display entity.
+     * Returns: 0=fixed, 1=vertical, 2=horizontal, 3=center
+     */
+    public static int getFlutterDisplayBillboardMode(int entityId) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof com.redstone.entity.FlutterDisplayEntity display) {
+            var constraints = display.getBillboardConstraints();
+            return switch (constraints) {
+                case VERTICAL -> 1;
+                case HORIZONTAL -> 2;
+                case CENTER -> 3;
+                default -> 0;
+            };
+        }
+        return 0;
+    }
+
+    /**
+     * Set the billboard mode of a Flutter display entity.
+     * Mode: 0=fixed, 1=vertical, 2=horizontal, 3=center
+     */
+    public static void setFlutterDisplayBillboardMode(int entityId, int mode) {
+        Entity entity = getEntityById(entityId);
+        if (entity instanceof com.redstone.entity.FlutterDisplayEntity display) {
+            net.minecraft.world.entity.Display.BillboardConstraints billboard =
+                switch (mode) {
+                    case 1 -> net.minecraft.world.entity.Display.BillboardConstraints.VERTICAL;
+                    case 2 -> net.minecraft.world.entity.Display.BillboardConstraints.HORIZONTAL;
+                    case 3 -> net.minecraft.world.entity.Display.BillboardConstraints.CENTER;
+                    default -> net.minecraft.world.entity.Display.BillboardConstraints.FIXED;
+                };
+            display.setBillboardConstraints(billboard);
+        }
+    }
+
+    /**
+     * Set the rotation of an entity (yaw and pitch).
+     */
+    public static void setEntityRotation(int entityId, float yaw, float pitch) {
+        Entity entity = getEntityById(entityId);
+        if (entity != null) {
+            entity.setYRot(yaw);
+            entity.setXRot(pitch);
+        }
+    }
+
+    // --------------------------------------------------------------------------
     // Entity Queries
     // --------------------------------------------------------------------------
 

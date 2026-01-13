@@ -204,6 +204,149 @@ public class DartBridgeClient {
     public static native void sendKeyEvent(int type, long physicalKey, long logicalKey, String characters, int modifiers);
 
     // ==========================================================================
+    // Multi-Surface Native Methods (macOS only)
+    // ==========================================================================
+    // These methods support multiple independent Flutter surfaces, each with
+    // its own engine and texture. Used for in-world HUDs, multiple screens, etc.
+
+    /**
+     * Initialize the multi-surface system.
+     * Must be called after the main Flutter engine is initialized.
+     * @return true if initialization succeeded
+     */
+    public static native boolean multiSurfaceInit();
+
+    /**
+     * Shutdown the multi-surface system and destroy all surfaces.
+     */
+    public static native void multiSurfaceShutdown();
+
+    /**
+     * Create a new Flutter surface with the specified dimensions.
+     * @param width Surface width in pixels
+     * @param height Surface height in pixels
+     * @param initialRoute Optional initial route for the Flutter app (can be null)
+     * @return Surface ID (> 0) on success, 0 on failure
+     */
+    public static native long createSurface(int width, int height, String initialRoute);
+
+    /**
+     * Destroy a surface and release all associated resources.
+     * @param surfaceId The surface ID returned by createSurface()
+     */
+    public static native void destroySurface(long surfaceId);
+
+    /**
+     * Check if a surface exists.
+     * @param surfaceId The surface ID
+     * @return true if the surface exists
+     */
+    public static native boolean surfaceExists(long surfaceId);
+
+    /**
+     * Update window metrics for a surface (triggers resize if size changed).
+     * @param surfaceId The surface ID
+     * @param width New width in pixels
+     * @param height New height in pixels
+     */
+    public static native void setSurfaceSize(long surfaceId, int width, int height);
+
+    /**
+     * Process pending tasks for a specific surface (pumps its event loop).
+     * @param surfaceId The surface ID
+     */
+    public static native void processSurfaceTasks(long surfaceId);
+
+    /**
+     * Process pending tasks for ALL surfaces.
+     */
+    public static native void processAllSurfaceTasks();
+
+    /**
+     * Schedule a frame to be rendered for a surface.
+     * @param surfaceId The surface ID
+     */
+    public static native void scheduleSurfaceFrame(long surfaceId);
+
+    /**
+     * Get the OpenGL texture ID for a surface.
+     * @param surfaceId The surface ID
+     * @return GL texture ID, or 0 if not available
+     */
+    public static native int getSurfaceTextureId(long surfaceId);
+
+    /**
+     * Update the OpenGL texture binding for a surface.
+     * Call this before rendering if the surface may have new content.
+     * @param surfaceId The surface ID
+     * @return true if successful
+     */
+    public static native boolean updateSurfaceGLTexture(long surfaceId);
+
+    /**
+     * Get the texture width for a surface.
+     * @param surfaceId The surface ID
+     * @return Width in pixels, or 0 if not available
+     */
+    public static native int getSurfaceTextureWidth(long surfaceId);
+
+    /**
+     * Get the texture height for a surface.
+     * @param surfaceId The surface ID
+     * @return Height in pixels, or 0 if not available
+     */
+    public static native int getSurfaceTextureHeight(long surfaceId);
+
+    /**
+     * Check if a surface has a new frame ready since last check.
+     * @param surfaceId The surface ID
+     * @return true if a new frame is available
+     */
+    public static native boolean surfaceHasNewFrame(long surfaceId);
+
+    /**
+     * Get pixel data for a surface (reads back from IOSurface).
+     * @param surfaceId The surface ID
+     * @return ByteBuffer with RGBA pixel data, or null if not available
+     */
+    public static native ByteBuffer getSurfacePixels(long surfaceId);
+
+    /**
+     * Get pixel width for a surface (after readback).
+     * @param surfaceId The surface ID
+     * @return Width in pixels
+     */
+    public static native int getSurfacePixelWidth(long surfaceId);
+
+    /**
+     * Get pixel height for a surface (after readback).
+     * @param surfaceId The surface ID
+     * @return Height in pixels
+     */
+    public static native int getSurfacePixelHeight(long surfaceId);
+
+    /**
+     * Send a pointer event to a specific surface.
+     * @param surfaceId The surface ID
+     * @param phase Pointer phase: 0=cancel, 1=up, 2=down, 3=move, 4=add, 5=remove, 6=hover
+     * @param x X coordinate in pixels
+     * @param y Y coordinate in pixels
+     * @param buttons Button state bitmask
+     */
+    public static native void sendSurfacePointerEvent(long surfaceId, int phase, double x, double y, long buttons);
+
+    /**
+     * Send a key event to a specific surface.
+     * @param surfaceId The surface ID
+     * @param type Event type: 0=down, 1=up, 2=repeat
+     * @param physicalKey Physical key code
+     * @param logicalKey Logical key code
+     * @param character Character produced (can be null)
+     * @param modifiers Modifier key state bitmask
+     */
+    public static native void sendSurfaceKeyEvent(long surfaceId, int type, long physicalKey, long logicalKey, String character, int modifiers);
+
+    // ==========================================================================
     // Client Runtime Public Methods
     // ==========================================================================
 

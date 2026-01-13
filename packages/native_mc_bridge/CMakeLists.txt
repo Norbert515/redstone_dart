@@ -33,9 +33,9 @@ else()
         src/object_registry.cpp
         src/generic_jni.cpp
     )
-    # Add Metal renderer for macOS (Objective-C++)
+    # Add Metal renderer and multi-surface renderer for macOS (Objective-C++)
     if(APPLE)
-        list(APPEND SOURCES src/metal_renderer.mm)
+        list(APPEND SOURCES src/metal_renderer.mm src/multi_surface_renderer.mm)
     endif()
 endif()
 
@@ -132,7 +132,7 @@ elseif(APPLE)
     )
     # Enable ARC for Objective-C++ Metal code
     if(NOT SERVER_ONLY)
-        set_source_files_properties(src/metal_renderer.mm PROPERTIES
+        set_source_files_properties(src/metal_renderer.mm src/multi_surface_renderer.mm PROPERTIES
             COMPILE_FLAGS "-fobjc-arc"
         )
     endif()

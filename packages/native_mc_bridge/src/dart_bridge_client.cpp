@@ -1584,9 +1584,14 @@ uint32_t dart_client_get_iosurface_id() {
 // Frame Pixel Access (for software fallback display path)
 // ==========================================================================
 
+static int g_frame_read_count = 0;
+
 void* dart_client_get_frame_pixels() {
 #if METAL_SUPPORTED
     if (g_use_hardware_renderer) {
+        g_frame_read_count++;
+        std::cout << "[getFramePixels] Read #" << g_frame_read_count << std::endl;
+
         // Read back from IOSurface for the software display fallback
         void* surface = nullptr;
         int32_t width = 0;
@@ -1597,6 +1602,10 @@ void* dart_client_get_frame_pixels() {
         }
 
         IOSurfaceRef ioSurface = (IOSurfaceRef)surface;
+
+        // IMPORTANT: Wait for Metal GPU rendering to complete before reading
+        // The IOSurface pixels are only valid after Metal's command buffers finish
+        metal_renderer_flush_and_wait();
 
         // Lock for CPU read
         IOReturn lockResult = IOSurfaceLock(ioSurface, kIOSurfaceLockReadOnly, nullptr);
@@ -1609,6 +1618,20 @@ void* dart_client_get_frame_pixels() {
         void* baseAddress = IOSurfaceGetBaseAddress(ioSurface);
         size_t bytesPerRow = IOSurfaceGetBytesPerRow(ioSurface);
         size_t tightBytesPerRow = (size_t)width * 4; // 4 bytes per pixel (BGRA)
+
+        std::cout << "[getFramePixels] IOSurface baseAddress=" << baseAddress
+                  << " bytesPerRow=" << bytesPerRow
+                  << " width=" << width << " height=" << height << std::endl;
+
+        // Debug: check first 16 bytes of the surface
+        if (baseAddress) {
+            uint8_t* bytes = (uint8_t*)baseAddress;
+            std::cout << "[getFramePixels] First 16 bytes: ";
+            for (int i = 0; i < 16; i++) {
+                printf("%02x ", bytes[i]);
+            }
+            std::cout << std::endl;
+        }
 
         // Ensure our buffer is big enough for tightly-packed pixels
         // Java expects width * height * 4 bytes with no padding

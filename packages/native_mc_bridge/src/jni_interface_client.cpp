@@ -11,6 +11,10 @@
 #include "dart_bridge_client.h"  // Client functions ONLY - no dart_bridge.h!
 #include "generic_jni.h"          // For generic_jni_capture_classloader
 
+#ifdef __APPLE__
+#include "multi_surface_renderer.h"  // Multi-surface support (macOS only)
+#endif
+
 #include <jni.h>
 #include <iostream>
 #include <mutex>
@@ -540,5 +544,295 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_nativeDispatchContaine
         static_cast<int32_t>(value)
     );
 }
+
+// ==========================================================================
+// Multi-Surface JNI Entry Points (macOS only)
+// ==========================================================================
+
+#ifdef __APPLE__
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    multiSurfaceInit
+ * Signature: ()Z
+ *
+ * Initialize the multi-surface system.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_multiSurfaceInit(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return multi_surface_init() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    multiSurfaceShutdown
+ * Signature: ()V
+ *
+ * Shutdown the multi-surface system.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_multiSurfaceShutdown(
+    JNIEnv* /* env */, jclass /* cls */) {
+    multi_surface_shutdown();
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    createSurface
+ * Signature: (IILjava/lang/String;)J
+ *
+ * Create a new Flutter surface with the specified dimensions.
+ * Returns the surface ID (> 0) or 0 on failure.
+ */
+JNIEXPORT jlong JNICALL Java_com_redstone_DartBridgeClient_createSurface(
+    JNIEnv* env, jclass /* cls */, jint width, jint height, jstring initialRoute) {
+
+    const char* route = initialRoute ? env->GetStringUTFChars(initialRoute, nullptr) : nullptr;
+
+    int64_t surface_id = multi_surface_create(
+        static_cast<int32_t>(width),
+        static_cast<int32_t>(height),
+        route
+    );
+
+    if (route) {
+        env->ReleaseStringUTFChars(initialRoute, route);
+    }
+
+    return static_cast<jlong>(surface_id);
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    destroySurface
+ * Signature: (J)V
+ *
+ * Destroy a surface and release all associated resources.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_destroySurface(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    multi_surface_destroy(static_cast<int64_t>(surfaceId));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    surfaceExists
+ * Signature: (J)Z
+ *
+ * Check if a surface exists.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_surfaceExists(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    return multi_surface_exists(static_cast<int64_t>(surfaceId)) ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    setSurfaceSize
+ * Signature: (JII)V
+ *
+ * Update window metrics for a surface.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_setSurfaceSize(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId, jint width, jint height) {
+    multi_surface_set_size(
+        static_cast<int64_t>(surfaceId),
+        static_cast<int32_t>(width),
+        static_cast<int32_t>(height)
+    );
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    processSurfaceTasks
+ * Signature: (J)V
+ *
+ * Process pending tasks for a specific surface.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_processSurfaceTasks(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    multi_surface_process_tasks(static_cast<int64_t>(surfaceId));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    processAllSurfaceTasks
+ * Signature: ()V
+ *
+ * Process pending tasks for ALL surfaces.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_processAllSurfaceTasks(
+    JNIEnv* /* env */, jclass /* cls */) {
+    multi_surface_process_all_tasks();
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    scheduleSurfaceFrame
+ * Signature: (J)V
+ *
+ * Schedule a frame to be rendered for a surface.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_scheduleSurfaceFrame(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    multi_surface_schedule_frame(static_cast<int64_t>(surfaceId));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getSurfaceTextureId
+ * Signature: (J)I
+ *
+ * Get the OpenGL texture ID for a surface.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getSurfaceTextureId(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    return static_cast<jint>(multi_surface_get_texture_id(static_cast<int64_t>(surfaceId)));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    updateSurfaceGLTexture
+ * Signature: (J)Z
+ *
+ * Update the OpenGL texture binding for a surface.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_updateSurfaceGLTexture(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    return multi_surface_update_gl_texture(static_cast<int64_t>(surfaceId)) ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getSurfaceTextureWidth
+ * Signature: (J)I
+ *
+ * Get the texture width for a surface.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getSurfaceTextureWidth(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    return static_cast<jint>(multi_surface_get_texture_width(static_cast<int64_t>(surfaceId)));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getSurfaceTextureHeight
+ * Signature: (J)I
+ *
+ * Get the texture height for a surface.
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getSurfaceTextureHeight(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    return static_cast<jint>(multi_surface_get_texture_height(static_cast<int64_t>(surfaceId)));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    surfaceHasNewFrame
+ * Signature: (J)Z
+ *
+ * Check if a surface has a new frame ready.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_surfaceHasNewFrame(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    return multi_surface_has_new_frame(static_cast<int64_t>(surfaceId)) ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getSurfacePixels
+ * Signature: (J)Ljava/nio/ByteBuffer;
+ *
+ * Get pixel data for a surface.
+ */
+JNIEXPORT jobject JNICALL Java_com_redstone_DartBridgeClient_getSurfacePixels(
+    JNIEnv* env, jclass /* cls */, jlong surfaceId) {
+
+    void* pixels = multi_surface_get_pixels(static_cast<int64_t>(surfaceId));
+    if (pixels == nullptr) {
+        return nullptr;
+    }
+
+    int32_t width = multi_surface_get_pixel_width(static_cast<int64_t>(surfaceId));
+    int32_t height = multi_surface_get_pixel_height(static_cast<int64_t>(surfaceId));
+    if (width <= 0 || height <= 0) {
+        return nullptr;
+    }
+
+    size_t size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+    return env->NewDirectByteBuffer(pixels, static_cast<jlong>(size));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getSurfacePixelWidth
+ * Signature: (J)I
+ *
+ * Get pixel width for a surface (after readback).
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getSurfacePixelWidth(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    return static_cast<jint>(multi_surface_get_pixel_width(static_cast<int64_t>(surfaceId)));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    getSurfacePixelHeight
+ * Signature: (J)I
+ *
+ * Get pixel height for a surface (after readback).
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridgeClient_getSurfacePixelHeight(
+    JNIEnv* /* env */, jclass /* cls */, jlong surfaceId) {
+    return static_cast<jint>(multi_surface_get_pixel_height(static_cast<int64_t>(surfaceId)));
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    sendSurfacePointerEvent
+ * Signature: (JIDDJ)V
+ *
+ * Send a pointer event to a specific surface.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_sendSurfacePointerEvent(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong surfaceId, jint phase, jdouble x, jdouble y, jlong buttons) {
+    multi_surface_send_pointer_event(
+        static_cast<int64_t>(surfaceId),
+        static_cast<int32_t>(phase),
+        static_cast<double>(x),
+        static_cast<double>(y),
+        static_cast<int64_t>(buttons)
+    );
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    sendSurfaceKeyEvent
+ * Signature: (JIJJLjava/lang/String;I)V
+ *
+ * Send a key event to a specific surface.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_sendSurfaceKeyEvent(
+    JNIEnv* env, jclass /* cls */,
+    jlong surfaceId, jint type, jlong physicalKey, jlong logicalKey,
+    jstring character, jint modifiers) {
+
+    const char* chars = character ? env->GetStringUTFChars(character, nullptr) : nullptr;
+
+    multi_surface_send_key_event(
+        static_cast<int64_t>(surfaceId),
+        static_cast<int32_t>(type),
+        static_cast<int64_t>(physicalKey),
+        static_cast<int64_t>(logicalKey),
+        chars,
+        static_cast<int32_t>(modifiers)
+    );
+
+    if (chars) {
+        env->ReleaseStringUTFChars(character, chars);
+    }
+}
+
+#endif // __APPLE__
 
 } // extern "C"

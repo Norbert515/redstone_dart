@@ -15,6 +15,7 @@ export 'src/block/block.dart';
 export 'src/block/block_settings.dart';
 export 'src/block/block_model.dart';
 export 'src/block/custom_block.dart';
+export 'src/block/flutter_display_block.dart';
 
 // Item API
 export 'src/item/item.dart';
