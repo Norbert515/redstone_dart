@@ -1240,6 +1240,11 @@ class ToolRegistry {
 
   /// Ensure game client is available.
   void _ensureGameClient() {
+    // Sync gameClient from controller if available but not yet synced
+    if (gameClient == null && minecraftController?.gameClient != null) {
+      gameClient = minecraftController!.gameClient;
+    }
+
     if (gameClient == null) {
       throw StateError('Minecraft is not running. Call startMinecraft first.');
     }
