@@ -71,10 +71,14 @@ void main() {
     });
 
     test('generated project has correct file structure', () {
-      // Check essential files exist
+      // Check essential files exist (dual-runtime structure)
       final essentialFiles = [
         'pubspec.yaml',
-        'lib/main.dart',
+        'packages/server/lib/main.dart',
+        'packages/server/pubspec.yaml',
+        'packages/client/lib/main.dart',
+        'packages/client/pubspec.yaml',
+        'packages/common/pubspec.yaml',
         'minecraft/build.gradle',
         'minecraft/settings.gradle',
         'minecraft/gradle.properties',
