@@ -54,6 +54,31 @@ public class FlutterDisplayEntity extends Display {
     }
 
     @Override
+    public void onClientRemoval() {
+        super.onClientRemoval();
+        // Clean up the Flutter surface when the entity is removed on the client
+        // This is called on the client side when the entity is unloaded or killed
+        if (clientRemovalCallback != null) {
+            clientRemovalCallback.accept(this.getId());
+        }
+    }
+
+    // ==========================================================================
+    // Client-side cleanup callback
+    // ==========================================================================
+
+    // Static callback for client-side cleanup (set by DartModClientLoader)
+    private static java.util.function.IntConsumer clientRemovalCallback = null;
+
+    /**
+     * Set the callback for client-side surface cleanup.
+     * Called by DartModClientLoader to register FlutterDisplayRenderer.cleanupEntitySurface.
+     */
+    public static void setClientRemovalCallback(java.util.function.IntConsumer callback) {
+        clientRemovalCallback = callback;
+    }
+
+    @Override
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
         builder.define(DATA_SURFACE_ID, 0L);  // Default to main Flutter surface

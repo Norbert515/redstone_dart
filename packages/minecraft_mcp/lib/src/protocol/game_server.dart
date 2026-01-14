@@ -96,6 +96,7 @@ class GameServer {
     // Screenshot operations
     router.post('/screenshot', _takeScreenshot);
     router.get('/screenshot/<name>', _getScreenshot);
+    router.get('/screenshots-directory', _getScreenshotsDirectory);
 
     // Input operations
     router.post('/input/key', _pressKey);
@@ -413,6 +414,20 @@ class GameServer {
       );
     } catch (e) {
       return _errorResponse('Failed to get screenshot: $e', statusCode: 400);
+    }
+  }
+
+  Future<Response> _getScreenshotsDirectory(Request request) async {
+    final notReady = _checkGameReady();
+    if (notReady != null) return notReady;
+
+    try {
+      final context = _getContext()!;
+      final path = await context.getScreenshotsDirectory();
+
+      return _jsonResponse({'path': path});
+    } catch (e) {
+      return _errorResponse('Failed to get screenshots directory: $e', statusCode: 400);
     }
   }
 
@@ -774,6 +789,7 @@ abstract class GameContextProvider {
   // Screenshot operations
   Future<String?> takeScreenshot(String name);
   Future<String?> getScreenshotBase64(String name);
+  Future<String?> getScreenshotsDirectory();
 
   // Input operations
   Future<void> pressKey(int keyCode);

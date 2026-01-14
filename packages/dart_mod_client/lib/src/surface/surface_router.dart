@@ -4,8 +4,8 @@ import 'package:flutter/widgets.dart';
 ///
 /// Mod developers register widgets with routes:
 /// ```dart
-/// SurfaceRouter.register('/clock', () => ClockWidget());
-/// SurfaceRouter.register('/health', () => HealthBarWidget());
+/// SurfaceRouter.register('clock', () => ClockWidget());
+/// SurfaceRouter.register('health', () => HealthBarWidget());
 /// ```
 ///
 /// When a FlutterDisplayEntity is spawned with that route, the corresponding
@@ -32,8 +32,8 @@ import 'package:flutter/widgets.dart';
 /// }
 ///
 /// void registerSurfaceWidgets() {
-///   SurfaceRouter.register('/clock', () => ClockWidget());
-///   SurfaceRouter.register('/health', () => HealthBarWidget());
+///   SurfaceRouter.register('clock', () => ClockWidget());
+///   SurfaceRouter.register('health', () => HealthBarWidget());
 /// }
 /// ```
 class SurfaceRouter {
@@ -43,7 +43,7 @@ class SurfaceRouter {
   ///
   /// Example:
   /// ```dart
-  /// SurfaceRouter.register('/widgets/clock', () => ClockWidget());
+  /// SurfaceRouter.register('clock', () => ClockWidget());
   /// ```
   static void register(String route, Widget Function() builder) {
     _routes[route] = builder;

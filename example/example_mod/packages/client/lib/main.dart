@@ -251,13 +251,13 @@ void surfaceMain(List<String> args) {
 /// routes are available in all Flutter engines (main and spawned surfaces).
 void _registerSurfaceWidgets() {
   // Clock widget - shows current time
-  SurfaceRouter.register('/clock', () => const ClockWidget());
+  SurfaceRouter.register('clock', () => const ClockWidget());
 
   // Health bar widget - shows a sample health display
-  SurfaceRouter.register('/health', () => const HealthBarWidget());
+  SurfaceRouter.register('health', () => const HealthBarWidget());
 
   // Color test widget - cycles through colors
-  SurfaceRouter.register('/colors', () => const ColorTestWidget());
+  SurfaceRouter.register('colors', () => const ColorTestWidget());
 
   print('[Client] Registered ${SurfaceRouter.routes.length} surface widgets');
 }

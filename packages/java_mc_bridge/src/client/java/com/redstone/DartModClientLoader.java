@@ -311,6 +311,12 @@ public class DartModClientLoader implements ClientModInitializer {
         if (FlutterDisplayEntityTypes.isInitialized()) {
             EntityRendererRegistry.register(FlutterDisplayEntityTypes.FLUTTER_DISPLAY, FlutterDisplayRenderer::new);
             LOGGER.info("[DartModClientLoader] Flutter display entity renderer registered!");
+
+            // Register cleanup callback for when Flutter display entities are removed
+            com.redstone.entity.FlutterDisplayEntity.setClientRemovalCallback(
+                FlutterDisplayRenderer::cleanupEntitySurface
+            );
+            LOGGER.info("[DartModClientLoader] Flutter display cleanup callback registered!");
         } else {
             LOGGER.warn("[DartModClientLoader] FlutterDisplayEntityTypes not initialized, skipping renderer registration");
         }

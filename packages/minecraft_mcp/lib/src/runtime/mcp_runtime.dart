@@ -267,6 +267,12 @@ class McpRuntime implements GameContextProvider {
     return base64Encode(bytes);
   }
 
+  @override
+  Future<String?> getScreenshotsDirectory() async {
+    _ensureReady();
+    return ClientBridge.getScreenshotsDirectory();
+  }
+
   // ---------------------------------------------------------------------------
   // Input Operations
   // ---------------------------------------------------------------------------

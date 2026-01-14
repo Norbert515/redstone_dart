@@ -227,6 +227,12 @@ class GameClient {
     return ScreenshotResponse.fromJson(response).base64Data;
   }
 
+  /// Get the screenshots directory path.
+  Future<String?> getScreenshotsDirectory() async {
+    final response = await _get('/screenshots-directory');
+    return response['path'] as String?;
+  }
+
   // ===========================================================================
   // Input Operations
   // ===========================================================================

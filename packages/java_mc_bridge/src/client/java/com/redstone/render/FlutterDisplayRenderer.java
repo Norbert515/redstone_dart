@@ -46,9 +46,13 @@ public class FlutterDisplayRenderer extends DisplayRenderer<
     // Flutter texture identifier - we'll register a dynamic texture here
     private static final Identifier FLUTTER_DISPLAY_TEXTURE = Identifier.fromNamespaceAndPath("redstone", "flutter_display");
 
-    // Default surface resolution for route-based displays
-    private static final int DEFAULT_SURFACE_WIDTH = 256;
-    private static final int DEFAULT_SURFACE_HEIGHT = 256;
+    // Pixels per block (world unit) for surface resolution
+    // Higher = sharper text/graphics, but more memory/GPU usage
+    private static final int PIXELS_PER_BLOCK = 128;
+
+    // Minimum and maximum surface dimensions (in pixels)
+    private static final int MIN_SURFACE_SIZE = 64;
+    private static final int MAX_SURFACE_SIZE = 1024;
 
     // Cache of entity ID -> surface ID for entities with routes
     // This ensures we don't create duplicate surfaces for the same entity
@@ -91,15 +95,30 @@ public class FlutterDisplayRenderer extends DisplayRenderer<
             return 0;
         }
 
-        long surfaceId = manager.createSurface(DEFAULT_SURFACE_WIDTH, DEFAULT_SURFACE_HEIGHT, route);
+        // Calculate pixel resolution based on display size
+        int pixelWidth = calculatePixelSize(state.displayWidth);
+        int pixelHeight = calculatePixelSize(state.displayHeight);
+
+        long surfaceId = manager.createSurface(pixelWidth, pixelHeight, route);
         if (surfaceId > 0) {
-            LOGGER.info("Created surface {} for entity {} with route '{}'", surfaceId, entityId, route);
+            LOGGER.info("Created surface {} for entity {} with route '{}', resolution {}x{}",
+                surfaceId, entityId, route, pixelWidth, pixelHeight);
             entitySurfaceCache.put(entityId, surfaceId);
         } else {
             LOGGER.warn("Failed to create surface for entity {} with route '{}'", entityId, route);
         }
 
         return surfaceId;
+    }
+
+    /**
+     * Calculate pixel size for a display dimension.
+     * Uses PIXELS_PER_BLOCK to scale world units to pixels,
+     * clamped between MIN_SURFACE_SIZE and MAX_SURFACE_SIZE.
+     */
+    private int calculatePixelSize(float worldUnits) {
+        int pixels = Math.round(worldUnits * PIXELS_PER_BLOCK);
+        return Math.max(MIN_SURFACE_SIZE, Math.min(MAX_SURFACE_SIZE, pixels));
     }
 
     /**

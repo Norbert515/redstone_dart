@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import '../minecraft/game_client.dart';
 import '../minecraft/minecraft_controller.dart';
 
@@ -952,15 +954,24 @@ class ToolRegistry {
 
     final name = args['name'] as String;
 
-    final base64Data = await gameClient!.getScreenshotBase64(name);
+    // Get screenshots directory and build path
+    // Note: We intentionally do NOT return base64 data to avoid flooding agent context.
+    // The agent should use the Read tool to view the screenshot file directly.
+    final screenshotsDir = await gameClient!.getScreenshotsDirectory();
+    if (screenshotsDir == null) {
+      throw StateError('Screenshots directory not available');
+    }
 
-    if (base64Data == null) {
-      throw StateError('Screenshot "$name" not found');
+    final path = '$screenshotsDir/$name.png';
+    final file = File(path);
+    if (!await file.exists()) {
+      throw StateError('Screenshot "$name" not found at $path');
     }
 
     return {
       'name': name,
-      'base64': base64Data,
+      'path': path,
+      'message': 'Use the Read tool to view this screenshot file',
     };
   }
 

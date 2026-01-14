@@ -30,8 +30,8 @@ import 'surface_router.dart';
 /// }
 ///
 /// void registerSurfaceWidgets() {
-///   SurfaceRouter.register('/clock', () => ClockWidget());
-///   SurfaceRouter.register('/health', () => HealthBarWidget());
+///   SurfaceRouter.register('clock', () => ClockWidget());
+///   SurfaceRouter.register('health', () => HealthBarWidget());
 /// }
 /// ```
 class SurfaceApp extends StatelessWidget {
