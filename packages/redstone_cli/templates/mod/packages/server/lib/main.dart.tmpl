@@ -1,0 +1,102 @@
+// Server entry point for dual-runtime mode
+//
+// This file handles ALL game logic:
+// - Block/Item/Entity registrations
+// - Commands
+// - Recipes
+// - Loot tables
+// - Event handlers
+// - Custom AI goals
+//
+// It runs on the Server thread using the pure Dart VM (dart_dll).
+
+// Server-side Dart mod API
+import 'package:dart_mod_server/dart_mod_server.dart';
+
+// MCP runtime for AI-controlled testing
+import 'package:minecraft_mcp/runtime.dart';
+
+/// Example custom block that shows a message when right-clicked.
+///
+/// This demonstrates how to create custom blocks in Dart.
+/// The block will appear in the creative menu under "Building Blocks".
+class HelloBlock extends CustomBlock {
+  HelloBlock()
+      : super(
+          id: '{{project_name}}:hello_block',
+          settings: BlockSettings(
+            hardness: 1.0,
+            resistance: 1.0,
+            requiresTool: false,
+          ),
+        );
+
+  @override
+  ActionResult onUse(int worldId, int x, int y, int z, int playerId, int hand) {
+    // Get player info and send a message
+    final player = Players.getPlayer(playerId);
+    if (player != null) {
+      player.sendMessage(
+          'Hello from {{project_name_title}}! You clicked at ($x, $y, $z)');
+    }
+    return ActionResult.success;
+  }
+
+  @override
+  bool onBreak(int worldId, int x, int y, int z, int playerId) {
+    print('HelloBlock broken at ($x, $y, $z) by player $playerId');
+    return true; // Allow the block to be broken
+  }
+}
+
+/// Server-side entry point for the mod.
+///
+/// This is called when the server-side Dart VM is initialized.
+/// Registration of items/blocks/entities must be deferred until Java signals
+/// that registries are ready.
+void main() {
+  print('{{project_name_title}} server mod initialized!');
+
+  // Initialize the native bridge
+  // Note: In dual-runtime mode, the bridge is initialized by the native code
+  // before main() is called, so this may be a no-op or skip if already initialized.
+  Bridge.initialize();
+
+  // Register proxy handlers (required for custom blocks and items)
+  // These handlers don't use Minecraft registries, so they can be set up immediately
+  Events.registerProxyBlockHandlers();
+  Events.registerProxyItemHandlers();
+
+  // Defer registration until Java signals that registries are ready
+  // This is critical for timing - Dart's main() runs immediately
+  // but Minecraft's registries may not be ready yet
+  Bridge.onRegistryReady(() {
+    print('Registry ready - registering items, blocks, entities...');
+
+    // =========================================================================
+    // Register your custom blocks here
+    // =========================================================================
+    BlockRegistry.register(HelloBlock());
+
+    // =========================================================================
+    // Register your custom items here
+    // =========================================================================
+    // ItemRegistry.register(MyItem());
+
+    // =========================================================================
+    // Register your custom entities here
+    // =========================================================================
+    // EntityRegistry.register(MyEntity());
+
+    // =========================================================================
+    // Register commands, recipes, loot tables, events as needed
+    // =========================================================================
+
+    print(
+        '{{project_name_title}} server mod ready with ${BlockRegistry.blockCount} custom blocks!');
+
+    // Initialize MCP runtime for AI-controlled testing (if enabled)
+    // This starts an HTTP server that allows external AI agents to control Minecraft
+    initializeMcpRuntime();
+  });
+}

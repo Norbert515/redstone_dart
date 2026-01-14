@@ -1,0 +1,14 @@
+# Redstone mod configuration
+name: minecraft_flutter_dev
+minecraft_version: "1.21.11"
+
+# Package structure for dual-runtime mode
+packages:
+  server: packages/server
+  client: packages/client
+  common: packages/common
+
+# Entry points
+entry_points:
+  server: packages/server/lib/main.dart
+  client: packages/client/lib/main.dart

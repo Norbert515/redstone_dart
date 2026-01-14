@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "minecraft_flutter_dev",
+  "version": "${version}",
+  "name": "Minecraft Flutter Dev",
+  "description": "Demo mod showcasing Flutter displays with redstone control",
+  "authors": ["Norbert515"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/minecraft_flutter_dev/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.redstone.DartModLoader"
+    ],
+    "client": [
+      "com.redstone.DartModClientLoader"
+    ]
+  },
+  "mixins": [
+    "minecraft_flutter_dev.mixins.json",
+    "java_mc_bridge.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~1.21.5",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

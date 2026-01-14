@@ -46,9 +46,6 @@ void main() {
   Events.registerProxyItemHandlers();
   Events.registerCustomGoalHandlers(); // Required for custom Dart-defined AI goals
 
-  // Initialize block entity callbacks (tick, load, save handlers)
-  initBlockEntityCallbacks();
-
   // Defer registration until Java signals that registries are ready
   // This is critical for timing - Dart's main() runs immediately
   // but Minecraft's registries may not be ready yet

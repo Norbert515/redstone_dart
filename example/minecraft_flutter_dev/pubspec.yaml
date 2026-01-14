@@ -1,12 +1,12 @@
-name: {{project_name}}
-description: {{description}}
+name: minecraft_flutter_dev
+description: Demo mod showcasing Flutter displays with redstone control
 publish_to: none
 
 # Redstone configuration (required for CLI detection)
 redstone:
-  minecraft_version: "{{minecraft_version}}"
-  org: {{org}}
-  author: {{author}}
+  minecraft_version: "1.21.11"
+  org: com.example
+  author: Norbert515
 
 # Dart workspace - allows packages to reference each other
 workspace:

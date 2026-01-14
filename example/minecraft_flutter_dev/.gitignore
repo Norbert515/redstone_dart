@@ -1,0 +1,22 @@
+# Dart
+.dart_tool/
+.packages
+pubspec.lock
+
+# Redstone managed (regenerated on redstone upgrade)
+.redstone/
+
+# Minecraft runtime
+minecraft/run/
+minecraft/build/
+minecraft/.gradle/
+minecraft/mc-sources/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -9,6 +9,8 @@ import 'dart:io';
 import 'package:dart_mod_common/src/jni/jni_internal.dart';
 import 'package:ffi/ffi.dart';
 
+import 'block_entity/block_entity_callbacks.dart';
+
 /// Type alias for backward compatibility with code using Bridge.
 typedef Bridge = ServerBridge;
 
@@ -66,6 +68,10 @@ class ServerBridge {
 
     // Bind all functions
     _bindFunctions();
+
+    // Initialize block entity callbacks (serverTick, save/load, etc.)
+    // This is done automatically so users don't need to remember to call it
+    initBlockEntityCallbacks();
   }
 
   static DynamicLibrary _loadLibrary() {

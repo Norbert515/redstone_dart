@@ -1,0 +1,22 @@
+name: {{project_name}}_client
+description: Client-side Flutter UI for {{project_name_title}}
+version: 1.0.0
+publish_to: none
+
+resolution: workspace
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dart_mod_client:
+    path: {{packages_path}}/dart_mod_client
+  dart_mod_common:
+    path: {{packages_path}}/dart_mod_common
+  minecraft_ui:
+    path: {{packages_path}}/minecraft_ui
+  {{project_name}}_common:
+    path: ../common

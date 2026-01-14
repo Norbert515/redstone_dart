@@ -1135,6 +1135,20 @@ public class DartBridge {
     }
 
     /**
+     * Get the strongest redstone signal received at a block position.
+     * Returns 0-15 signal strength, or 0 if no signal.
+     */
+    public static int getRedstoneSignal(String dimension, int x, int y, int z) {
+        if (serverInstance == null) return 0;
+
+        ServerLevel level = getServerLevel(dimension);
+        if (level == null) return 0;
+
+        BlockPos pos = new BlockPos(x, y, z);
+        return level.getBestNeighborSignal(pos);
+    }
+
+    /**
      * Helper to get ServerLevel by dimension ID.
      */
     private static ServerLevel getServerLevel(String dimension) {

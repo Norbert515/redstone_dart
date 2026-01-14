@@ -1,0 +1,63 @@
+// Server entry point for dual-runtime mode
+//
+// This file handles ALL game logic:
+// - Block/Item/Entity registrations
+// - Commands
+// - Recipes
+// - Loot tables
+// - Event handlers
+// - Custom AI goals
+//
+// It runs on the Server thread using the pure Dart VM (dart_dll).
+
+// Server-side Dart mod API
+import 'package:dart_mod_server/dart_mod_server.dart';
+
+// MCP runtime for AI-controlled testing
+import 'package:minecraft_mcp/runtime.dart';
+
+/// Server-side entry point for the mod.
+///
+/// This is called when the server-side Dart VM is initialized.
+/// Registration of items/blocks/entities must be deferred until Java signals
+/// that registries are ready.
+void main() {
+  print('{{project_name_title}} server mod initialized!');
+
+  // Initialize the native bridge
+  Bridge.initialize();
+
+  // Register proxy handlers (required for custom blocks and items)
+  Events.registerProxyBlockHandlers();
+  Events.registerProxyItemHandlers();
+
+  // Defer registration until Java signals that registries are ready
+  Bridge.onRegistryReady(() {
+    print('Registry ready - registering items, blocks, entities...');
+
+    // =========================================================================
+    // Register your custom blocks here
+    // =========================================================================
+    // BlockRegistry.register(MyBlock());
+
+    // =========================================================================
+    // Register your custom items here
+    // =========================================================================
+    // ItemRegistry.register(MyItem());
+
+    // =========================================================================
+    // Register your custom entities here
+    // =========================================================================
+    // EntityRegistry.register(MyEntity());
+
+    // =========================================================================
+    // Register commands, recipes, loot tables, events as needed
+    // =========================================================================
+
+    print(
+        '{{project_name_title}} server mod ready with ${BlockRegistry.blockCount} custom blocks!');
+
+    // Initialize MCP runtime for AI-controlled testing (if enabled)
+    initializeMcpRuntime();
+  });
+}

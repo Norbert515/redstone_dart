@@ -55,6 +55,10 @@ class ProjectCreator {
 
   ProjectCreator._(this.config, this.targetDir, this.fabricVersions) {
     _platform = PlatformInfo.detect();
+
+    // Compute relative path from target directory to packages directory
+    final packagesPath = _computePackagesPath();
+
     _renderer = TemplateRenderer({
       'project_name': config.name,
       'project_name_title': config.titleName,
@@ -68,7 +72,30 @@ class ProjectCreator {
       'fabric_version': fabricVersions.fabricApi,
       'loader_version': fabricVersions.loader,
       'loom_version': fabricVersions.loom,
+      // Path to framework packages
+      'packages_path': packagesPath,
     });
+  }
+
+  /// Compute the relative path from target directory's packages/*/lib to framework packages directory.
+  ///
+  /// For dual-runtime projects, dependencies are declared in packages/server/pubspec.yaml
+  /// and packages/client/pubspec.yaml, which are 2 levels deep from the project root.
+  /// So from `my_project/packages/server/` to `framework/packages/` needs `../../../packages`.
+  String _computePackagesPath() {
+    final packagesDir = _findPackagesDir();
+    if (packagesDir == null) {
+      // Fallback: assume packages are relative to the CLI
+      return '../../../packages';
+    }
+
+    // Compute relative path from targetDir/packages/server to packagesDir
+    // The sub-packages are at targetDir/packages/server/, so we need the path
+    // from there to the framework packages directory
+    final subPackageAbsolute = p.absolute(p.join(targetDir, 'packages', 'server'));
+    final packagesAbsolute = p.absolute(packagesDir);
+
+    return p.relative(packagesAbsolute, from: subPackageAbsolute);
   }
 
   /// Create a ProjectCreator with versions fetched from Fabric Meta API
@@ -121,15 +148,21 @@ class ProjectCreator {
   Future<void> _createDirectories() async {
     final dirs = [
       '',
-      'lib',
-      'test',
+      // Dual-runtime package structure
+      'packages/server/lib',
+      'packages/server/test',
+      'packages/client/lib',
+      'packages/common/lib',
+      // Assets
       'assets/textures',
+      // Minecraft Gradle project
       'minecraft/src/main/java/${config.javaPackagePath}',
       'minecraft/src/main/resources/assets/${config.name}',
       'minecraft/src/main/resources/data/${config.name}',
       'minecraft/src/client/java/${config.javaPackagePath}',
       'minecraft/src/client/resources',
       'minecraft/gradle/wrapper',
+      // Redstone internal
       '.redstone/native',
       '.redstone/bridge/java/com/redstone/proxy',
       '.redstone/bridge/client/com/redstone',

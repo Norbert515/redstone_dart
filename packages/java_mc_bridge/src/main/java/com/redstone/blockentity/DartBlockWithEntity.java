@@ -102,6 +102,12 @@ public class DartBlockWithEntity extends DartBlockProxy implements EntityBlock {
             return null;
         }
 
+        // Check if ticks are enabled for this block entity
+        BlockEntityRegistry.BlockEntityConfig config = BlockEntityRegistry.getConfig(blockId);
+        if (config == null || !config.ticks()) {
+            return null;
+        }
+
         // Return the server ticker if type matches our block's type
         BlockEntityType<DartProcessingBlockEntity> ourType = getBlockEntityType();
         if (ourType != null && type == ourType) {

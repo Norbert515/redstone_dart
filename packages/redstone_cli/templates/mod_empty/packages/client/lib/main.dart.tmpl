@@ -1,0 +1,127 @@
+// Client entry point for dual-runtime mode
+//
+// This file handles ONLY the Flutter UI:
+// - Flutter app initialization
+// - GUI routing for different container types
+// - Surface widgets for in-world displays
+//
+// It runs on the Render thread using the Flutter embedder.
+
+// Flutter imports for UI rendering
+import 'dart:developer' as developer;
+
+import 'package:dart_mod_client/dart_mod_client.dart';
+import 'package:dart_mod_common/src/jni/jni_internal.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:minecraft_ui/minecraft_ui.dart';
+
+/// Client-side entry point for the mod.
+void main() {
+  print('{{project_name_title}} client mod initialized!');
+
+  // Ensure surfaceMain is included in the kernel (prevents tree-shaking)
+  // ignore: unnecessary_null_comparison
+  if (surfaceMain == null) {
+    throw StateError('surfaceMain should never be null');
+  }
+
+  // Print VM service URL for hot reload detection
+  final serviceInfo = developer.Service.getInfo();
+  serviceInfo.then((info) {
+    if (info.serverUri != null) {
+      // ignore: avoid_print
+      print('flutter: The Dart VM service is listening on ${info.serverUri}');
+    }
+  });
+
+  // Initialize the JNI bridge for calling Java methods from Dart
+  GenericJniBridge.init();
+
+  // Register surface widgets for multi-surface rendering
+  _registerSurfaceWidgets();
+
+  // Start the Flutter app for UI rendering
+  runApp(const MinecraftGuiApp());
+
+  // Register service extension for hot reload frame scheduling
+  developer.registerExtension('ext.redstone.scheduleFrame', (method, params) async {
+    SchedulerBinding.instance.scheduleFrame();
+    return developer.ServiceExtensionResponse.result('{}');
+  });
+
+  print('{{project_name_title}} client mod ready! Flutter UI initialized.');
+}
+
+/// A Minecraft-themed Flutter app for GUI screens.
+class MinecraftGuiApp extends StatelessWidget {
+  const MinecraftGuiApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(scaffoldBackgroundColor: Colors.transparent),
+      home: McTheme(
+        guiScale: 1.0,
+        child: GuiRouter(
+          routes: [
+            // Add your container routes here:
+            // GuiRoute(
+            //   containerId: '{{project_name}}:my_container',
+            //   builder: (context, info) => MyContainerScreen(menuId: info.menuId),
+            // ),
+          ],
+          background: Container(
+            color: Colors.blue,
+            child: const Center(
+              child: Text(
+                'Flutter Rendering Test',
+                style: TextStyle(color: Colors.white, fontSize: 32),
+              ),
+            ),
+          ),
+          fallback: (context, info) {
+            print('[GuiRouter] Unknown container: ${info.containerId}');
+            return Center(
+              child: McPanel(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: McText.label('Unknown container: ${info.containerId}'),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Surface Widget Registration & Multi-Surface Entry Point
+// =============================================================================
+
+/// Entry point for spawned Flutter surface engines (multi-surface rendering).
+@pragma('vm:entry-point')
+void surfaceMain(List<String> args) {
+  print('[surfaceMain] Starting spawned surface engine with args: $args');
+
+  _registerSurfaceWidgets();
+
+  final route = SurfaceRouter.parseRouteFromArgs(args);
+  print('[surfaceMain] Parsed route: $route');
+
+  runApp(SurfaceApp(route: route));
+
+  print('[surfaceMain] Spawned surface engine running.');
+}
+
+/// Register widgets that can be displayed on FlutterDisplayEntity surfaces.
+void _registerSurfaceWidgets() {
+  // TODO: Register your surface widgets here
+  // Example:
+  // SurfaceRouter.register('clock', () => const ClockWidget());
+
+  print('[Client] Registered ${SurfaceRouter.routes.length} surface widgets');
+}

@@ -4,5 +4,6 @@
 library;
 
 export 'block_entity_registry.dart';
-export 'block_entity_callbacks.dart' show initBlockEntityCallbacks;
+// Note: initBlockEntityCallbacks is now called automatically by Bridge.initialize()
+// so it's no longer exported in the public API
 export 'block_entity_jni.dart';

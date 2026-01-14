@@ -1,0 +1,135 @@
+plugins {
+    id 'net.fabricmc.fabric-loom-remap' version '1.14-SNAPSHOT'
+    id 'java'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenCentral()
+}
+
+loom {
+    splitEnvironmentSourceSets()
+
+    // Access widener for Minecraft internals (goalSelector, targetSelector, etc.)
+    accessWidenerPath = file("../.redstone/bridge/resources/redstone.accesswidener")
+
+    mods {
+        "minecraft_flutter_dev" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            // Include Redstone bridge code (server-side)
+            srcDir '../.redstone/bridge/java'
+        }
+        resources {
+            // Include Redstone bridge resources (mixin configs, etc.)
+            srcDir '../.redstone/bridge/resources'
+        }
+    }
+    client {
+        java {
+            // Include Redstone client bridge code (uses client-only APIs)
+            srcDir '../.redstone/bridge/client/java'
+        }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "loader_version", project.loader_version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+                "minecraft_version": project.minecraft_version,
+                "loader_version": project.loader_version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+}
+
+// Enable Fabric game tests (used by 'redstone test')
+fabricApi {
+    configureTests {
+        enableGameTests = true
+    }
+}
+
+// Pass DART_SERVER_SCRIPT and DART_PACKAGE_CONFIG to run tasks via JVM system properties
+// This allows the CLI to specify the script and package locations directly
+tasks.withType(net.fabricmc.loom.task.RunGameTask).configureEach {
+    // Read from Gradle project property (passed via -PdartScriptPath=...)
+    if (project.hasProperty('dartScriptPath')) {
+        def dartScriptPath = project.property('dartScriptPath')
+        jvmArgs("-DDART_SERVER_SCRIPT=${dartScriptPath}")
+    }
+
+    // Read package config path from Gradle property (passed via -PdartPackageConfigPath=...)
+    // This is the correct package_config.json for the script being run (test harness or project)
+    if (project.hasProperty('dartPackageConfigPath')) {
+        def packageConfigPath = project.property('dartPackageConfigPath')
+        jvmArgs("-DDART_PACKAGE_CONFIG=${packageConfigPath}")
+    }
+
+    // Pass server VM service port for hot reload support
+    if (project.hasProperty('serverVmServicePort')) {
+        def port = project.property('serverVmServicePort')
+        jvmArgs("-DDART_SERVER_VM_SERVICE_PORT=${port}")
+    }
+
+    // Enable visual test mode (auto-join test world for client tests)
+    if (project.hasProperty('visualTestMode')) {
+        jvmArgs("-DVISUAL_TEST_MODE=true")
+    }
+
+    // Enable MCP mode (auto-join test world for AI-controlled testing)
+    if (project.hasProperty('mcpMode')) {
+        jvmArgs("-DMCP_MODE=true")
+    }
+
+    // MCP server port (for HTTP communication)
+    if (project.hasProperty('mcpServerPort')) {
+        def mcpPort = project.property('mcpServerPort')
+        jvmArgs("-DMCP_SERVER_PORT=${mcpPort}")
+    }
+
+    // Background mode (prevents window focus stealing)
+    if (project.hasProperty('backgroundMode')) {
+        jvmArgs("-DBACKGROUND_MODE=${project.property('backgroundMode')}")
+    }
+}

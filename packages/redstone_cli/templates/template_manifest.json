@@ -2,11 +2,17 @@
   "version": 1,
   "templates": {
     "mod": {
-      "description": "Standard Redstone mod with example code",
+      "description": "Standard Redstone mod with dual-runtime (server+client) structure",
       "files": [
-        "lib/main.dart.tmpl",
-        "test/hello_block_test.dart.tmpl",
         "pubspec.yaml.tmpl",
+        "redstone.yaml.tmpl",
+        "packages/server/pubspec.yaml.tmpl",
+        "packages/server/lib/main.dart.tmpl",
+        "packages/client/pubspec.yaml.tmpl",
+        "packages/client/lib/main.dart.tmpl",
+        "packages/common/pubspec.yaml.tmpl",
+        "packages/common/lib/__project_name___common.dart.tmpl",
+        "packages/server/test/hello_block_test.dart.tmpl",
         "README.md.tmpl",
         ".gitignore.copy.tmpl",
         "analysis_options.yaml.copy.tmpl",
@@ -21,7 +27,8 @@
       "description": "Minimal Redstone mod without example code",
       "extends": "mod",
       "overrides": [
-        "lib/main.dart.tmpl"
+        "packages/server/lib/main.dart.tmpl",
+        "packages/client/lib/main.dart.tmpl"
       ]
     }
   }

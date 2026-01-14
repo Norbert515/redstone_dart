@@ -168,21 +168,43 @@ public class DartProcessingBlockEntity extends DartBlockEntityWithInventory {
     // Tick handling
     // ========================================================================
 
+    /** Tick counter for debug logging. */
+    private static int tickDebugCounter = 0;
+
     /**
      * Server tick method - called each game tick for this block entity.
      * Delegates to Dart for processing logic.
      */
     public static void serverTick(Level level, BlockPos pos, BlockState state,
                                   DartProcessingBlockEntity blockEntity) {
+        tickDebugCounter++;
+
+        // Debug log every 100 ticks (5 seconds)
+        if (tickDebugCounter % 100 == 1) {
+            LOGGER.info("serverTick called! tick={}, pos={}, handlerId={}, blockPosHash={}, dartInitialized={}",
+                tickDebugCounter, pos, blockEntity.handlerId, blockEntity.blockPosHash, DartBridge.isInitialized());
+        }
+
         if (level.isClientSide()) {
+            if (tickDebugCounter % 100 == 1) {
+                LOGGER.info("serverTick: skipping - client side");
+            }
             return;
         }
 
         if (DartBridge.isInitialized()) {
             try {
+                if (tickDebugCounter % 100 == 1) {
+                    LOGGER.info("serverTick: calling DartBridge.onBlockEntityTick({}, {})",
+                        blockEntity.handlerId, blockEntity.blockPosHash);
+                }
                 DartBridge.onBlockEntityTick(blockEntity.handlerId, blockEntity.blockPosHash);
             } catch (Exception e) {
                 LOGGER.error("Error during block entity tick: {}", e.getMessage());
+            }
+        } else {
+            if (tickDebugCounter % 100 == 1) {
+                LOGGER.info("serverTick: DartBridge not initialized, skipping");
             }
         }
     }

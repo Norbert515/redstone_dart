@@ -66,6 +66,19 @@ class ServerWorld extends World {
     );
   }
 
+  /// Get the redstone signal strength at a position.
+  ///
+  /// Returns the strongest signal received from any neighboring block,
+  /// from 0 (no signal) to 15 (full signal).
+  int getRedstoneSignal(BlockPos pos) {
+    return GenericJniBridge.callStaticIntMethod(
+      _dartBridge,
+      'getRedstoneSignal',
+      '(Ljava/lang/String;III)I',
+      [dimensionId, pos.x, pos.y, pos.z],
+    );
+  }
+
   // ==========================================================================
   // Time APIs
   // ==========================================================================
