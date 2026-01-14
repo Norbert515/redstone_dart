@@ -11,14 +11,14 @@ environment:
 dependencies:
   ffi: ^2.1.0
   dart_mod_server:
-    path: ../../../packages/dart_mod_server
+    path: ../../../../packages/dart_mod_server
   dart_mod_common:
-    path: ../../../packages/dart_mod_common
+    path: ../../../../packages/dart_mod_common
   minecraft_flutter_dev_common:
     path: ../common
   minecraft_mcp:
-    path: ../../../packages/minecraft_mcp
+    path: ../../../../packages/minecraft_mcp
 
 dev_dependencies:
   redstone_test:
-    path: ../../../packages/redstone_test
+    path: ../../../../packages/redstone_test

@@ -10,4 +10,4 @@ environment:
 
 dependencies:
   dart_mod_common:
-    path: ../../../packages/dart_mod_common
+    path: ../../../../packages/dart_mod_common

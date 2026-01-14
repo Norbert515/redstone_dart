@@ -13,10 +13,10 @@ dependencies:
   flutter:
     sdk: flutter
   dart_mod_client:
-    path: ../../../packages/dart_mod_client
+    path: ../../../../packages/dart_mod_client
   dart_mod_common:
-    path: ../../../packages/dart_mod_common
+    path: ../../../../packages/dart_mod_common
   minecraft_ui:
-    path: ../../../packages/minecraft_ui
+    path: ../../../../packages/minecraft_ui
   minecraft_flutter_dev_common:
     path: ../common
