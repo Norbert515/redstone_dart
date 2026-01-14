@@ -12,3 +12,4 @@ export 'package:dart_mod_common/dart_mod_common.dart' show BlockPos, Vec3;
 
 // Shared container definitions
 export 'src/flutter_display_controller_container.dart';
+export 'src/screen_controller_container.dart';

@@ -1,3 +1,5 @@
 {
-  "block.minecraft_flutter_dev.flutter_display_controller": "Flutter Display Controller"
+  "block.minecraft_flutter_dev.flutter_display_controller": "Flutter Display Controller",
+  "block.minecraft_flutter_dev.screen_block": "Screen Block",
+  "block.minecraft_flutter_dev.screen_controller": "Screen Controller"
 }

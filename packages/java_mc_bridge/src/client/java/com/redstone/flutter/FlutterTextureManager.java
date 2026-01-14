@@ -411,9 +411,9 @@ public class FlutterTextureManager implements AutoCloseable {
                     int r = b2;
                     int a = b3;
 
-                    // Force alpha to 255 (fully opaque) for testing
                     // Pack as ABGR (Minecraft's internal format)
-                    int color = (255 << 24) | (b << 16) | (g << 8) | r;
+                    // Use actual alpha value for transparency support
+                    int color = (a << 24) | (b << 16) | (g << 8) | r;
                     image.setPixel(x, y, color);
                     copied++;
                 }

@@ -165,6 +165,13 @@ void _registerSurfaceWidgets() {
   // Color test widget - cycles through colors
   SurfaceRouter.register('colors', () => const ColorTestWidget());
 
+  // Multi-block screen widget - displays content with gap handling
+  // Route format: 'multiscreen?grid=111,101,111'
+  // Grid string: rows separated by comma, 1=block present, 0=gap
+  SurfaceRouter.registerWithParams('multiscreen', (params) {
+    return MultiBlockScreenWidget(gridLayout: params['grid'] ?? '');
+  });
+
   print('[Client] Registered ${SurfaceRouter.routes.length} surface widgets');
 }
 
@@ -321,5 +328,248 @@ class _ColorTestWidgetState extends State<ColorTestWidget> {
         ),
       ),
     );
+  }
+}
+
+/// A multi-block screen widget that renders content with transparency for gaps.
+///
+/// The grid layout is passed via the `gridLayout` parameter as a string:
+/// - Rows are separated by commas: "111,101,111"
+/// - Each character represents a cell: '1' = block present, '0' = gap
+///
+/// The widget renders transparent where gaps exist in the grid.
+class MultiBlockScreenWidget extends StatefulWidget {
+  /// The grid layout string (rows separated by comma, 1=present, 0=gap).
+  final String gridLayout;
+
+  const MultiBlockScreenWidget({
+    super.key,
+    this.gridLayout = '',
+  });
+
+  @override
+  State<MultiBlockScreenWidget> createState() => _MultiBlockScreenWidgetState();
+}
+
+class _MultiBlockScreenWidgetState extends State<MultiBlockScreenWidget> {
+  late List<List<bool>> _grid;
+  int _animationTick = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _parseGrid();
+    // Animate the display
+    Stream.periodic(const Duration(milliseconds: 100)).listen((_) {
+      if (mounted) {
+        setState(() {
+          _animationTick++;
+        });
+      }
+    });
+  }
+
+  void _parseGrid() {
+    if (widget.gridLayout.isEmpty) {
+      _grid = [
+        [true]
+      ];
+      return;
+    }
+
+    _grid = widget.gridLayout.split(',').map((row) {
+      return row.split('').map((char) => char == '1').toList();
+    }).toList();
+
+    print('[MultiBlockScreen] Parsed grid: ${_grid.length} rows');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _grid.length;
+    final cols = _grid.isNotEmpty ? _grid.first.length : 1;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Use CustomPaint to only draw in cells that have blocks
+        // Gaps will be truly transparent (alpha = 0)
+        // Wrap in ColoredBox with transparent to ensure no background
+        return ColoredBox(
+          color: const Color(0x00000000), // Fully transparent background
+          child: CustomPaint(
+            size: Size(constraints.maxWidth, constraints.maxHeight),
+            painter: _MultiBlockPainter(
+              rows: rows,
+              cols: cols,
+              grid: _grid,
+              animationTick: _animationTick,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Custom painter that renders content only in cells where blocks exist.
+/// Gaps (cells without blocks) are left completely transparent.
+class _MultiBlockPainter extends CustomPainter {
+  final int rows;
+  final int cols;
+  final List<List<bool>> grid;
+  final int animationTick;
+
+  _MultiBlockPainter({
+    required this.rows,
+    required this.cols,
+    required this.grid,
+    required this.animationTick,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cellWidth = size.width / cols;
+    final cellHeight = size.height / rows;
+
+    // Create gradient colors based on animation
+    final color1 = HSVColor.fromAHSV(
+      1.0,
+      (animationTick * 2) % 360,
+      0.7,
+      0.3,
+    ).toColor();
+    final color2 = HSVColor.fromAHSV(
+      1.0,
+      (animationTick * 2 + 120) % 360,
+      0.7,
+      0.3,
+    ).toColor();
+
+    // Draw each cell that has a block
+    for (var row = 0; row < rows; row++) {
+      for (var col = 0; col < cols; col++) {
+        if (grid[row][col]) {
+          final rect = Rect.fromLTWH(
+            col * cellWidth,
+            row * cellHeight,
+            cellWidth,
+            cellHeight,
+          );
+
+          // Calculate gradient position for this cell
+          final t = (col + row) / (cols + rows - 2).clamp(1, double.infinity);
+          final cellColor = Color.lerp(color1, color2, t)!;
+
+          // Fill the cell with color
+          final paint = Paint()
+            ..color = cellColor
+            ..style = PaintingStyle.fill;
+          canvas.drawRect(rect, paint);
+
+          // Draw cell border
+          final borderPaint = Paint()
+            ..color = Colors.white.withValues(alpha: 0.3)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2;
+          canvas.drawRect(rect, borderPaint);
+        }
+        // Cells without blocks are left unpainted (transparent)
+      }
+    }
+
+    // Draw centered text
+    final textPainter = TextPainter(
+      text: TextSpan(
+        children: [
+          TextSpan(
+            text: 'MULTI-BLOCK\n',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 4,
+            ),
+          ),
+          TextSpan(
+            text: 'DISPLAY\n',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 18,
+              fontWeight: FontWeight.w300,
+              letterSpacing: 6,
+            ),
+          ),
+          TextSpan(
+            text: '${cols}x$rows',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.5),
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+
+    // Only draw text if it fits within the active area
+    final textX = (size.width - textPainter.width) / 2;
+    final textY = (size.height - textPainter.height) / 2;
+    textPainter.paint(canvas, Offset(textX, textY));
+  }
+
+  @override
+  bool shouldRepaint(_MultiBlockPainter oldDelegate) {
+    return rows != oldDelegate.rows ||
+        cols != oldDelegate.cols ||
+        grid != oldDelegate.grid ||
+        animationTick != oldDelegate.animationTick;
+  }
+}
+
+/// Custom painter to draw grid cell boundaries.
+class _GridPainter extends CustomPainter {
+  final int rows;
+  final int cols;
+  final List<List<bool>> grid;
+
+  _GridPainter({
+    required this.rows,
+    required this.cols,
+    required this.grid,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cellWidth = size.width / cols;
+    final cellHeight = size.height / rows;
+
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    // Draw grid lines for cells that are present
+    for (var row = 0; row < rows; row++) {
+      for (var col = 0; col < cols; col++) {
+        if (grid[row][col]) {
+          final rect = Rect.fromLTWH(
+            col * cellWidth,
+            row * cellHeight,
+            cellWidth,
+            cellHeight,
+          );
+          canvas.drawRect(rect, paint);
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GridPainter oldDelegate) {
+    return rows != oldDelegate.rows ||
+        cols != oldDelegate.cols ||
+        grid != oldDelegate.grid;
   }
 }

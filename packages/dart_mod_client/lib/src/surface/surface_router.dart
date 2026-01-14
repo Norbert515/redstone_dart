@@ -8,6 +8,17 @@ import 'package:flutter/widgets.dart';
 /// SurfaceRouter.register('health', () => HealthBarWidget());
 /// ```
 ///
+/// Routes can also include query parameters:
+/// ```dart
+/// // Register with parameter support
+/// SurfaceRouter.registerWithParams('multiscreen', (params) {
+///   return MultiBlockScreen(grid: params['grid'] ?? '');
+/// });
+///
+/// // When spawned with 'multiscreen?grid=111,101,111', the params map
+/// // will contain {'grid': '111,101,111'}
+/// ```
+///
 /// When a FlutterDisplayEntity is spawned with that route, the corresponding
 /// widget is rendered on that surface.
 ///
@@ -38,8 +49,10 @@ import 'package:flutter/widgets.dart';
 /// ```
 class SurfaceRouter {
   static final Map<String, Widget Function()> _routes = {};
+  static final Map<String, Widget Function(Map<String, String>)>
+      _paramRoutes = {};
 
-  /// Register a widget builder for a route.
+  /// Register a widget builder for a route (no parameters).
   ///
   /// Example:
   /// ```dart
@@ -50,27 +63,76 @@ class SurfaceRouter {
     print('[SurfaceRouter] Registered route: $route');
   }
 
+  /// Register a widget builder that receives query parameters.
+  ///
+  /// Example:
+  /// ```dart
+  /// SurfaceRouter.registerWithParams('multiscreen', (params) {
+  ///   return MultiBlockScreen(grid: params['grid'] ?? '');
+  /// });
+  /// ```
+  ///
+  /// When the route 'multiscreen?grid=111,101,111' is requested,
+  /// the params map will contain {'grid': '111,101,111'}.
+  static void registerWithParams(
+    String route,
+    Widget Function(Map<String, String> params) builder,
+  ) {
+    _paramRoutes[route] = builder;
+    print('[SurfaceRouter] Registered parameterized route: $route');
+  }
+
   /// Unregister a route.
   static void unregister(String route) {
     _routes.remove(route);
+    _paramRoutes.remove(route);
   }
 
   /// Get the widget for a route, or null if not registered.
+  ///
+  /// Supports query parameters: 'myroute?key=value&other=data'
   static Widget? getWidget(String route) {
-    final builder = _routes[route];
+    // Parse route and query parameters
+    final uri = Uri.tryParse('scheme://host/$route');
+    final basePath = uri?.pathSegments.isNotEmpty == true
+        ? uri!.pathSegments.last
+        : route.split('?').first;
+    final params = uri?.queryParameters ?? {};
+
+    print('[SurfaceRouter] getWidget: route=$route, basePath=$basePath, params=$params');
+
+    // Try parameterized route first
+    final paramBuilder = _paramRoutes[basePath];
+    if (paramBuilder != null) {
+      return paramBuilder(params);
+    }
+
+    // Try simple route
+    final builder = _routes[basePath];
     if (builder != null) {
       return builder();
     }
+
+    // Also try exact match (backwards compatibility)
+    final exactBuilder = _routes[route];
+    if (exactBuilder != null) {
+      return exactBuilder();
+    }
+
     return null;
   }
 
   /// Check if a route is registered.
   static bool hasRoute(String route) {
-    return _routes.containsKey(route);
+    final basePath = route.split('?').first;
+    return _routes.containsKey(route) ||
+        _routes.containsKey(basePath) ||
+        _paramRoutes.containsKey(basePath);
   }
 
   /// Get all registered routes.
-  static List<String> get routes => _routes.keys.toList();
+  static List<String> get routes =>
+      [..._routes.keys, ..._paramRoutes.keys].toList();
 
   /// Parse the route from command line arguments.
   ///

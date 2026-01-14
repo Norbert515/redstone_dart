@@ -18,6 +18,8 @@ import 'package:minecraft_mcp/runtime.dart';
 
 // Custom blocks
 import 'src/flutter_display_controller_block.dart';
+import 'src/screen_block.dart';
+import 'src/screen_controller_block.dart';
 
 /// Server-side entry point for the mod.
 ///
@@ -47,6 +49,8 @@ void main() {
     // Register your custom blocks here
     // =========================================================================
     FlutterDisplayControllerBlock.register();
+    ScreenBlock.register();
+    ScreenControllerBlock.register();
 
     // =========================================================================
     // Register your custom items here

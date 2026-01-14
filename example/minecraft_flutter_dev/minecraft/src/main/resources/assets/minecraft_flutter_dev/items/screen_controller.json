@@ -1,0 +1,6 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "minecraft_flutter_dev:block/screen_controller"
+  }
+}
