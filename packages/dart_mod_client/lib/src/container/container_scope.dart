@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:dart_mod_common/dart_mod_common.dart';
 
 import '../events/container_data_events.dart';
+import '../inventory/client_container_view.dart';
 
 /// Provides a container to descendant widgets with automatic rebuild on data changes.
 ///
@@ -128,15 +129,16 @@ class _ContainerScopeState<T extends ContainerDefinition>
   StreamSubscription<ContainerDataChangedEvent>? _subscription;
   int _updateCount = 0;
 
+  /// The data source for pulling initial/cached values.
+  static const _dataSource = ClientContainerView();
+
   @override
   void initState() {
     super.initState();
-    // Note: We intentionally do NOT call _loadInitialValues() here.
-    // The SyncedInt values start at their default (0), which is correct for fresh containers.
-    // The server will push the actual values via ContainerData sync, which triggers
-    // onDataChanged events that update the values correctly.
-    // This prevents the bug where stale cached values from a previous container
-    // would briefly flash before being overwritten.
+    // Initialize container from Java-side cache (pull) + subscribe to updates (push).
+    // This pattern prevents race conditions where initial values are sent before
+    // the Flutter widget tree is built.
+    widget.container.initializeFromCache(_dataSource);
     _subscribeToDataChanges();
   }
 

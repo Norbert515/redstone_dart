@@ -25,7 +25,7 @@ const _dartBridgeClient = 'com/redstone/DartBridgeClient';
 ///   }
 /// }
 /// ```
-class ClientContainerView implements ContainerView {
+class ClientContainerView implements ContainerView, ContainerDataSource {
   /// Create a new client container view.
   ///
   /// This is a lightweight object that queries the container menu on demand.
@@ -142,12 +142,20 @@ class ClientContainerView implements ContainerView {
   ///
   /// Returns 0 if the current container doesn't support ContainerData or
   /// if the index is out of range.
-  int getContainerDataSlot(int dataIndex) {
+  ///
+  /// Implements [ContainerDataSource.getDataSlot] to allow containers to
+  /// initialize their synced values from the Java-side cache.
+  @override
+  int getDataSlot(int index) {
     return GenericJniBridge.callStaticIntMethod(
       _dartBridgeClient,
       'getContainerDataSlot',
       '(I)I',
-      [dataIndex],
+      [index],
     );
   }
+
+  /// Alias for [getDataSlot] for backwards compatibility.
+  @Deprecated('Use getDataSlot instead')
+  int getContainerDataSlot(int dataIndex) => getDataSlot(dataIndex);
 }
