@@ -1,4 +1,5 @@
 // Barrel export file for all blocks
+export 'animated_blocks.dart';
 export 'entity_radar_block.dart';
 export 'example_furnace_block.dart';
 export 'hello_block.dart';
@@ -16,6 +17,7 @@ export 'weather_control_block.dart';
 import 'package:dart_mod_server/dart_mod_server.dart';
 
 import '../containers/simple_furnace_block.dart';
+import 'animated_blocks.dart';
 import 'entity_radar_block.dart';
 import 'example_furnace_block.dart';
 import 'hello_block.dart';
@@ -49,5 +51,11 @@ void registerBlocks() {
   BlockRegistry.register(ExampleFurnaceBlock());
   // SimpleFurnace demonstrates the new Container API with reactive synced values
   SimpleFurnaceBlock.register(); // Registers both block entity and block
+
+  // Animated blocks - demonstrate the BlockAnimation API
+  BlockRegistry.register(SpinningBlock());
+  BlockRegistry.register(FloatingCrystalBlock());
+  BlockRegistry.register(PulsingBlock());
+
   BlockRegistry.freeze();
 }

@@ -1,5 +1,8 @@
 {
   "block.framework_tests.hello_block": "Hello Block",
+  "block.framework_tests.pedestal": "Pedestal",
+  "block.framework_tests.spinning_block": "Spinning Block",
+  "block.framework_tests.floating_crystal": "Floating Crystal",
   "item.framework_tests.test_simple_sword": "Test Simple Sword",
   "item.framework_tests.test_lightning_sword": "Test Lightning Sword"
 }

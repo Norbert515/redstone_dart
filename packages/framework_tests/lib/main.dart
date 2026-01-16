@@ -4,6 +4,7 @@
 // and custom goal system with Dart-defined AI behavior.
 
 import 'package:dart_mod_server/dart_mod_server.dart';
+import 'package:minecraft_mcp/runtime.dart';
 
 // ===========================================================================
 // Test Items - onAttackEntity callback testing
@@ -513,7 +514,7 @@ class MixedGoalZombie extends CustomMonster {
 }
 
 // ===========================================================================
-// Test Block
+// Test Blocks
 // ===========================================================================
 
 class HelloBlock extends CustomBlock {
@@ -540,6 +541,117 @@ class HelloBlock extends CustomBlock {
 }
 
 // ===========================================================================
+// Animated Blocks - Tests BlockAnimation API
+// ===========================================================================
+
+/// A spinning block that rotates around the Y axis.
+/// Used to test BlockAnimation.spin() functionality.
+class SpinningTestBlock extends CustomBlock {
+  SpinningTestBlock()
+      : super(
+          id: 'framework_tests:spinning_block',
+          settings: BlockSettings(
+            hardness: 1.0,
+            resistance: 1.0,
+            requiresTool: false,
+          ),
+          model: BlockModel.cubeAll(
+            texture: 'assets/textures/block/pedestal_side.png',
+          ),
+          animation: BlockAnimation.spin(speed: 1.0),
+        );
+}
+
+/// A floating crystal block with combined spin and bob animations.
+/// Used to test BlockAnimation.combine() functionality.
+class FloatingCrystalBlock extends CustomBlock {
+  FloatingCrystalBlock()
+      : super(
+          id: 'framework_tests:floating_crystal',
+          settings: BlockSettings(
+            hardness: 1.0,
+            resistance: 1.0,
+            requiresTool: false,
+          ),
+          model: BlockModel.cubeAll(
+            texture: 'assets/textures/block/pedestal_top.png',
+          ),
+          animation: BlockAnimation.combine([
+            BlockAnimation.spin(axis: Axis3D.y, speed: 0.5),
+            BlockAnimation.bob(amplitude: 0.1, frequency: 1.0),
+          ]),
+        );
+}
+
+// ===========================================================================
+// Custom Elements Block - Tests BlockModel.elements() API
+// ===========================================================================
+
+/// A pedestal block with custom elements model.
+/// Used to test BlockModel.elements() functionality.
+class PedestalBlock extends CustomBlock {
+  PedestalBlock()
+      : super(
+          id: 'framework_tests:pedestal',
+          settings: BlockSettings(
+            hardness: 1.0,
+            resistance: 1.0,
+            requiresTool: false,
+          ),
+          model: BlockModel.elements(
+            textures: {
+              'side': 'assets/textures/block/pedestal_side.png',
+              'top': 'assets/textures/block/pedestal_top.png',
+            },
+            elements: [
+              // Base (full width, quarter height)
+              BlockElement(
+                from: ModelVec3(0, 0, 0),
+                to: ModelVec3(16, 4, 16),
+                faces: {
+                  Direction.down:
+                      ElementFace(texture: 'top', cullface: Direction.down),
+                  Direction.up: ElementFace(texture: 'top'),
+                  Direction.north:
+                      ElementFace(texture: 'side', cullface: Direction.north),
+                  Direction.south:
+                      ElementFace(texture: 'side', cullface: Direction.south),
+                  Direction.west:
+                      ElementFace(texture: 'side', cullface: Direction.west),
+                  Direction.east:
+                      ElementFace(texture: 'side', cullface: Direction.east),
+                },
+              ),
+              // Pillar (center column)
+              BlockElement(
+                from: ModelVec3(4, 4, 4),
+                to: ModelVec3(12, 12, 12),
+                faces: {
+                  Direction.north: ElementFace(texture: 'side'),
+                  Direction.south: ElementFace(texture: 'side'),
+                  Direction.west: ElementFace(texture: 'side'),
+                  Direction.east: ElementFace(texture: 'side'),
+                },
+              ),
+              // Top platform
+              BlockElement(
+                from: ModelVec3(2, 12, 2),
+                to: ModelVec3(14, 14, 14),
+                faces: {
+                  Direction.down: ElementFace(texture: 'top'),
+                  Direction.up: ElementFace(texture: 'top'),
+                  Direction.north: ElementFace(texture: 'side'),
+                  Direction.south: ElementFace(texture: 'side'),
+                  Direction.west: ElementFace(texture: 'side'),
+                  Direction.east: ElementFace(texture: 'side'),
+                },
+              ),
+            ],
+          ),
+        );
+}
+
+// ===========================================================================
 // Main entry point
 // ===========================================================================
 
@@ -563,6 +675,9 @@ void main() {
 
   // Register test blocks
   BlockRegistry.register(HelloBlock());
+  BlockRegistry.register(PedestalBlock());
+  BlockRegistry.register(SpinningTestBlock());
+  BlockRegistry.register(FloatingCrystalBlock());
   BlockRegistry.freeze();
   print('Blocks registered: ${BlockRegistry.blockCount}');
 
@@ -596,4 +711,7 @@ void main() {
   print('  /give @p framework_tests:test_simple_sword');
   print('  /give @p framework_tests:test_lightning_sword');
   print('Hit any mob with these swords to test onAttackEntity callback.');
+
+  // Initialize MCP runtime for AI-controlled testing (if enabled)
+  initializeMcpRuntime();
 }

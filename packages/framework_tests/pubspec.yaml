@@ -10,6 +10,8 @@ dependencies:
   ffi: ^2.1.0
   dart_mod_server:
     path: ../dart_mod_server
+  minecraft_mcp:
+    path: ../minecraft_mcp
 
 dev_dependencies:
   redstone_test:

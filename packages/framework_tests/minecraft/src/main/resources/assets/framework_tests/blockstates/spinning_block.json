@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "framework_tests:block/spinning_block"
+    }
+  }
+}
