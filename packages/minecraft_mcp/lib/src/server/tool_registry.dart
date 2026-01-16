@@ -692,7 +692,7 @@ class ToolRegistry {
     }
 
     if (minecraftController == null) {
-      throw StateError('Minecraft controller not configured. Provide modPath argument or --mod-path when starting the MCP server.');
+      throw StateError('Minecraft controller not configured. Provide modPath argument to startMinecraft.');
     }
 
     if (minecraftController!.isRunning) {
@@ -737,7 +737,7 @@ class ToolRegistry {
       return {
         'configured': false,
         'status': 'not_configured',
-        'message': 'Minecraft controller not configured. Provide --mod-path when starting the MCP server.',
+        'message': 'Minecraft not started. Call startMinecraft with modPath to start.',
       };
     }
 

@@ -9,14 +9,8 @@ import 'tool_registry.dart';
 /// This server handles the Model Context Protocol for AI agent communication,
 /// providing tools to control Minecraft.
 class McpServer {
-  /// Path to the mod directory.
-  final String? modPath;
-
   /// Port for connecting to the game server.
   final int gameServerPort;
-
-  /// Controller for managing Minecraft lifecycle.
-  final MinecraftController? minecraftController;
 
   /// Registry of available tools.
   late final ToolRegistry _toolRegistry;
@@ -36,16 +30,15 @@ class McpServer {
   };
 
   McpServer({
-    this.modPath,
     this.gameServerPort = 8765,
-    this.minecraftController,
   }) {
     _toolRegistry = ToolRegistry(
-      minecraftController: minecraftController,
-      gameClient: minecraftController?.gameClient,
       defaultPort: gameServerPort,
     );
   }
+
+  /// Controller for managing Minecraft lifecycle (created by startMinecraft tool).
+  MinecraftController? get minecraftController => _toolRegistry.minecraftController;
 
   /// Run the MCP server, reading from stdin and writing to stdout.
   Future<void> run() async {
