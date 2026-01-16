@@ -102,6 +102,13 @@ class AssetGenerator {
     Map<String, dynamic> model,
   ) async {
     final type = model['type'] as String;
+
+    // Handle elements-based models separately
+    if (type == 'elements') {
+      await _generateElementsBlockModel(namespace, blockName, model);
+      return;
+    }
+
     final textures = model['textures'] as Map<String, dynamic>;
 
     // Map type to Minecraft parent model
@@ -125,6 +132,45 @@ class AssetGenerator {
       'parent': parent,
       'textures': mcTextures,
     };
+
+    final path = p.join(
+      project.minecraftAssetsDir(namespace),
+      'models',
+      'block',
+      '$blockName.json',
+    );
+    await _writeJson(path, blockModel);
+  }
+
+  /// Generate a block model using custom elements
+  Future<void> _generateElementsBlockModel(
+    String namespace,
+    String blockName,
+    Map<String, dynamic> model,
+  ) async {
+    final textures = model['textures'] as Map<String, dynamic>;
+    final elements = model['elements'] as List<dynamic>;
+    final parent = model['parent'] as String?;
+    final ambientOcclusion = model['ambientOcclusion'] as bool?;
+
+    // Convert file paths to Minecraft texture references
+    final mcTextures = <String, String>{};
+    for (final entry in textures.entries) {
+      mcTextures[entry.key] =
+          _filePathToTextureRef(namespace, entry.value as String);
+    }
+
+    final blockModel = <String, dynamic>{
+      'textures': mcTextures,
+      'elements': elements, // Already in correct format from Dart toJson()
+    };
+
+    if (parent != null) {
+      blockModel['parent'] = parent;
+    }
+    if (ambientOcclusion != null) {
+      blockModel['ambientocclusion'] = ambientOcclusion;
+    }
 
     final path = p.join(
       project.minecraftAssetsDir(namespace),
