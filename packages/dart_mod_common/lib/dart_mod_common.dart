@@ -12,6 +12,7 @@ export 'src/types.dart';
 
 // Block API
 export 'src/block/block.dart';
+export 'src/block/block_animation.dart';
 export 'src/block/block_settings.dart';
 export 'src/block/block_model.dart';
 export 'src/block/custom_block.dart';

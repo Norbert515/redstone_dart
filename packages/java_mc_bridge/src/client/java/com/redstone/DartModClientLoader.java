@@ -7,7 +7,9 @@ import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.network.chat.Component;
 import com.redstone.entity.FlutterDisplayEntityTypes;
 import com.redstone.proxy.EntityProxyRegistry;
+import com.redstone.blockentity.AnimatedBlockEntityType;
 import com.redstone.blockentity.FlutterDisplayBlockEntityType;
+import com.redstone.render.AnimatedBlockRenderer;
 import com.redstone.render.DartEntityRenderer;
 import com.redstone.render.EntityModelRegistry;
 import com.redstone.render.FlutterBlockRenderer;
@@ -604,11 +606,11 @@ public class DartModClientLoader implements ClientModInitializer {
     // ==========================================================================
 
     /**
-     * Register block entity renderers for Flutter display blocks.
+     * Register block entity renderers for Flutter display blocks and animated blocks.
      *
      * This must be called after block entity types are registered but before
-     * the client is fully initialized. It links Flutter display block entities
-     * to their renderer implementation.
+     * the client is fully initialized. It links block entities to their renderer
+     * implementations.
      */
     private void registerBlockEntityRenderers() {
         LOGGER.info("[DartModClientLoader] Registering block entity renderers...");
@@ -618,6 +620,12 @@ public class DartModClientLoader implements ClientModInitializer {
         for (var type : FlutterDisplayBlockEntityType.getAllTypes()) {
             BlockEntityRenderers.register(type, FlutterBlockRenderer::new);
             LOGGER.info("[DartModClientLoader] Registered FlutterBlockRenderer for block entity type");
+        }
+
+        // Register AnimatedBlockRenderer for all registered animated block entity types
+        for (var type : AnimatedBlockEntityType.getAllTypes()) {
+            BlockEntityRenderers.register(type, AnimatedBlockRenderer::new);
+            LOGGER.info("[DartModClientLoader] Registered AnimatedBlockRenderer for block entity type");
         }
 
         // Also set up a callback for types registered after client init

@@ -3,6 +3,7 @@ library;
 
 import '../registry/registrable.dart';
 import '../types.dart';
+import 'block_animation.dart';
 import 'block_model.dart';
 import 'block_settings.dart';
 
@@ -35,6 +36,10 @@ abstract class CustomBlock implements Registrable {
   /// Optional block model for texture configuration.
   final BlockModel? model;
 
+  /// Optional animation for the block model.
+  /// When set, the block will be rendered as a block entity with animated model.
+  final BlockAnimation? animation;
+
   /// The item ID this block drops when mined (e.g., 'mymod:dart_item').
   /// If null, drops itself (as a BlockItem).
   final String? drops;
@@ -46,6 +51,7 @@ abstract class CustomBlock implements Registrable {
     required this.id,
     required this.settings,
     this.model,
+    this.animation,
     this.drops,
   });
 

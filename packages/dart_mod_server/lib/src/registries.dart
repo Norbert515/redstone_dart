@@ -176,7 +176,7 @@ class BlockRegistry extends Registry<CustomBlock> {
   @override
   int queueRegistration(CustomBlock block) {
     final parts = block.id.split(':');
-    return ServerBridge.queueBlockRegistration(
+    final handlerId = ServerBridge.queueBlockRegistration(
       namespace: parts[0],
       path: parts[1],
       hardness: block.settings.hardness,
@@ -191,6 +191,21 @@ class BlockRegistry extends Registry<CustomBlock> {
       replaceable: block.settings.replaceable,
       burnable: block.settings.burnable,
     );
+
+    // If block has animation, queue the animation registration
+    if (block.animation != null && handlerId != 0) {
+      final animationJson = block.animation!.toJson();
+      final animationType = animationJson['type'] as String;
+      ServerBridge.queueAnimationRegistration(
+        handlerId: handlerId,
+        blockId: block.id,
+        animationType: animationType,
+        animationJson: jsonEncode(animationJson),
+      );
+      print('BlockRegistry: Queued animation for ${block.id} (type: $animationType)');
+    }
+
+    return handlerId;
   }
 
   @override
@@ -202,6 +217,11 @@ class BlockRegistry extends Registry<CustomBlock> {
     // Only include model if present
     if (block.model != null) {
       blockEntry['model'] = block.model!.toJson();
+    }
+
+    // Include animation if present
+    if (block.animation != null) {
+      blockEntry['animation'] = block.animation!.toJson();
     }
 
     // Include drops if specified

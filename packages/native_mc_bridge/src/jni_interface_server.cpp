@@ -1603,4 +1603,61 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockEntityRe
     return result;
 }
 
+// ==========================================================================
+// Animation Registration Queue JNI Methods
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    hasPendingAnimationRegistrations
+ * Signature: ()Z
+ *
+ * Check if there are pending animation registrations in the queue.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingAnimationRegistrations(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return server_has_pending_animation_registrations() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    getNextAnimationRegistration
+ * Signature: ()[Ljava/lang/String;
+ *
+ * Get the next animation registration from the queue.
+ * Returns a String array: [handlerId, blockId, animationType, animationJson]
+ * Returns null if the queue is empty.
+ */
+JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextAnimationRegistration(
+    JNIEnv* env, jclass /* cls */) {
+
+    int64_t handler_id;
+    char block_id_buf[256];
+    char animation_type_buf[64];
+    char animation_json_buf[4096];
+
+    if (!server_get_next_animation_registration(
+            &handler_id,
+            block_id_buf, sizeof(block_id_buf),
+            animation_type_buf, sizeof(animation_type_buf),
+            animation_json_buf, sizeof(animation_json_buf))) {
+        return nullptr;
+    }
+
+    // Create String array with 4 elements
+    jclass stringClass = env->FindClass("java/lang/String");
+    jobjectArray result = env->NewObjectArray(4, stringClass, nullptr);
+
+    // Convert handler_id to string
+    char handler_id_str[32];
+    snprintf(handler_id_str, sizeof(handler_id_str), "%lld", static_cast<long long>(handler_id));
+
+    env->SetObjectArrayElement(result, 0, env->NewStringUTF(handler_id_str));
+    env->SetObjectArrayElement(result, 1, env->NewStringUTF(block_id_buf));
+    env->SetObjectArrayElement(result, 2, env->NewStringUTF(animation_type_buf));
+    env->SetObjectArrayElement(result, 3, env->NewStringUTF(animation_json_buf));
+
+    return result;
+}
+
 } // extern "C"

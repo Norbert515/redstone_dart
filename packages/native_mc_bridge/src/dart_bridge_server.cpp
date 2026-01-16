@@ -435,10 +435,18 @@ struct ServerBlockEntityRegistration {
     int32_t data_slot_count;
 };
 
+struct ServerAnimationRegistration {
+    int64_t handler_id;
+    std::string block_id;
+    std::string animation_type;
+    std::string animation_json;
+};
+
 static std::queue<ServerBlockRegistration> g_server_block_queue;
 static std::queue<ServerItemRegistration> g_server_item_queue;
 static std::queue<ServerEntityRegistration> g_server_entity_queue;
 static std::queue<ServerBlockEntityRegistration> g_server_block_entity_queue;
+static std::queue<ServerAnimationRegistration> g_server_animation_queue;
 static std::mutex g_server_registration_mutex;
 static std::atomic<bool> g_server_registrations_complete{false};
 static std::atomic<int64_t> g_server_next_block_id{1};
@@ -1603,6 +1611,60 @@ bool server_get_next_block_entity_registration(
     *out_data_slot_count = reg.data_slot_count;
 
     g_server_block_entity_queue.pop();
+    return true;
+}
+
+// ==========================================================================
+// Animation Registration Queue Functions
+// ==========================================================================
+
+void server_queue_animation_registration(
+    int64_t handler_id,
+    const char* block_id,
+    const char* animation_type,
+    const char* animation_json) {
+
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+
+    ServerAnimationRegistration reg;
+    reg.handler_id = handler_id;
+    reg.block_id = block_id ? block_id : "";
+    reg.animation_type = animation_type ? animation_type : "";
+    reg.animation_json = animation_json ? animation_json : "{}";
+
+    g_server_animation_queue.push(reg);
+
+    std::cout << "Queued animation registration: " << reg.block_id
+              << " with handler ID " << handler_id
+              << ", type=" << reg.animation_type << std::endl;
+}
+
+bool server_has_pending_animation_registrations() {
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+    return !g_server_animation_queue.empty();
+}
+
+bool server_get_next_animation_registration(
+    int64_t* out_handler_id,
+    char* out_block_id, size_t block_id_len,
+    char* out_animation_type, size_t animation_type_len,
+    char* out_animation_json, size_t animation_json_len) {
+
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+
+    if (g_server_animation_queue.empty()) return false;
+
+    const auto& reg = g_server_animation_queue.front();
+
+    *out_handler_id = reg.handler_id;
+    strncpy(out_block_id, reg.block_id.c_str(), block_id_len - 1);
+    out_block_id[block_id_len - 1] = '\0';
+    strncpy(out_animation_type, reg.animation_type.c_str(), animation_type_len - 1);
+    out_animation_type[animation_type_len - 1] = '\0';
+    strncpy(out_animation_json, reg.animation_json.c_str(), animation_json_len - 1);
+    out_animation_json[animation_json_len - 1] = '\0';
+
+    g_server_animation_queue.pop();
     return true;
 }
 

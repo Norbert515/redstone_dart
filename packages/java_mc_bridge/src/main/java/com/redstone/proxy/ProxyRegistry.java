@@ -1,6 +1,9 @@
 package com.redstone.proxy;
 
+import com.redstone.blockentity.AnimatedBlockEntityType;
+import com.redstone.blockentity.AnimationRegistry;
 import com.redstone.blockentity.BlockEntityRegistry;
+import com.redstone.blockentity.DartBlockWithAnimation;
 import com.redstone.blockentity.DartBlockWithEntity;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.minecraft.core.Registry;
@@ -484,12 +487,24 @@ public class ProxyRegistry {
                 ticksRandomly, collidable, replaceable, burnable
             );
 
-            // Check if this block has an associated block entity
+            // Check if this block has an animation or block entity
             String blockId = namespace + ":" + path;
             BlockEntityRegistry.BlockEntityConfig beConfig = BlockEntityRegistry.getConfig(blockId);
+            AnimationRegistry.AnimationConfig animConfig = AnimationRegistry.getConfig(blockId);
 
             DartBlockProxy block;
-            if (beConfig != null) {
+            if (animConfig != null) {
+                // Create a block with animation support
+                // Animation blocks use AnimatedBlockEntity for smooth client-side rendering
+                block = new DartBlockWithAnimation(
+                    properties,
+                    handlerId,
+                    settings,
+                    blockId
+                );
+                LOGGER.info("Creating block with animation: {}:{} (type={})",
+                    namespace, path, animConfig.animationType());
+            } else if (beConfig != null) {
                 // Create a block with entity support
                 // Pass the blockId so DartBlockWithEntity can look up its BlockEntityType
                 block = new DartBlockWithEntity(
@@ -512,6 +527,15 @@ public class ProxyRegistry {
 
             // Register the block first
             Registry.register(BuiltInRegistries.BLOCK, blockKey, block);
+
+            // If this block has an animation, register its AnimatedBlockEntityType AFTER the block is registered
+            if (animConfig != null) {
+                AnimatedBlockEntityType.registerForBlock(
+                    blockId,
+                    block,
+                    animConfig.handlerId()
+                );
+            }
 
             // If this block has a block entity, register its BlockEntityType AFTER the block is registered
             // This is required because FabricBlockEntityTypeBuilder.create() needs the Block instance
@@ -536,8 +560,8 @@ public class ProxyRegistry {
                 entries.accept(blockItem);
             });
 
-            LOGGER.info("Registered queued block: {}:{} with handler ID {}{}", namespace, path, handlerId,
-                beConfig != null ? " (with block entity)" : "");
+            String suffix = animConfig != null ? " (with animation)" : (beConfig != null ? " (with block entity)" : "");
+            LOGGER.info("Registered queued block: {}:{} with handler ID {}{}", namespace, path, handlerId, suffix);
             return true;
         } catch (Exception e) {
             LOGGER.error("Failed to register queued block {}:{}: {}", namespace, path, e.getMessage());

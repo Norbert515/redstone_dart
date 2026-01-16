@@ -145,6 +145,7 @@ class ServerBridge {
   static late final _ServerQueueItemRegistration _serverQueueItemRegistration;
   static late final _ServerQueueEntityRegistration _serverQueueEntityRegistration;
   static late final _ServerQueueBlockEntityRegistration _serverQueueBlockEntityRegistration;
+  static late final _ServerQueueAnimationRegistration _serverQueueAnimationRegistration;
   static late final _ServerSignalRegistrationsQueued _serverSignalRegistrationsQueued;
 
   // Callback registration functions
@@ -279,6 +280,10 @@ class ServerBridge {
     _serverQueueBlockEntityRegistration = lib.lookupFunction<
         Int32 Function(Pointer<Utf8>, Int32, Pointer<Utf8>, Bool, Int32),
         int Function(Pointer<Utf8>, int, Pointer<Utf8>, bool, int)>('server_queue_block_entity_registration');
+
+    _serverQueueAnimationRegistration = lib.lookupFunction<
+        Void Function(Int64, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>),
+        void Function(int, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>)>('server_queue_animation_registration');
 
     _serverSignalRegistrationsQueued =
         lib.lookupFunction<Void Function(), void Function()>('server_signal_registrations_queued');
@@ -689,6 +694,39 @@ class ServerBridge {
     } finally {
       calloc.free(blockIdPtr);
       calloc.free(containerTitlePtr);
+    }
+  }
+
+  /// Queue an animation registration for a block.
+  ///
+  /// Called when a block with animation is registered. This queues the animation
+  /// configuration to be processed by Java when it registers the block entity.
+  ///
+  /// [handlerId] is the block's handler ID from queueBlockRegistration.
+  /// [blockId] is the full block ID (e.g., "mymod:pedestal").
+  /// [animationType] is the animation type (e.g., "spin", "bob", "pulse", "combined").
+  /// [animationJson] is the JSON configuration for the animation.
+  static void queueAnimationRegistration({
+    required int handlerId,
+    required String blockId,
+    required String animationType,
+    required String animationJson,
+  }) {
+    // In datagen mode, do nothing (no FFI available)
+    if (isDatagenMode) return;
+
+    final blockIdPtr = blockId.toNativeUtf8();
+    final animationTypePtr = animationType.toNativeUtf8();
+    final animationJsonPtr = animationJson.toNativeUtf8();
+
+    try {
+      _serverQueueAnimationRegistration(
+        handlerId, blockIdPtr, animationTypePtr, animationJsonPtr,
+      );
+    } finally {
+      calloc.free(blockIdPtr);
+      calloc.free(animationTypePtr);
+      calloc.free(animationJsonPtr);
     }
   }
 
@@ -1122,6 +1160,9 @@ typedef _ServerQueueEntityRegistration = int Function(
 
 typedef _ServerQueueBlockEntityRegistration = int Function(
     Pointer<Utf8>, int, Pointer<Utf8>, bool, int);
+
+typedef _ServerQueueAnimationRegistration = void Function(
+    int, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>);
 
 typedef _ServerSignalRegistrationsQueued = void Function();
 

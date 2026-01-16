@@ -94,6 +94,32 @@ public class DartModLoader implements ModInitializer {
                 MOD_ID, blockId, handlerId, inventorySize, ticks, dataSlotCount);
         }
 
+        // Process all queued animation registrations
+        // These associate block IDs with animation configurations
+        // Must be processed before blocks so AnimationRegistry.getConfig(blockId) works
+        int animationsRegistered = 0;
+        while (DartBridge.hasPendingAnimationRegistrations()) {
+            Object[] animReg = DartBridge.getNextAnimationRegistration();
+            if (animReg == null) break;
+
+            // Extract registration data from the array
+            // Format: [handlerId, blockId, animationType, animationJson]
+            // Note: handlerId comes as a String from the C++ bridge (converted via snprintf)
+            int handlerId = Integer.parseInt((String) animReg[0]);
+            String blockId = (String) animReg[1];
+            String animationType = (String) animReg[2];
+            String animationJson = (String) animReg[3];
+
+            // Store the animation config for this block
+            com.redstone.blockentity.AnimationRegistry.registerAnimation(
+                blockId, handlerId, animationType, animationJson
+            );
+
+            animationsRegistered++;
+            LOGGER.info("[{}] Registered animation for {}: handlerId={}, type={}",
+                MOD_ID, blockId, handlerId, animationType);
+        }
+
         // Process all queued block registrations
         while (DartBridge.hasPendingBlockRegistrations()) {
             Object[] blockReg = DartBridge.getNextBlockRegistration();
@@ -201,8 +227,8 @@ public class DartModLoader implements ModInitializer {
             }
         }
 
-        LOGGER.info("[{}] Queued registrations complete: {} blocks, {} items, {} entities, {} block entities",
-            MOD_ID, blocksRegistered, itemsRegistered, entitiesRegistered, blockEntitiesRegistered);
+        LOGGER.info("[{}] Queued registrations complete: {} blocks, {} items, {} entities, {} block entities, {} animations",
+            MOD_ID, blocksRegistered, itemsRegistered, entitiesRegistered, blockEntitiesRegistered, animationsRegistered);
     }
 
     /**

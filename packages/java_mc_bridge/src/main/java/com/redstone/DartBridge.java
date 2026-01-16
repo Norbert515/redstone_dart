@@ -385,6 +385,20 @@ public class DartBridge {
      */
     public static native Object[] getNextBlockEntityRegistration();
 
+    /**
+     * Check if there are pending animation registrations in the queue.
+     */
+    public static native boolean hasPendingAnimationRegistrations();
+
+    /**
+     * Get the next animation registration from the queue.
+     * Returns an Object array with registration data, or null if queue is empty.
+     *
+     * Array format: [handlerId(Integer), blockId(String), animationType(String),
+     *                animationJson(String)]
+     */
+    public static native Object[] getNextAnimationRegistration();
+
     // Service URL for hot reload/debugging
     private static native String getDartServiceUrl();
 

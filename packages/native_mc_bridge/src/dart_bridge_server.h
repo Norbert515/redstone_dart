@@ -437,4 +437,38 @@ bool server_get_next_block_entity_registration(
     bool* out_ticks,
     int32_t* out_data_slot_count);
 
+// ==========================================================================
+// Animation Registration Queue Functions
+// ==========================================================================
+
+/**
+ * Queue an animation registration from Dart.
+ * Called when a block with animation is registered.
+ *
+ * @param handler_id The block's handler ID
+ * @param block_id The block ID (e.g., "mymod:pedestal")
+ * @param animation_type The animation type (e.g., "spin", "bob", "pulse", "combined")
+ * @param animation_json JSON configuration for the animation
+ */
+void server_queue_animation_registration(
+    int64_t handler_id,
+    const char* block_id,
+    const char* animation_type,
+    const char* animation_json);
+
+/**
+ * Check if there are pending animation registrations.
+ */
+bool server_has_pending_animation_registrations();
+
+/**
+ * Get the next animation registration from the queue.
+ * Returns true if a registration was retrieved, false if queue is empty.
+ */
+bool server_get_next_animation_registration(
+    int64_t* out_handler_id,
+    char* out_block_id, size_t block_id_len,
+    char* out_animation_type, size_t animation_type_len,
+    char* out_animation_json, size_t animation_json_len);
+
 } // extern "C"
