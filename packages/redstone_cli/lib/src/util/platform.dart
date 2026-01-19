@@ -47,8 +47,15 @@ class PlatformInfo {
 
   static String _detectArch() {
     // Check for ARM64
-    final result = Process.runSync('uname', ['-m']);
-    final machine = result.stdout.toString().trim().toLowerCase();
+    String machine = '';
+
+    if (Platform.isWindows) {
+      machine =
+          Platform.environment['PROCESSOR_ARCHITECTURE']?.toLowerCase() ?? '';
+    } else {
+      final result = Process.runSync('uname', ['-m']);
+      machine = result.stdout.toString().trim().toLowerCase();
+    }
 
     if (machine.contains('arm64') || machine.contains('aarch64')) {
       return 'arm64';
