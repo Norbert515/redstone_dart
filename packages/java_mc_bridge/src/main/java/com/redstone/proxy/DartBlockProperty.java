@@ -10,18 +10,35 @@ import java.util.Collection;
  *
  * These classes allow Dart code to define block state properties (boolean, int, direction)
  * that will be added to DartBlockProxy instances at registration time.
+ *
+ * IMPORTANT: The Minecraft Property instance is cached and reused because Minecraft's
+ * block state system requires the exact same Property instance to be used both when
+ * creating the state definition and when setting the default state. Creating multiple
+ * instances causes "intrusive holders not registered" errors.
  */
 public abstract class DartBlockProperty {
     public final String name;
+    protected Property<?> cachedProperty;
 
     protected DartBlockProperty(String name) {
         this.name = name;
     }
 
     /**
-     * Convert this Dart property definition to a Minecraft Property instance.
+     * Get or create the Minecraft Property instance.
+     * This caches the property to ensure the same instance is always returned.
      */
-    public abstract Property<?> toMinecraftProperty();
+    public Property<?> toMinecraftProperty() {
+        if (cachedProperty == null) {
+            cachedProperty = createMinecraftProperty();
+        }
+        return cachedProperty;
+    }
+
+    /**
+     * Create the Minecraft Property instance. Subclasses implement this.
+     */
+    protected abstract Property<?> createMinecraftProperty();
 
     /**
      * Get the number of possible values for this property.
@@ -40,7 +57,7 @@ public abstract class DartBlockProperty {
         }
 
         @Override
-        public BooleanProperty toMinecraftProperty() {
+        protected Property<?> createMinecraftProperty() {
             return BooleanProperty.create(name);
         }
 
@@ -66,7 +83,7 @@ public abstract class DartBlockProperty {
         }
 
         @Override
-        public IntegerProperty toMinecraftProperty() {
+        protected Property<?> createMinecraftProperty() {
             return IntegerProperty.create(name, min, max);
         }
 
@@ -99,7 +116,7 @@ public abstract class DartBlockProperty {
         }
 
         @Override
-        public EnumProperty<Direction> toMinecraftProperty() {
+        protected Property<?> createMinecraftProperty() {
             return EnumProperty.create(name, Direction.class, Arrays.asList(allowedDirections));
         }
 
