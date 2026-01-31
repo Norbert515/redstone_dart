@@ -128,7 +128,8 @@ public class DartModLoader implements ModInitializer {
             // Extract registration data from the array
             // Format: [handlerId, namespace, path, hardness, resistance, requiresTool,
             //          luminance, slipperiness, velocityMult, jumpVelocityMult,
-            //          ticksRandomly, collidable, replaceable, burnable]
+            //          ticksRandomly, collidable, replaceable, burnable,
+            //          isRedstoneSource, hasAnalogOutput, propertiesJson]
             long handlerId = (Long) blockReg[0];
             String namespace = (String) blockReg[1];
             String path = (String) blockReg[2];
@@ -143,11 +144,15 @@ public class DartModLoader implements ModInitializer {
             boolean collidable = (Boolean) blockReg[11];
             boolean replaceable = (Boolean) blockReg[12];
             boolean burnable = (Boolean) blockReg[13];
+            boolean isRedstoneSource = (Boolean) blockReg[14];
+            boolean hasAnalogOutput = (Boolean) blockReg[15];
+            String propertiesJson = (String) blockReg[16];
 
             boolean success = com.redstone.proxy.ProxyRegistry.registerBlockWithHandlerId(
                 handlerId, namespace, path, hardness, resistance, requiresTool,
                 luminance, slipperiness, velocityMult, jumpVelocityMult,
-                ticksRandomly, collidable, replaceable, burnable
+                ticksRandomly, collidable, replaceable, burnable,
+                isRedstoneSource, hasAnalogOutput, propertiesJson
             );
 
             if (success) {
@@ -227,8 +232,45 @@ public class DartModLoader implements ModInitializer {
             }
         }
 
-        LOGGER.info("[{}] Queued registrations complete: {} blocks, {} items, {} entities, {} block entities, {} animations",
-            MOD_ID, blocksRegistered, itemsRegistered, entitiesRegistered, blockEntitiesRegistered, animationsRegistered);
+        // Process all queued ore feature registrations
+        int oreFeaturesRegistered = 0;
+        while (DartBridge.hasPendingOreFeatureRegistrations()) {
+            Object[] oreReg = DartBridge.getNextOreFeatureRegistration();
+            if (oreReg == null) break;
+
+            // Extract registration data from the array
+            // Format: [namespace, path, oreBlockId, veinSize, veinsPerChunk,
+            //          minY, maxY, distributionType, replaceableTag, biomeSelector,
+            //          deepslateVariant, deepslateTransitionY]
+            String namespace = (String) oreReg[0];
+            String path = (String) oreReg[1];
+            String oreBlockId = (String) oreReg[2];
+            int veinSize = (Integer) oreReg[3];
+            int veinsPerChunk = (Integer) oreReg[4];
+            int minY = (Integer) oreReg[5];
+            int maxY = (Integer) oreReg[6];
+            String distributionType = (String) oreReg[7];
+            String replaceableTag = (String) oreReg[8];
+            String biomeSelector = (String) oreReg[9];
+            String deepslateVariant = (String) oreReg[10];
+            int deepslateTransitionY = (Integer) oreReg[11];
+
+            // Create the ore config and register
+            com.redstone.worldgen.OreFeatureRegistry.OreConfig config =
+                new com.redstone.worldgen.OreFeatureRegistry.OreConfig(
+                    oreBlockId, veinSize, veinsPerChunk,
+                    minY, maxY, distributionType, replaceableTag,
+                    biomeSelector, deepslateVariant, deepslateTransitionY
+                );
+
+            com.redstone.worldgen.OreFeatureRegistry.registerOreFeature(namespace, path, config);
+            oreFeaturesRegistered++;
+
+            LOGGER.info("[{}] Registered ore feature: {}:{}", MOD_ID, namespace, path);
+        }
+
+        LOGGER.info("[{}] Queued registrations complete: {} blocks, {} items, {} entities, {} block entities, {} animations, {} ore features",
+            MOD_ID, blocksRegistered, itemsRegistered, entitiesRegistered, blockEntitiesRegistered, animationsRegistered, oreFeaturesRegistered);
     }
 
     /**

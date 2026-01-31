@@ -13,7 +13,9 @@ export 'src/types.dart';
 // Block API
 export 'src/block/block.dart';
 export 'src/block/block_animation.dart';
+export 'src/block/block_property.dart';
 export 'src/block/block_settings.dart';
+export 'src/block/block_state.dart';
 export 'src/block/block_model.dart';
 export 'src/block/custom_block.dart';
 export 'src/block/flutter_display_block.dart';
@@ -24,6 +26,14 @@ export 'src/item/item_settings.dart';
 export 'src/item/item_model.dart';
 export 'src/item/custom_item.dart';
 export 'src/item/item_stack.dart';
+export 'src/item/tool_material.dart';
+export 'src/item/custom_tool.dart';
+export 'src/item/armor_type.dart';
+export 'src/item/armor_material.dart';
+export 'src/item/custom_armor.dart';
+export 'src/item/status_effect.dart';
+export 'src/item/food_settings.dart';
+export 'src/item/custom_food.dart';
 
 // Entity API
 export 'src/entity/entity.dart';

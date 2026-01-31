@@ -995,6 +995,56 @@ public class DartBridgeClient {
      */
     private static native void nativeDispatchContainerDataChanged(int menuId, int slotIndex, int value);
 
+    // ==========================================================================
+    // HUD Overlay Native Methods
+    // ==========================================================================
+
+    /**
+     * Dispatch HUD overlay show event to Dart.
+     * @param overlayId The overlay identifier (e.g., "mymod:health")
+     */
+    private static native void dispatchHudShowNative(String overlayId);
+
+    /**
+     * Dispatch HUD overlay hide event to Dart.
+     * @param overlayId The overlay identifier
+     */
+    private static native void dispatchHudHideNative(String overlayId);
+
+    // ==========================================================================
+    // Custom Screen Native Methods
+    // ==========================================================================
+
+    /**
+     * Dispatch custom screen open event to Dart.
+     * @param screenId Unique screen instance ID
+     * @param screenType Screen type identifier (e.g., "mymod:settings")
+     * @param width Screen width in GUI coordinates
+     * @param height Screen height in GUI coordinates
+     */
+    private static native void dispatchCustomScreenOpenNative(int screenId, String screenType, int width, int height);
+
+    /**
+     * Dispatch custom screen close event to Dart.
+     * @param screenId The screen instance ID
+     */
+    private static native void dispatchCustomScreenCloseNative(int screenId);
+
+    /**
+     * Native signal that a custom screen frame is ready.
+     */
+    public static native void nativeSignalScreenFrameReady();
+
+    /**
+     * Check if screen frame is ready.
+     */
+    public static native boolean isScreenFrameReady();
+
+    /**
+     * Clear screen frame ready flag.
+     */
+    public static native void clearScreenFrameReady();
+
     /**
      * Dispatch container data changed event to Dart.
      * Called from DartBlockEntityMenu.setData() when ContainerData values change.
@@ -1008,6 +1058,178 @@ public class DartBridgeClient {
             return; // Skip if client not initialized
         }
         nativeDispatchContainerDataChanged(menuId, slotIndex, value);
+    }
+
+    // ==========================================================================
+    // HUD Overlay Public Methods
+    // ==========================================================================
+
+    // Track active HUD overlays
+    private static final Set<String> activeHudOverlays = new HashSet<>();
+
+    /**
+     * Show a HUD overlay.
+     * @param overlayId The overlay identifier
+     */
+    public static void showHudOverlay(String overlayId) {
+        if (!clientInitialized.get()) {
+            LOGGER.warn("Cannot show HUD overlay: Client not initialized");
+            return;
+        }
+        if (activeHudOverlays.add(overlayId)) {
+            LOGGER.info("Showing HUD overlay: {}", overlayId);
+            dispatchHudShowNative(overlayId);
+        }
+    }
+
+    /**
+     * Hide a HUD overlay.
+     * @param overlayId The overlay identifier
+     */
+    public static void hideHudOverlay(String overlayId) {
+        if (!clientInitialized.get()) {
+            return;
+        }
+        if (activeHudOverlays.remove(overlayId)) {
+            LOGGER.info("Hiding HUD overlay: {}", overlayId);
+            dispatchHudHideNative(overlayId);
+        }
+    }
+
+    /**
+     * Toggle a HUD overlay.
+     * @param overlayId The overlay identifier
+     * @return true if overlay is now shown, false if hidden
+     */
+    public static boolean toggleHudOverlay(String overlayId) {
+        if (activeHudOverlays.contains(overlayId)) {
+            hideHudOverlay(overlayId);
+            return false;
+        } else {
+            showHudOverlay(overlayId);
+            return true;
+        }
+    }
+
+    /**
+     * Check if a HUD overlay is active.
+     * @param overlayId The overlay identifier
+     * @return true if the overlay is currently shown
+     */
+    public static boolean isHudOverlayActive(String overlayId) {
+        return activeHudOverlays.contains(overlayId);
+    }
+
+    /**
+     * Get all active HUD overlay IDs.
+     * @return Set of active overlay IDs
+     */
+    public static Set<String> getActiveHudOverlays() {
+        return new HashSet<>(activeHudOverlays);
+    }
+
+    // ==========================================================================
+    // Custom Screen Public Methods
+    // ==========================================================================
+
+    // Track current custom screen
+    private static volatile int currentCustomScreenId = -1;
+    private static volatile String currentCustomScreenType = null;
+    private static int nextScreenId = 1;
+
+    /**
+     * Open a custom screen.
+     * Called from Dart via JNI or from Java code.
+     * @param screenType The screen type identifier
+     */
+    public static void openCustomScreen(String screenType) {
+        if (!clientInitialized.get()) {
+            LOGGER.warn("Cannot open custom screen: Client not initialized");
+            return;
+        }
+
+        Minecraft mc = Minecraft.getInstance();
+        if (!mc.isSameThread()) {
+            mc.execute(() -> openCustomScreen(screenType));
+            return;
+        }
+
+        // Close any existing custom screen
+        if (currentCustomScreenId >= 0) {
+            closeCustomScreen();
+        }
+
+        int screenId = nextScreenId++;
+        currentCustomScreenId = screenId;
+        currentCustomScreenType = screenType;
+
+        var window = mc.getWindow();
+        int width = window.getGuiScaledWidth();
+        int height = window.getGuiScaledHeight();
+        int guiScale = (int) window.getGuiScale();
+
+        LOGGER.info("Opening custom screen: {} (id={}, {}x{} @{}x)", screenType, screenId, width, height, guiScale);
+
+        // Send window metrics
+        sendWindowMetrics(width * guiScale, height * guiScale, (double) guiScale);
+
+        // Dispatch to Dart
+        dispatchCustomScreenOpenNative(screenId, screenType, width, height);
+
+        // Open the Flutter screen in Minecraft
+        // This will be a FlutterScreen instance that renders Flutter content
+        mc.setScreen(new com.redstone.flutter.FlutterCustomScreen(screenId, screenType));
+    }
+
+    /**
+     * Close the current custom screen.
+     */
+    public static void closeCustomScreen() {
+        if (currentCustomScreenId < 0) {
+            return;
+        }
+
+        Minecraft mc = Minecraft.getInstance();
+        if (!mc.isSameThread()) {
+            mc.execute(DartBridgeClient::closeCustomScreen);
+            return;
+        }
+
+        int screenId = currentCustomScreenId;
+        LOGGER.info("Closing custom screen: {} (id={})", currentCustomScreenType, screenId);
+
+        currentCustomScreenId = -1;
+        currentCustomScreenType = null;
+
+        dispatchCustomScreenCloseNative(screenId);
+
+        // Close the Minecraft screen if it's our Flutter screen
+        if (mc.screen instanceof com.redstone.flutter.FlutterCustomScreen) {
+            mc.setScreen(null);
+        }
+    }
+
+    /**
+     * Called by Dart to signal screen frame is ready.
+     */
+    public static void signalScreenFrameReady() {
+        nativeSignalScreenFrameReady();
+    }
+
+    /**
+     * Get the current custom screen ID.
+     * @return Screen ID or -1 if no screen is open
+     */
+    public static int getCurrentCustomScreenId() {
+        return currentCustomScreenId;
+    }
+
+    /**
+     * Get the current custom screen type.
+     * @return Screen type or null if no screen is open
+     */
+    public static String getCurrentCustomScreenType() {
+        return currentCustomScreenType;
     }
 
     // ==========================================================================

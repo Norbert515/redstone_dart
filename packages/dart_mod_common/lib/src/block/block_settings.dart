@@ -1,6 +1,8 @@
 /// Block settings for creating custom blocks.
 library;
 
+import 'block_property.dart';
+
 /// Settings for creating a block.
 class BlockSettings {
   final double hardness;
@@ -31,6 +33,15 @@ class BlockSettings {
   /// Whether this block can catch fire.
   final bool burnable;
 
+  /// Block state properties (e.g., powered, facing).
+  final List<BlockProperty> properties;
+
+  /// Whether this block emits redstone power.
+  final bool isRedstoneSource;
+
+  /// Whether this block provides comparator output.
+  final bool hasAnalogOutput;
+
   const BlockSettings({
     this.hardness = 1.0,
     this.resistance = 1.0,
@@ -43,5 +54,8 @@ class BlockSettings {
     this.collidable = true,
     this.replaceable = false,
     this.burnable = false,
+    this.properties = const [],
+    this.isRedstoneSource = false,
+    this.hasAnalogOutput = false,
   });
 }

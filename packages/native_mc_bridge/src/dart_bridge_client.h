@@ -102,6 +102,22 @@ typedef void (*ContainerDataChangedCallback)(int32_t menu_id, int32_t slot_index
 typedef void (*ContainerPrewarmCallback)(const char* container_id);
 
 // ==========================================================================
+// HUD Overlay Callback Types
+// ==========================================================================
+
+// HUD overlay lifecycle callbacks
+typedef void (*HudShowCallback)(const char* overlay_id);
+typedef void (*HudHideCallback)(const char* overlay_id);
+
+// ==========================================================================
+// Custom Screen Callback Types
+// ==========================================================================
+
+// Custom screen lifecycle callbacks (non-container screens)
+typedef void (*CustomScreenOpenCallback)(int32_t screen_id, const char* screen_type, int32_t width, int32_t height);
+typedef void (*CustomScreenCloseCallback)(int32_t screen_id);
+
+// ==========================================================================
 // Callback Registration (called from Dart via FFI)
 // ==========================================================================
 
@@ -138,6 +154,20 @@ void client_register_container_data_changed_handler(ContainerDataChangedCallback
 
 // Container prewarm callback registration (for preloading when player looks at container)
 void client_register_container_prewarm_handler(ContainerPrewarmCallback cb);
+
+// ==========================================================================
+// HUD Overlay Callback Registration (called from Dart via FFI)
+// ==========================================================================
+
+void client_register_hud_show_handler(HudShowCallback cb);
+void client_register_hud_hide_handler(HudHideCallback cb);
+
+// ==========================================================================
+// Custom Screen Callback Registration (called from Dart via FFI)
+// ==========================================================================
+
+void client_register_custom_screen_open_handler(CustomScreenOpenCallback cb);
+void client_register_custom_screen_close_handler(CustomScreenCloseCallback cb);
 
 // ==========================================================================
 // Event Dispatch (called from Java via JNI)
@@ -179,6 +209,20 @@ void client_dispatch_container_data_changed(int32_t menu_id, int32_t slot_index,
 
 // Container prewarm dispatch (for preloading when player looks at container)
 void client_dispatch_container_prewarm(const char* container_id);
+
+// ==========================================================================
+// HUD Overlay Event Dispatch (called from Java via JNI)
+// ==========================================================================
+
+void client_dispatch_hud_show(const char* overlay_id);
+void client_dispatch_hud_hide(const char* overlay_id);
+
+// ==========================================================================
+// Custom Screen Event Dispatch (called from Java via JNI)
+// ==========================================================================
+
+void client_dispatch_custom_screen_open(int32_t screen_id, const char* screen_type, int32_t width, int32_t height);
+void client_dispatch_custom_screen_close(int32_t screen_id);
 
 // ==========================================================================
 // Network Packet Functions (Client-side)
@@ -274,5 +318,20 @@ bool dart_client_is_container_frame_ready();
 
 // Clear the container frame ready flag (call after consuming)
 void dart_client_clear_container_frame_ready();
+
+// ==========================================================================
+// Screen Frame Ready Signal
+// ==========================================================================
+// These functions allow Dart to signal when a custom screen UI frame has been
+// painted, so Java can wait for the correct frame (not just any frame).
+
+// Called from Dart after custom screen UI frame is painted
+void dart_client_signal_screen_frame_ready();
+
+// Check if screen frame is ready (does not clear the flag)
+bool dart_client_is_screen_frame_ready();
+
+// Clear the screen frame ready flag (call after consuming)
+void dart_client_clear_screen_frame_ready();
 
 } // extern "C"

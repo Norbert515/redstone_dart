@@ -51,6 +51,17 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+
+import net.minecraft.core.component.DataComponentType;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Style;
+import net.minecraft.util.Unit;
+import net.minecraft.world.item.component.DamageResistant;
+import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
+import net.minecraft.tags.DamageTypeTags;
 
 import com.redstone.util.ItemStackSerializer;
 
@@ -65,6 +76,7 @@ public class DartBridge {
     private static boolean initialized = false;
     private static boolean libraryLoaded = false;
     private static MinecraftServer serverInstance = null;
+    private static long serverStartTime = 0;
 
     // Container type definitions registered from Dart
     private static final Map<String, ContainerDef> containerDefinitions = new HashMap<>();
@@ -200,6 +212,49 @@ public class DartBridge {
     public static native void onProxyBlockRemoved(long handlerId, long worldId, int x, int y, int z);
     public static native void onProxyBlockNeighborChanged(long handlerId, long worldId, int x, int y, int z, int neighborX, int neighborY, int neighborZ);
     public static native void onProxyBlockEntityInside(long handlerId, long worldId, int x, int y, int z, int entityId);
+
+    // Redstone power native methods - called by DartBlockProxy for redstone signal handling
+    /**
+     * Get the weak redstone signal emitted by a Dart-defined block.
+     *
+     * @param handlerId The Dart block handler ID
+     * @param stateData Encoded block state properties
+     * @param directionOrdinal Direction ordinal (DOWN=0, UP=1, NORTH=2, SOUTH=3, WEST=4, EAST=5)
+     * @return Signal strength (0-15)
+     */
+    public static native int onProxyBlockGetSignal(long handlerId, int stateData, int directionOrdinal);
+
+    /**
+     * Get the strong (direct) redstone signal emitted by a Dart-defined block.
+     *
+     * @param handlerId The Dart block handler ID
+     * @param stateData Encoded block state properties
+     * @param directionOrdinal Direction ordinal
+     * @return Signal strength (0-15)
+     */
+    public static native int onProxyBlockGetDirectSignal(long handlerId, int stateData, int directionOrdinal);
+
+    /**
+     * Get the comparator output signal for a Dart-defined block.
+     *
+     * @param handlerId The Dart block handler ID
+     * @param worldId World hash code
+     * @param x, y, z Block position
+     * @param stateData Encoded block state properties
+     * @return Comparator signal strength (0-15)
+     */
+    public static native int onProxyBlockGetAnalogOutput(long handlerId, long worldId, int x, int y, int z, int stateData);
+
+    /**
+     * Notify Dart when a block's state should be changed.
+     * Called from Java when Dart requests a state change via callback.
+     *
+     * @param handlerId The Dart block handler ID
+     * @param worldId World hash code
+     * @param x, y, z Block position
+     * @param newStateData Encoded new block state properties
+     */
+    public static native void onProxyBlockStateChange(long handlerId, long worldId, int x, int y, int z, int newStateData);
 
     // Entity proxy native methods - called by DartEntityProxy
     public static native void onProxyEntitySpawn(long handlerId, int entityId, long worldId);
@@ -339,7 +394,8 @@ public class DartBridge {
      *                hardness(Float), resistance(Float), requiresTool(Boolean),
      *                luminance(Integer), slipperiness(Double), velocityMult(Double),
      *                jumpVelocityMult(Double), ticksRandomly(Boolean),
-     *                collidable(Boolean), replaceable(Boolean), burnable(Boolean)]
+     *                collidable(Boolean), replaceable(Boolean), burnable(Boolean),
+     *                isRedstoneSource(Boolean), hasAnalogOutput(Boolean), propertiesJson(String)]
      */
     public static native Object[] getNextBlockRegistration();
 
@@ -398,6 +454,23 @@ public class DartBridge {
      *                animationJson(String)]
      */
     public static native Object[] getNextAnimationRegistration();
+
+    /**
+     * Check if there are pending ore feature registrations in the queue.
+     */
+    public static native boolean hasPendingOreFeatureRegistrations();
+
+    /**
+     * Get the next ore feature registration from the queue.
+     * Returns an Object array with registration data, or null if queue is empty.
+     *
+     * Array format: [handlerId(Long), namespace(String), path(String), oreBlockId(String),
+     *                veinSize(Integer), veinsPerChunk(Integer),
+     *                minY(Integer), maxY(Integer), distributionType(String),
+     *                replaceableTag(String), biomeSelector(String),
+     *                deepslateVariant(String), deepslateTransitionY(Integer)]
+     */
+    public static native Object[] getNextOreFeatureRegistration();
 
     // Service URL for hot reload/debugging
     private static native String getDartServiceUrl();
@@ -872,6 +945,9 @@ public class DartBridge {
      */
     public static void setServerInstance(MinecraftServer server) {
         serverInstance = server;
+        if (server != null) {
+            serverStartTime = System.currentTimeMillis();
+        }
     }
 
     /**
@@ -910,6 +986,30 @@ public class DartBridge {
         } else {
             LOGGER.warn("Cannot stop server: no server instance available");
         }
+    }
+
+    /**
+     * Check if the server is running.
+     */
+    public static boolean isServerRunning() {
+        return serverInstance != null && serverInstance.isRunning();
+    }
+
+    /**
+     * Get server uptime in milliseconds since start.
+     */
+    public static long getServerUptime() {
+        if (serverInstance == null || serverStartTime == 0) return 0;
+        return System.currentTimeMillis() - serverStartTime;
+    }
+
+    /**
+     * Get the average tick time in milliseconds (for TPS calculation).
+     * TPS can be calculated as 1000.0 / averageTickTime, capped at 20.
+     */
+    public static double getAverageTickTime() {
+        if (serverInstance == null) return 50.0; // Default 50ms = 20 TPS
+        return serverInstance.getAverageTickTimeNanos() / 1_000_000.0;
     }
 
     /**
@@ -1199,6 +1299,55 @@ public class DartBridge {
         Identifier dimId = Identifier.parse(dimension);
         ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, dimId);
         return serverInstance.getLevel(key);
+    }
+
+    // ==========================================================================
+    // Block State Management APIs
+    // ==========================================================================
+
+    /**
+     * Helper to get ServerLevel by hash code (used when worldId from Dart is a hashCode).
+     */
+    private static ServerLevel getServerLevelByHash(long worldHash) {
+        if (serverInstance == null) return null;
+
+        for (ServerLevel level : serverInstance.getAllLevels()) {
+            if (level.hashCode() == worldHash) {
+                return level;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Set the state of a DartBlockProxy at a given position.
+     * This is called from Dart when custom blocks need to change their state.
+     *
+     * @param worldHash Hash code of the level (from level.hashCode())
+     * @param x X coordinate of the block
+     * @param y Y coordinate of the block
+     * @param z Z coordinate of the block
+     * @param stateData Encoded block state data
+     * @return true if the state was set successfully
+     */
+    public static boolean setProxyBlockState(long worldHash, int x, int y, int z, int stateData) {
+        ServerLevel level = getServerLevelByHash(worldHash);
+        if (level == null) {
+            LOGGER.warn("setProxyBlockState: Could not find level with hash {}", worldHash);
+            return false;
+        }
+
+        BlockPos pos = new BlockPos(x, y, z);
+        BlockState oldState = level.getBlockState(pos);
+
+        if (!(oldState.getBlock() instanceof com.redstone.proxy.DartBlockProxy proxy)) {
+            LOGGER.warn("setProxyBlockState: Block at {} is not a DartBlockProxy", pos);
+            return false;
+        }
+
+        BlockState newState = proxy.decodeState(stateData);
+        // Flag 3 = update block + notify neighbors
+        return level.setBlock(pos, newState, 3);
     }
 
     // ==========================================================================
@@ -2868,7 +3017,7 @@ public class DartBridge {
      * @param count Number of ticks to step forward
      */
     public static void stepTicks(int count) {
-        if (serverInstance == null) return;
+        if (serverInstance == null || count <= 0) return;
         serverInstance.execute(() -> {
             ServerTickRateManager mgr = serverInstance.tickRateManager();
             if (!mgr.isFrozen()) {
@@ -2895,7 +3044,7 @@ public class DartBridge {
      * @param count Number of ticks to sprint through
      */
     public static void sprintTicks(int count) {
-        if (serverInstance == null) return;
+        if (serverInstance == null || count <= 0) return;
         serverInstance.execute(() -> {
             serverInstance.tickRateManager().requestGameToSprint(count);
         });
@@ -3896,5 +4045,584 @@ public class DartBridge {
         }
 
         LOGGER.warn("No AnimatedBlockEntity found at {}", pos);
+    }
+
+    // ==========================================================================
+    // ItemStack DataComponent API
+    // ==========================================================================
+    // Provides handle-based access to ItemStack data components for Dart.
+    // Handles allow referencing live ItemStacks in player inventory.
+
+    /** Storage for ItemStack handles mapped to actual ItemStacks */
+    private static final ConcurrentHashMap<Long, ItemStackHandleInfo> itemStackHandles = new ConcurrentHashMap<>();
+    private static final AtomicLong nextItemStackHandle = new AtomicLong(1);
+
+    /** Info about an ItemStack handle - stores player and slot to get fresh reference */
+    private static class ItemStackHandleInfo {
+        final int playerId;
+        final int slot;
+
+        ItemStackHandleInfo(int playerId, int slot) {
+            this.playerId = playerId;
+            this.slot = slot;
+        }
+
+        /** Get the live ItemStack from player inventory */
+        ItemStack getStack() {
+            ServerPlayer player = getPlayerById(playerId);
+            if (player == null) return ItemStack.EMPTY;
+            return getPlayerInventoryStack(player, slot);
+        }
+    }
+
+    /**
+     * Store a reference to a player's inventory item and return a handle.
+     * The handle allows subsequent operations on the same ItemStack.
+     *
+     * @param playerId Player ID
+     * @param slot Inventory slot (0-35 main, 36-39 armor, 40 offhand)
+     * @return Handle ID for the ItemStack, or 0 if invalid
+     */
+    public static long storePlayerItemStackHandle(int playerId, int slot) {
+        ServerPlayer player = getPlayerById(playerId);
+        if (player == null) {
+            LOGGER.warn("storePlayerItemStackHandle: Player {} not found", playerId);
+            return 0;
+        }
+
+        ItemStack stack = getPlayerInventoryStack(player, slot);
+        if (stack.isEmpty()) {
+            LOGGER.warn("storePlayerItemStackHandle: Slot {} is empty for player {}", slot, playerId);
+            return 0;
+        }
+
+        long handle = nextItemStackHandle.getAndIncrement();
+        itemStackHandles.put(handle, new ItemStackHandleInfo(playerId, slot));
+        return handle;
+    }
+
+    /**
+     * Release an ItemStack handle when done using it.
+     *
+     * @param handle The handle to release
+     */
+    public static void releaseItemStackHandle(long handle) {
+        itemStackHandles.remove(handle);
+    }
+
+    /**
+     * Get ItemStack from a handle (internal helper).
+     */
+    private static ItemStack getItemStackFromHandle(long handle) {
+        ItemStackHandleInfo info = itemStackHandles.get(handle);
+        if (info == null) {
+            LOGGER.warn("getItemStackFromHandle: Handle {} not found", handle);
+            return ItemStack.EMPTY;
+        }
+        return info.getStack();
+    }
+
+    /**
+     * Map string component IDs to Minecraft DataComponentType.
+     */
+    @SuppressWarnings("unchecked")
+    private static DataComponentType<?> getComponentType(String componentId) {
+        return switch (componentId) {
+            case "max_stack_size" -> DataComponents.MAX_STACK_SIZE;
+            case "damage" -> DataComponents.DAMAGE;
+            case "max_damage" -> DataComponents.MAX_DAMAGE;
+            case "custom_name" -> DataComponents.CUSTOM_NAME;
+            case "lore" -> DataComponents.LORE;
+            case "enchantments" -> DataComponents.ENCHANTMENTS;
+            case "unbreakable" -> DataComponents.UNBREAKABLE;
+            case "damage_resistant" -> DataComponents.DAMAGE_RESISTANT;
+            case "food" -> DataComponents.FOOD;
+            case "tool" -> DataComponents.TOOL;
+            case "rarity" -> DataComponents.RARITY;
+            case "tooltip_display" -> DataComponents.TOOLTIP_DISPLAY;
+            default -> null;
+        };
+    }
+
+    /**
+     * Get a component value as a JSON string.
+     *
+     * @param handle ItemStack handle
+     * @param componentId Component ID (e.g., "damage", "custom_name")
+     * @return JSON representation of the component value, or empty string if not present
+     */
+    public static String getItemStackComponent(long handle, String componentId) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return "";
+
+        DataComponentType<?> type = getComponentType(componentId);
+        if (type == null) {
+            LOGGER.warn("getItemStackComponent: Unknown component ID: {}", componentId);
+            return "";
+        }
+
+        Object value = stack.get(type);
+        if (value == null) return "";
+
+        // Convert to JSON based on type
+        return componentToJson(componentId, value);
+    }
+
+    /**
+     * Set a component value from a JSON string.
+     *
+     * @param handle ItemStack handle
+     * @param componentId Component ID
+     * @param valueJson JSON representation of the value
+     */
+    @SuppressWarnings("unchecked")
+    public static void setItemStackComponent(long handle, String componentId, String valueJson) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return;
+
+        try {
+            switch (componentId) {
+                case "damage" -> stack.set(DataComponents.DAMAGE, Integer.parseInt(valueJson));
+                case "max_damage" -> stack.set(DataComponents.MAX_DAMAGE, Integer.parseInt(valueJson));
+                case "max_stack_size" -> stack.set(DataComponents.MAX_STACK_SIZE, Integer.parseInt(valueJson));
+                case "custom_name" -> stack.set(DataComponents.CUSTOM_NAME, Component.literal(valueJson));
+                case "unbreakable" -> {
+                    boolean unbreakable = Boolean.parseBoolean(valueJson);
+                    if (unbreakable) {
+                        stack.set(DataComponents.UNBREAKABLE, Unit.INSTANCE);
+                    } else {
+                        stack.remove(DataComponents.UNBREAKABLE);
+                    }
+                }
+                case "damage_resistant" -> {
+                    // DamageResistant requires a damage type tag - use fire for fire resistance
+                    boolean resistant = Boolean.parseBoolean(valueJson);
+                    if (resistant) {
+                        stack.set(DataComponents.DAMAGE_RESISTANT, new DamageResistant(DamageTypeTags.IS_FIRE));
+                    } else {
+                        stack.remove(DataComponents.DAMAGE_RESISTANT);
+                    }
+                }
+                case "lore" -> setItemLoreFromJson(stack, valueJson);
+                case "enchantments" -> setItemEnchantmentsFromJson(stack, valueJson);
+                default -> LOGGER.warn("setItemStackComponent: Unsupported component for setting: {}", componentId);
+            }
+        } catch (Exception e) {
+            LOGGER.error("setItemStackComponent: Error setting {} to {}: {}", componentId, valueJson, e.getMessage());
+        }
+    }
+
+    /**
+     * Check if an ItemStack has a specific component.
+     *
+     * @param handle ItemStack handle
+     * @param componentId Component ID
+     * @return true if the component is present
+     */
+    public static boolean hasItemStackComponent(long handle, String componentId) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return false;
+
+        DataComponentType<?> type = getComponentType(componentId);
+        if (type == null) return false;
+
+        return stack.has(type);
+    }
+
+    /**
+     * Remove a component from an ItemStack.
+     *
+     * @param handle ItemStack handle
+     * @param componentId Component ID to remove
+     */
+    public static void removeItemStackComponent(long handle, String componentId) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return;
+
+        DataComponentType<?> type = getComponentType(componentId);
+        if (type == null) {
+            LOGGER.warn("removeItemStackComponent: Unknown component ID: {}", componentId);
+            return;
+        }
+
+        stack.remove(type);
+    }
+
+    // ==========================================================================
+    // Component-Specific Accessors (Simple Types)
+    // ==========================================================================
+
+    /**
+     * Get the max stack size of an item.
+     */
+    public static int getItemMaxStackSize(long handle) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return 0;
+        return stack.getMaxStackSize();
+    }
+
+    /**
+     * Set the max stack size of an item.
+     */
+    public static void setItemMaxStackSize(long handle, int size) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return;
+        stack.set(DataComponents.MAX_STACK_SIZE, size);
+    }
+
+    /**
+     * Get the current damage of an item.
+     */
+    public static int getItemDamage(long handle) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return 0;
+        return stack.getDamageValue();
+    }
+
+    /**
+     * Set the damage of an item.
+     */
+    public static void setItemDamage(long handle, int damage) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return;
+        stack.setDamageValue(damage);
+    }
+
+    /**
+     * Get the max damage (durability) of an item.
+     */
+    public static int getItemMaxDamage(long handle) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return 0;
+        return stack.getMaxDamage();
+    }
+
+    /**
+     * Set the max damage (durability) of an item.
+     */
+    public static void setItemMaxDamage(long handle, int maxDamage) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return;
+        stack.set(DataComponents.MAX_DAMAGE, maxDamage);
+    }
+
+    /**
+     * Get the custom name of an item as a JSON text component string.
+     */
+    public static String getItemCustomName(long handle) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return "";
+
+        Component name = stack.get(DataComponents.CUSTOM_NAME);
+        if (name == null) return "";
+
+        // Return plain text for simplicity (could use Component.Serializer for full JSON)
+        return name.getString();
+    }
+
+    /**
+     * Set the custom name of an item.
+     *
+     * @param handle ItemStack handle
+     * @param name The display name (plain text)
+     */
+    public static void setItemCustomName(long handle, String name) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return;
+
+        if (name == null || name.isEmpty()) {
+            stack.remove(DataComponents.CUSTOM_NAME);
+        } else {
+            stack.set(DataComponents.CUSTOM_NAME, Component.literal(name));
+        }
+    }
+
+    /**
+     * Get the lore of an item as a JSON array of strings.
+     */
+    public static String getItemLore(long handle) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return "[]";
+
+        ItemLore lore = stack.get(DataComponents.LORE);
+        if (lore == null) return "[]";
+
+        // Build JSON array manually
+        StringBuilder sb = new StringBuilder("[");
+        List<Component> lines = lore.lines();
+        for (int i = 0; i < lines.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(escapeJson(lines.get(i).getString())).append("\"");
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    /**
+     * Set the lore of an item from a JSON array of strings.
+     */
+    public static void setItemLore(long handle, String loreJson) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return;
+
+        setItemLoreFromJson(stack, loreJson);
+    }
+
+    /**
+     * Check if an item is unbreakable.
+     */
+    public static boolean isItemUnbreakable(long handle) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return false;
+        return stack.has(DataComponents.UNBREAKABLE);
+    }
+
+    /**
+     * Set whether an item is unbreakable.
+     */
+    public static void setItemUnbreakable(long handle, boolean unbreakable) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return;
+
+        if (unbreakable) {
+            stack.set(DataComponents.UNBREAKABLE, Unit.INSTANCE);
+        } else {
+            stack.remove(DataComponents.UNBREAKABLE);
+        }
+    }
+
+    /**
+     * Check if an item has damage resistance (e.g., fire resistant).
+     */
+    public static boolean isItemDamageResistant(long handle) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return false;
+        return stack.has(DataComponents.DAMAGE_RESISTANT);
+    }
+
+    /**
+     * Set whether an item is fire resistant (damage resistant to fire).
+     */
+    public static void setItemFireResistant(long handle, boolean resistant) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return;
+
+        if (resistant) {
+            stack.set(DataComponents.DAMAGE_RESISTANT, new DamageResistant(DamageTypeTags.IS_FIRE));
+        } else {
+            stack.remove(DataComponents.DAMAGE_RESISTANT);
+        }
+    }
+
+    /**
+     * Get enchantments as a JSON map of {enchantmentId: level}.
+     */
+    public static String getItemEnchantments(long handle) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return "{}";
+
+        ItemEnchantments enchants = stack.get(DataComponents.ENCHANTMENTS);
+        if (enchants == null || enchants.isEmpty()) return "{}";
+
+        // Build JSON object
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (var entry : enchants.entrySet()) {
+            if (!first) sb.append(",");
+            first = false;
+
+            // Get the enchantment ID
+            var enchantHolder = entry.getKey();
+            var enchantKey = enchantHolder.unwrapKey();
+            String enchantId = enchantKey.map(key -> key.identifier().toString()).orElse("unknown");
+            int level = entry.getIntValue();
+
+            sb.append("\"").append(enchantId).append("\":").append(level);
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    /**
+     * Set enchantments from a JSON map of {enchantmentId: level}.
+     */
+    public static void setItemEnchantments(long handle, String enchantmentsJson) {
+        ItemStack stack = getItemStackFromHandle(handle);
+        if (stack.isEmpty()) return;
+
+        setItemEnchantmentsFromJson(stack, enchantmentsJson);
+    }
+
+    // ==========================================================================
+    // Helper Methods for Component Serialization
+    // ==========================================================================
+
+    /**
+     * Convert a component value to JSON string.
+     */
+    private static String componentToJson(String componentId, Object value) {
+        return switch (componentId) {
+            case "damage", "max_damage", "max_stack_size" -> value.toString();
+            case "custom_name" -> {
+                if (value instanceof Component comp) {
+                    yield "\"" + escapeJson(comp.getString()) + "\"";
+                }
+                yield "\"\"";
+            }
+            case "unbreakable" -> value != null ? "true" : "false";
+            case "damage_resistant" -> value != null ? "true" : "false";
+            case "lore" -> {
+                if (value instanceof ItemLore lore) {
+                    StringBuilder sb = new StringBuilder("[");
+                    List<Component> lines = lore.lines();
+                    for (int i = 0; i < lines.size(); i++) {
+                        if (i > 0) sb.append(",");
+                        sb.append("\"").append(escapeJson(lines.get(i).getString())).append("\"");
+                    }
+                    sb.append("]");
+                    yield sb.toString();
+                }
+                yield "[]";
+            }
+            case "enchantments" -> {
+                if (value instanceof ItemEnchantments enchants) {
+                    StringBuilder sb = new StringBuilder("{");
+                    boolean first = true;
+                    for (var entry : enchants.entrySet()) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        var enchantKey = entry.getKey().unwrapKey();
+                        String enchantId = enchantKey.map(key -> key.identifier().toString()).orElse("unknown");
+                        sb.append("\"").append(enchantId).append("\":").append(entry.getIntValue());
+                    }
+                    sb.append("}");
+                    yield sb.toString();
+                }
+                yield "{}";
+            }
+            default -> "null";
+        };
+    }
+
+    /**
+     * Escape a string for JSON.
+     */
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
+
+    /**
+     * Parse JSON array and set as lore.
+     */
+    private static void setItemLoreFromJson(ItemStack stack, String loreJson) {
+        try {
+            // Simple JSON array parser: ["line1", "line2"]
+            if (loreJson == null || loreJson.isEmpty() || loreJson.equals("[]")) {
+                stack.remove(DataComponents.LORE);
+                return;
+            }
+
+            List<Component> lines = new ArrayList<>();
+            // Remove brackets and split by comma (simple parsing)
+            String content = loreJson.trim();
+            if (content.startsWith("[")) content = content.substring(1);
+            if (content.endsWith("]")) content = content.substring(0, content.length() - 1);
+
+            if (!content.isEmpty()) {
+                // Parse quoted strings
+                int i = 0;
+                while (i < content.length()) {
+                    // Skip whitespace and commas
+                    while (i < content.length() && (content.charAt(i) == ' ' || content.charAt(i) == ',')) i++;
+                    if (i >= content.length()) break;
+
+                    // Expect quote
+                    if (content.charAt(i) == '"') {
+                        i++; // skip opening quote
+                        StringBuilder sb = new StringBuilder();
+                        while (i < content.length() && content.charAt(i) != '"') {
+                            if (content.charAt(i) == '\\' && i + 1 < content.length()) {
+                                i++;
+                                char escaped = content.charAt(i);
+                                sb.append(switch (escaped) {
+                                    case 'n' -> '\n';
+                                    case 't' -> '\t';
+                                    case 'r' -> '\r';
+                                    default -> escaped;
+                                });
+                            } else {
+                                sb.append(content.charAt(i));
+                            }
+                            i++;
+                        }
+                        i++; // skip closing quote
+                        lines.add(Component.literal(sb.toString()).withStyle(Style.EMPTY.withItalic(false)));
+                    } else {
+                        i++;
+                    }
+                }
+            }
+
+            if (lines.isEmpty()) {
+                stack.remove(DataComponents.LORE);
+            } else {
+                stack.set(DataComponents.LORE, new ItemLore(lines));
+            }
+        } catch (Exception e) {
+            LOGGER.error("setItemLoreFromJson: Error parsing lore JSON: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Parse JSON object and set as enchantments.
+     */
+    private static void setItemEnchantmentsFromJson(ItemStack stack, String enchantmentsJson) {
+        try {
+            if (enchantmentsJson == null || enchantmentsJson.isEmpty() || enchantmentsJson.equals("{}")) {
+                stack.remove(DataComponents.ENCHANTMENTS);
+                return;
+            }
+
+            // Simple JSON object parser: {"minecraft:sharpness": 5, "minecraft:unbreaking": 3}
+            ItemEnchantments.Mutable builder = new ItemEnchantments.Mutable(ItemEnchantments.EMPTY);
+
+            String content = enchantmentsJson.trim();
+            if (content.startsWith("{")) content = content.substring(1);
+            if (content.endsWith("}")) content = content.substring(0, content.length() - 1);
+
+            if (!content.isEmpty()) {
+                // Parse key:value pairs
+                String[] pairs = content.split(",");
+                for (String pair : pairs) {
+                    String[] kv = pair.split(":", 2);
+                    if (kv.length == 2) {
+                        String key = kv[0].trim().replace("\"", "");
+                        int level = Integer.parseInt(kv[1].trim());
+
+                        // Look up enchantment
+                        var enchantRegistry = serverInstance.registryAccess().lookup(Registries.ENCHANTMENT);
+                        if (enchantRegistry.isPresent()) {
+                            var enchantOpt = enchantRegistry.get().get(Identifier.parse(key));
+                            if (enchantOpt.isPresent()) {
+                                builder.set(enchantOpt.get(), level);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (builder.keySet().isEmpty()) {
+                stack.remove(DataComponents.ENCHANTMENTS);
+            } else {
+                stack.set(DataComponents.ENCHANTMENTS, builder.toImmutable());
+            }
+        } catch (Exception e) {
+            LOGGER.error("setItemEnchantmentsFromJson: Error parsing enchantments JSON: {}", e.getMessage());
+        }
     }
 }

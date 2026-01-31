@@ -29,3 +29,7 @@ export 'src/custom_goal.dart';
 export 'src/client_bridge.dart';
 export 'src/block_entity/block_entity.dart';
 export 'src/flutter_display.dart';
+export 'src/data_components.dart';
+export 'src/item_stack_handle.dart';
+export 'src/server.dart';
+export 'src/world_gen.dart';

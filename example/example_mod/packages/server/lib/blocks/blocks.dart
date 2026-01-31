@@ -12,6 +12,7 @@ export 'party_block.dart';
 export 'rainbow_block.dart';
 export 'terraformer_block.dart';
 export 'test_chest_block.dart';
+export 'test_ores.dart';
 export 'weather_control_block.dart';
 
 import 'package:dart_mod_server/dart_mod_server.dart';
@@ -30,6 +31,7 @@ import 'party_block.dart';
 import 'rainbow_block.dart';
 import 'terraformer_block.dart';
 import 'test_chest_block.dart';
+import 'test_ores.dart';
 import 'weather_control_block.dart';
 
 /// Registers all custom blocks and freezes the block registry.
@@ -59,6 +61,9 @@ void registerBlocks() {
 
   // Animated chest - demonstrates stateful animations with lid opening
   AnimatedChestBlock.register();
+
+  // Test ores - demonstrate world generation API
+  registerTestOres();
 
   BlockRegistry.freeze();
 }

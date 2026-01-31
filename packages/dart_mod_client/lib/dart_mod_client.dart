@@ -20,3 +20,5 @@ export 'src/events/container_data_events.dart';
 export 'src/container/container.dart';
 export 'src/surface/surface_router.dart';
 export 'src/surface/surface_app.dart';
+export 'src/screen/screen.dart';
+export 'src/hud/hud.dart';

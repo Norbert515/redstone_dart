@@ -105,6 +105,12 @@ public:
     void setProxyBlockNeighborChangedHandler(ProxyBlockNeighborChangedCallback cb) { proxy_block_neighbor_changed_handler_ = cb; }
     void setProxyBlockEntityInsideHandler(ProxyBlockEntityInsideCallback cb) { proxy_block_entity_inside_handler_ = cb; }
 
+    // Redstone handlers
+    void setProxyBlockGetSignalHandler(ProxyBlockGetSignalCallback cb) { proxy_block_get_signal_handler_ = cb; }
+    void setProxyBlockGetDirectSignalHandler(ProxyBlockGetDirectSignalCallback cb) { proxy_block_get_direct_signal_handler_ = cb; }
+    void setProxyBlockGetAnalogOutputHandler(ProxyBlockGetAnalogOutputCallback cb) { proxy_block_get_analog_output_handler_ = cb; }
+    void setProxyBlockSetStateHandler(ProxyBlockSetStateCallback cb) { proxy_block_set_state_handler_ = cb; }
+
     // Player handlers
     void setPlayerJoinHandler(PlayerJoinCallback cb) { player_join_handler_ = cb; }
     void setPlayerLeaveHandler(PlayerLeaveCallback cb) { player_leave_handler_ = cb; }
@@ -212,6 +218,26 @@ public:
         if (proxy_block_entity_inside_handler_) proxy_block_entity_inside_handler_(handler_id, world_id, x, y, z, entity_id);
     }
 
+    // Redstone dispatch methods
+    int32_t dispatchProxyBlockGetSignal(int64_t handler_id, int32_t state_data, int32_t direction) {
+        if (proxy_block_get_signal_handler_) return proxy_block_get_signal_handler_(handler_id, state_data, direction);
+        return 0; // Default: no power
+    }
+
+    int32_t dispatchProxyBlockGetDirectSignal(int64_t handler_id, int32_t state_data, int32_t direction) {
+        if (proxy_block_get_direct_signal_handler_) return proxy_block_get_direct_signal_handler_(handler_id, state_data, direction);
+        return 0; // Default: no power
+    }
+
+    int32_t dispatchProxyBlockGetAnalogOutput(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t state_data) {
+        if (proxy_block_get_analog_output_handler_) return proxy_block_get_analog_output_handler_(handler_id, world_id, x, y, z, state_data);
+        return 0; // Default: no output
+    }
+
+    void dispatchProxyBlockSetState(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t new_state_data) {
+        if (proxy_block_set_state_handler_) proxy_block_set_state_handler_(handler_id, world_id, x, y, z, new_state_data);
+    }
+
     void dispatchPlayerJoin(int32_t player_id) { if (player_join_handler_) player_join_handler_(player_id); }
     void dispatchPlayerLeave(int32_t player_id) { if (player_leave_handler_) player_leave_handler_(player_id); }
     void dispatchPlayerRespawn(int32_t player_id, bool end_conquered) { if (player_respawn_handler_) player_respawn_handler_(player_id, end_conquered); }
@@ -274,6 +300,10 @@ public:
         proxy_block_removed_handler_ = nullptr;
         proxy_block_neighbor_changed_handler_ = nullptr;
         proxy_block_entity_inside_handler_ = nullptr;
+        proxy_block_get_signal_handler_ = nullptr;
+        proxy_block_get_direct_signal_handler_ = nullptr;
+        proxy_block_get_analog_output_handler_ = nullptr;
+        proxy_block_set_state_handler_ = nullptr;
         player_join_handler_ = nullptr;
         player_leave_handler_ = nullptr;
         player_respawn_handler_ = nullptr;
@@ -330,6 +360,10 @@ private:
     ProxyBlockRemovedCallback proxy_block_removed_handler_ = nullptr;
     ProxyBlockNeighborChangedCallback proxy_block_neighbor_changed_handler_ = nullptr;
     ProxyBlockEntityInsideCallback proxy_block_entity_inside_handler_ = nullptr;
+    ProxyBlockGetSignalCallback proxy_block_get_signal_handler_ = nullptr;
+    ProxyBlockGetDirectSignalCallback proxy_block_get_direct_signal_handler_ = nullptr;
+    ProxyBlockGetAnalogOutputCallback proxy_block_get_analog_output_handler_ = nullptr;
+    ProxyBlockSetStateCallback proxy_block_set_state_handler_ = nullptr;
     PlayerJoinCallback player_join_handler_ = nullptr;
     PlayerLeaveCallback player_leave_handler_ = nullptr;
     PlayerRespawnCallback player_respawn_handler_ = nullptr;
@@ -404,6 +438,8 @@ struct ServerBlockRegistration {
     int32_t luminance;
     double slipperiness, velocity_multiplier, jump_velocity_multiplier;
     bool ticks_randomly, collidable, replaceable, burnable;
+    bool is_redstone_source, has_analog_output;
+    std::string properties_json;
 };
 
 struct ServerItemRegistration {
@@ -442,17 +478,35 @@ struct ServerAnimationRegistration {
     std::string animation_json;
 };
 
+struct ServerOreFeatureRegistration {
+    int64_t handler_id;
+    std::string namespace_str;
+    std::string path;
+    std::string ore_block_id;
+    int32_t vein_size;
+    int32_t veins_per_chunk;
+    int32_t min_y;
+    int32_t max_y;
+    std::string distribution_type;    // "uniform", "triangle", "trapezoid"
+    std::string replaceable_tag;
+    std::string biome_selector;
+    std::string deepslate_variant;    // empty string if none
+    int32_t deepslate_transition_y;
+};
+
 static std::queue<ServerBlockRegistration> g_server_block_queue;
 static std::queue<ServerItemRegistration> g_server_item_queue;
 static std::queue<ServerEntityRegistration> g_server_entity_queue;
 static std::queue<ServerBlockEntityRegistration> g_server_block_entity_queue;
 static std::queue<ServerAnimationRegistration> g_server_animation_queue;
+static std::queue<ServerOreFeatureRegistration> g_server_ore_feature_queue;
 static std::mutex g_server_registration_mutex;
 static std::atomic<bool> g_server_registrations_complete{false};
 static std::atomic<int64_t> g_server_next_block_id{1};
 static std::atomic<int64_t> g_server_next_item_id{1};
 static std::atomic<int64_t> g_server_next_entity_id{1};
 static std::atomic<int32_t> g_server_next_block_entity_id{1};
+static std::atomic<int64_t> g_server_next_ore_feature_id{1};
 
 // ==========================================================================
 // Lifecycle Functions
@@ -611,6 +665,12 @@ void server_register_proxy_block_placed_handler(ProxyBlockPlacedCallback cb) { d
 void server_register_proxy_block_removed_handler(ProxyBlockRemovedCallback cb) { dart_mc_bridge::ServerCallbackRegistry::instance().setProxyBlockRemovedHandler(cb); }
 void server_register_proxy_block_neighbor_changed_handler(ProxyBlockNeighborChangedCallback cb) { dart_mc_bridge::ServerCallbackRegistry::instance().setProxyBlockNeighborChangedHandler(cb); }
 void server_register_proxy_block_entity_inside_handler(ProxyBlockEntityInsideCallback cb) { dart_mc_bridge::ServerCallbackRegistry::instance().setProxyBlockEntityInsideHandler(cb); }
+
+// Redstone callback registration
+void server_register_proxy_block_get_signal_handler(ProxyBlockGetSignalCallback cb) { dart_mc_bridge::ServerCallbackRegistry::instance().setProxyBlockGetSignalHandler(cb); }
+void server_register_proxy_block_get_direct_signal_handler(ProxyBlockGetDirectSignalCallback cb) { dart_mc_bridge::ServerCallbackRegistry::instance().setProxyBlockGetDirectSignalHandler(cb); }
+void server_register_proxy_block_get_analog_output_handler(ProxyBlockGetAnalogOutputCallback cb) { dart_mc_bridge::ServerCallbackRegistry::instance().setProxyBlockGetAnalogOutputHandler(cb); }
+void server_register_proxy_block_set_state_handler(ProxyBlockSetStateCallback cb) { dart_mc_bridge::ServerCallbackRegistry::instance().setProxyBlockSetStateHandler(cb); }
 
 void server_register_player_join_handler(PlayerJoinCallback cb) { dart_mc_bridge::ServerCallbackRegistry::instance().setPlayerJoinHandler(cb); }
 void server_register_player_leave_handler(PlayerLeaveCallback cb) { dart_mc_bridge::ServerCallbackRegistry::instance().setPlayerLeaveHandler(cb); }
@@ -811,6 +871,49 @@ void server_dispatch_proxy_block_entity_inside(int64_t handler_id, int64_t world
     bool did_enter = safe_enter_isolate();
     Dart_EnterScope();
     dart_mc_bridge::ServerCallbackRegistry::instance().dispatchProxyBlockEntityInside(handler_id, world_id, x, y, z, entity_id);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+}
+
+// ==========================================================================
+// Redstone Dispatch Functions (called from Java via JNI)
+// ==========================================================================
+
+int32_t server_dispatch_proxy_block_get_signal(int64_t handler_id, int32_t state_data, int32_t direction) {
+    SERVER_DISPATCH_BEGIN_RET(0);
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::ServerCallbackRegistry::instance().dispatchProxyBlockGetSignal(handler_id, state_data, direction);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+int32_t server_dispatch_proxy_block_get_direct_signal(int64_t handler_id, int32_t state_data, int32_t direction) {
+    SERVER_DISPATCH_BEGIN_RET(0);
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::ServerCallbackRegistry::instance().dispatchProxyBlockGetDirectSignal(handler_id, state_data, direction);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+int32_t server_dispatch_proxy_block_get_analog_output(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t state_data) {
+    SERVER_DISPATCH_BEGIN_RET(0);
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    int32_t result = dart_mc_bridge::ServerCallbackRegistry::instance().dispatchProxyBlockGetAnalogOutput(handler_id, world_id, x, y, z, state_data);
+    Dart_ExitScope();
+    safe_exit_isolate(did_enter);
+    return result;
+}
+
+void server_dispatch_proxy_block_set_state(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t new_state_data) {
+    SERVER_DISPATCH_BEGIN();
+    bool did_enter = safe_enter_isolate();
+    Dart_EnterScope();
+    dart_mc_bridge::ServerCallbackRegistry::instance().dispatchProxyBlockSetState(handler_id, world_id, x, y, z, new_state_data);
     Dart_ExitScope();
     safe_exit_isolate(did_enter);
 }
@@ -1306,7 +1409,8 @@ int64_t server_queue_block_registration(
     const char* namespace_id, const char* path,
     float hardness, float resistance, bool requires_tool, int32_t luminance,
     double slipperiness, double velocity_multiplier, double jump_velocity_multiplier,
-    bool ticks_randomly, bool collidable, bool replaceable, bool burnable) {
+    bool ticks_randomly, bool collidable, bool replaceable, bool burnable,
+    bool is_redstone_source, bool has_analog_output, const char* properties_json) {
 
     std::lock_guard<std::mutex> lock(g_server_registration_mutex);
     int64_t handler_id = g_server_next_block_id.fetch_add(1);
@@ -1326,6 +1430,9 @@ int64_t server_queue_block_registration(
     reg.collidable = collidable;
     reg.replaceable = replaceable;
     reg.burnable = burnable;
+    reg.is_redstone_source = is_redstone_source;
+    reg.has_analog_output = has_analog_output;
+    reg.properties_json = properties_json ? properties_json : "";
 
     g_server_block_queue.push(reg);
     return handler_id;
@@ -1444,7 +1551,9 @@ bool server_get_next_block_registration(
     int32_t* out_luminance, double* out_slipperiness,
     double* out_velocity_mult, double* out_jump_velocity_mult,
     bool* out_ticks_randomly, bool* out_collidable,
-    bool* out_replaceable, bool* out_burnable
+    bool* out_replaceable, bool* out_burnable,
+    bool* out_is_redstone_source, bool* out_has_analog_output,
+    char* out_properties_json, size_t properties_json_len
 ) {
     std::lock_guard<std::mutex> lock(g_server_registration_mutex);
 
@@ -1468,6 +1577,10 @@ bool server_get_next_block_registration(
     *out_collidable = reg.collidable;
     *out_replaceable = reg.replaceable;
     *out_burnable = reg.burnable;
+    *out_is_redstone_source = reg.is_redstone_source;
+    *out_has_analog_output = reg.has_analog_output;
+    strncpy(out_properties_json, reg.properties_json.c_str(), properties_json_len - 1);
+    out_properties_json[properties_json_len - 1] = '\0';
 
     g_server_block_queue.pop();
     return true;
@@ -1665,6 +1778,102 @@ bool server_get_next_animation_registration(
     out_animation_json[animation_json_len - 1] = '\0';
 
     g_server_animation_queue.pop();
+    return true;
+}
+
+// ==========================================================================
+// Ore Feature Registration Queue Functions
+// ==========================================================================
+
+int64_t server_queue_ore_feature_registration(
+    const char* namespace_str,
+    const char* path,
+    const char* ore_block_id,
+    int32_t vein_size,
+    int32_t veins_per_chunk,
+    int32_t min_y,
+    int32_t max_y,
+    const char* distribution_type,
+    const char* replaceable_tag,
+    const char* biome_selector,
+    const char* deepslate_variant,
+    int32_t deepslate_transition_y) {
+
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+    int64_t handler_id = g_server_next_ore_feature_id.fetch_add(1);
+
+    ServerOreFeatureRegistration reg;
+    reg.handler_id = handler_id;
+    reg.namespace_str = namespace_str ? namespace_str : "";
+    reg.path = path ? path : "";
+    reg.ore_block_id = ore_block_id ? ore_block_id : "";
+    reg.vein_size = vein_size;
+    reg.veins_per_chunk = veins_per_chunk;
+    reg.min_y = min_y;
+    reg.max_y = max_y;
+    reg.distribution_type = distribution_type ? distribution_type : "uniform";
+    reg.replaceable_tag = replaceable_tag ? replaceable_tag : "";
+    reg.biome_selector = biome_selector ? biome_selector : "";
+    reg.deepslate_variant = deepslate_variant ? deepslate_variant : "";
+    reg.deepslate_transition_y = deepslate_transition_y;
+
+    g_server_ore_feature_queue.push(reg);
+
+    std::cout << "Queued ore feature registration: " << reg.namespace_str << ":" << reg.path
+              << " (block=" << reg.ore_block_id << ", veinSize=" << reg.vein_size
+              << ", veinsPerChunk=" << reg.veins_per_chunk << ")" << std::endl;
+
+    return handler_id;
+}
+
+bool server_has_pending_ore_feature_registrations() {
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+    return !g_server_ore_feature_queue.empty();
+}
+
+bool server_get_next_ore_feature_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, size_t namespace_len,
+    char* out_path, size_t path_len,
+    char* out_ore_block_id, size_t ore_block_id_len,
+    int32_t* out_vein_size,
+    int32_t* out_veins_per_chunk,
+    int32_t* out_min_y,
+    int32_t* out_max_y,
+    char* out_distribution_type, size_t distribution_type_len,
+    char* out_replaceable_tag, size_t replaceable_tag_len,
+    char* out_biome_selector, size_t biome_selector_len,
+    char* out_deepslate_variant, size_t deepslate_variant_len,
+    int32_t* out_deepslate_transition_y) {
+
+    std::lock_guard<std::mutex> lock(g_server_registration_mutex);
+
+    if (g_server_ore_feature_queue.empty()) return false;
+
+    const auto& reg = g_server_ore_feature_queue.front();
+
+    *out_handler_id = reg.handler_id;
+    strncpy(out_namespace, reg.namespace_str.c_str(), namespace_len - 1);
+    out_namespace[namespace_len - 1] = '\0';
+    strncpy(out_path, reg.path.c_str(), path_len - 1);
+    out_path[path_len - 1] = '\0';
+    strncpy(out_ore_block_id, reg.ore_block_id.c_str(), ore_block_id_len - 1);
+    out_ore_block_id[ore_block_id_len - 1] = '\0';
+    *out_vein_size = reg.vein_size;
+    *out_veins_per_chunk = reg.veins_per_chunk;
+    *out_min_y = reg.min_y;
+    *out_max_y = reg.max_y;
+    strncpy(out_distribution_type, reg.distribution_type.c_str(), distribution_type_len - 1);
+    out_distribution_type[distribution_type_len - 1] = '\0';
+    strncpy(out_replaceable_tag, reg.replaceable_tag.c_str(), replaceable_tag_len - 1);
+    out_replaceable_tag[replaceable_tag_len - 1] = '\0';
+    strncpy(out_biome_selector, reg.biome_selector.c_str(), biome_selector_len - 1);
+    out_biome_selector[biome_selector_len - 1] = '\0';
+    strncpy(out_deepslate_variant, reg.deepslate_variant.c_str(), deepslate_variant_len - 1);
+    out_deepslate_variant[deepslate_variant_len - 1] = '\0';
+    *out_deepslate_transition_y = reg.deepslate_transition_y;
+
+    g_server_ore_feature_queue.pop();
     return true;
 }
 

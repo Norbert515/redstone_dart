@@ -599,6 +599,123 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_dispatchContainerPrewa
 }
 
 // ==========================================================================
+// HUD Overlay Event Dispatching
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    dispatchHudShowNative
+ * Signature: (Ljava/lang/String;)V
+ *
+ * Dispatch HUD overlay show event to Dart.
+ * Called when a HUD overlay should be displayed.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_dispatchHudShowNative(
+    JNIEnv* env, jclass /* cls */, jstring overlayId) {
+    const char* overlayIdStr = overlayId ? env->GetStringUTFChars(overlayId, nullptr) : "";
+
+    client_dispatch_hud_show(overlayIdStr);
+
+    if (overlayId && overlayIdStr) env->ReleaseStringUTFChars(overlayId, overlayIdStr);
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    dispatchHudHideNative
+ * Signature: (Ljava/lang/String;)V
+ *
+ * Dispatch HUD overlay hide event to Dart.
+ * Called when a HUD overlay should be hidden.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_dispatchHudHideNative(
+    JNIEnv* env, jclass /* cls */, jstring overlayId) {
+    const char* overlayIdStr = overlayId ? env->GetStringUTFChars(overlayId, nullptr) : "";
+
+    client_dispatch_hud_hide(overlayIdStr);
+
+    if (overlayId && overlayIdStr) env->ReleaseStringUTFChars(overlayId, overlayIdStr);
+}
+
+// ==========================================================================
+// Custom Screen Event Dispatching
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    dispatchCustomScreenOpenNative
+ * Signature: (ILjava/lang/String;II)V
+ *
+ * Dispatch custom screen open event to Dart.
+ * Called when a custom (non-container) screen should be opened.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_dispatchCustomScreenOpenNative(
+    JNIEnv* env, jclass /* cls */, jint screenId, jstring screenType, jint width, jint height) {
+    const char* screenTypeStr = screenType ? env->GetStringUTFChars(screenType, nullptr) : "";
+
+    client_dispatch_custom_screen_open(
+        static_cast<int32_t>(screenId),
+        screenTypeStr,
+        static_cast<int32_t>(width),
+        static_cast<int32_t>(height)
+    );
+
+    if (screenType && screenTypeStr) env->ReleaseStringUTFChars(screenType, screenTypeStr);
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    dispatchCustomScreenCloseNative
+ * Signature: (I)V
+ *
+ * Dispatch custom screen close event to Dart.
+ * Called when a custom screen should be closed.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_dispatchCustomScreenCloseNative(
+    JNIEnv* /* env */, jclass /* cls */, jint screenId) {
+    client_dispatch_custom_screen_close(static_cast<int32_t>(screenId));
+}
+
+// ==========================================================================
+// Screen Frame Ready Signal JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    nativeSignalScreenFrameReady
+ * Signature: ()V
+ *
+ * Signal that the custom screen UI frame is ready (called from Dart via JNI).
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_nativeSignalScreenFrameReady(
+    JNIEnv* /* env */, jclass /* cls */) {
+    dart_client_signal_screen_frame_ready();
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    isScreenFrameReady
+ * Signature: ()Z
+ *
+ * Check if Dart has signaled that a custom screen UI frame is ready.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridgeClient_isScreenFrameReady(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return dart_client_is_screen_frame_ready() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridgeClient
+ * Method:    clearScreenFrameReady
+ * Signature: ()V
+ *
+ * Clear the screen frame ready flag after consuming it.
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridgeClient_clearScreenFrameReady(
+    JNIEnv* /* env */, jclass /* cls */) {
+    dart_client_clear_screen_frame_ready();
+}
+
+// ==========================================================================
 // Multi-Surface JNI Entry Points (macOS only)
 // ==========================================================================
 

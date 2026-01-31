@@ -62,7 +62,9 @@ public class ProxyRegistry {
         boolean ticksRandomly,
         boolean collidable,
         boolean replaceable,
-        boolean burnable
+        boolean burnable,
+        boolean isRedstoneSource,
+        boolean hasAnalogOutput
     ) {}
 
     /**
@@ -111,10 +113,13 @@ public class ProxyRegistry {
         long handlerId = nextHandlerId++;
 
         // Store settings for use during registerBlock()
+        // Note: isRedstoneSource and hasAnalogOutput default to false for createBlock()
+        // Use createBlockWithRedstone() for redstone-capable blocks
         pendingSettings.put(handlerId, new BlockSettings(
             hardness, resistance, requiresTool,
             luminance, slipperiness, velocityMultiplier, jumpVelocityMultiplier,
-            ticksRandomly, collidable, replaceable, burnable));
+            ticksRandomly, collidable, replaceable, burnable,
+            false, false));
 
         LOGGER.info("Prepared DartBlockProxy slot with handler ID: {}", handlerId);
         return handlerId;
@@ -417,6 +422,9 @@ public class ProxyRegistry {
      * @param collidable Whether entities collide with this block
      * @param replaceable Whether block can be replaced
      * @param burnable Whether block can catch fire
+     * @param isRedstoneSource Whether this block emits redstone power
+     * @param hasAnalogOutput Whether this block provides comparator output
+     * @param propertiesJson JSON array of block state properties
      * @return true if registration succeeded
      */
     public static boolean registerBlockWithHandlerId(
@@ -433,7 +441,10 @@ public class ProxyRegistry {
             boolean ticksRandomly,
             boolean collidable,
             boolean replaceable,
-            boolean burnable) {
+            boolean burnable,
+            boolean isRedstoneSource,
+            boolean hasAnalogOutput,
+            String propertiesJson) {
 
         try {
             // Create resource keys
@@ -480,11 +491,20 @@ public class ProxyRegistry {
                 properties = properties.ignitedByLava();
             }
 
+            // Parse block state properties from JSON
+            java.util.List<DartBlockProperty> blockProperties = parsePropertiesJson(propertiesJson);
+
+            // Set pending properties before constructing the proxy (needed for createBlockStateDefinition)
+            if (!blockProperties.isEmpty()) {
+                DartBlockProxy.setPendingProperties(blockProperties);
+            }
+
             // Create settings record for the proxy
             BlockSettings settings = new BlockSettings(
                 hardness, resistance, requiresTool,
                 luminance, slipperiness, velocityMultiplier, jumpVelocityMultiplier,
-                ticksRandomly, collidable, replaceable, burnable
+                ticksRandomly, collidable, replaceable, burnable,
+                isRedstoneSource, hasAnalogOutput
             );
 
             // Check if this block has an animation or block entity
@@ -525,6 +545,9 @@ public class ProxyRegistry {
                 block = new DartBlockProxy(properties, handlerId, settings);
                 LOGGER.info("Creating basic block: {}:{}", namespace, path);
             }
+
+            // Clear pending properties after block construction
+            DartBlockProxy.clearPendingProperties();
 
             blocks.put(handlerId, block);
 
@@ -687,5 +710,61 @@ public class ProxyRegistry {
             LOGGER.error("Failed to register queued item: {}:{}", namespace, path, e);
             return false;
         }
+    }
+
+    // ==================== PROPERTY PARSING ====================
+
+    /**
+     * Parse block state properties from a JSON array.
+     *
+     * Expected format:
+     * [
+     *   {"type": "boolean", "name": "powered"},
+     *   {"type": "int", "name": "power", "min": 0, "max": 15},
+     *   {"type": "direction", "name": "facing", "directions": "horizontal"}
+     * ]
+     *
+     * @param propertiesJson JSON array of property definitions
+     * @return List of DartBlockProperty instances
+     */
+    private static java.util.List<DartBlockProperty> parsePropertiesJson(String propertiesJson) {
+        java.util.List<DartBlockProperty> result = new java.util.ArrayList<>();
+
+        if (propertiesJson == null || propertiesJson.isEmpty() || propertiesJson.equals("[]")) {
+            return result;
+        }
+
+        try {
+            // Use Gson for JSON parsing
+            com.google.gson.JsonArray jsonArray = com.google.gson.JsonParser.parseString(propertiesJson).getAsJsonArray();
+
+            for (com.google.gson.JsonElement element : jsonArray) {
+                com.google.gson.JsonObject propObj = element.getAsJsonObject();
+                String type = propObj.get("type").getAsString();
+                String name = propObj.get("name").getAsString();
+
+                switch (type.toLowerCase()) {
+                    case "boolean", "bool" -> result.add(new DartBlockProperty.BooleanProp(name));
+                    case "int", "integer" -> {
+                        int min = propObj.has("min") ? propObj.get("min").getAsInt() : 0;
+                        int max = propObj.has("max") ? propObj.get("max").getAsInt() : 15;
+                        result.add(new DartBlockProperty.IntProp(name, min, max));
+                    }
+                    case "direction" -> {
+                        String directions = propObj.has("directions") ? propObj.get("directions").getAsString() : "all";
+                        if ("horizontal".equalsIgnoreCase(directions)) {
+                            result.add(DartBlockProperty.DirectionProp.horizontal(name));
+                        } else {
+                            result.add(DartBlockProperty.DirectionProp.all(name));
+                        }
+                    }
+                    default -> LOGGER.warn("Unknown property type: {} for property {}", type, name);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to parse properties JSON: {}", propertiesJson, e);
+        }
+
+        return result;
     }
 }

@@ -2,51 +2,306 @@ package com.redstone.proxy;
 
 import com.redstone.DartBridge;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.InsideBlockEffectApplier;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.redstone.Orientation;
 import net.minecraft.world.phys.BlockHitResult;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * A Block proxy that delegates all behavior to Dart.
  *
  * Each instance of this class represents a single Dart-defined block type.
  * The dartHandlerId links to the Dart-side CustomBlock instance.
+ *
+ * Supports:
+ * - Dynamic block state properties (boolean, int, direction)
+ * - Redstone signal emission and reception
+ * - All standard block callbacks (use, step, break, etc.)
  */
 public class DartBlockProxy extends Block {
     private static final Logger LOGGER = LoggerFactory.getLogger("DartBlockProxy");
+
+    // ThreadLocal to pass properties to createBlockStateDefinition() during super() constructor
+    // This is needed because createBlockStateDefinition() is called before our fields are initialized
+    private static final ThreadLocal<List<DartBlockProperty>> PENDING_PROPERTIES = new ThreadLocal<>();
+
     private final long dartHandlerId;
     private final boolean ticksRandomly;
+
+    // Block state property support
+    private final List<Property<?>> blockProperties;
+    private final Map<String, Property<?>> propertyByName;
+
+    // Redstone support
+    private final boolean isRedstoneSource;
+    private final boolean hasAnalogOutput;
+
+    /**
+     * Set pending properties before constructing a DartBlockProxy.
+     * This must be called before new DartBlockProxy() when using block state properties.
+     *
+     * @param props List of property definitions from Dart registration
+     */
+    public static void setPendingProperties(List<DartBlockProperty> props) {
+        PENDING_PROPERTIES.set(props);
+    }
+
+    /**
+     * Clear pending properties after construction.
+     */
+    public static void clearPendingProperties() {
+        PENDING_PROPERTIES.remove();
+    }
 
     public DartBlockProxy(Properties settings, long dartHandlerId, Object blockSettings) {
         super(settings);
         this.dartHandlerId = dartHandlerId;
-        // Extract ticksRandomly from the record if available
-        boolean ticksRandomlyValue = false;
-        if (blockSettings != null) {
-            try {
-                var method = blockSettings.getClass().getMethod("ticksRandomly");
-                ticksRandomlyValue = (Boolean) method.invoke(blockSettings);
-            } catch (Exception e) {
-                // Keep default value
+
+        // Initialize property collections
+        List<DartBlockProperty> pendingProps = PENDING_PROPERTIES.get();
+        this.blockProperties = new ArrayList<>();
+        this.propertyByName = new HashMap<>();
+
+        // Convert pending Dart properties to Minecraft properties
+        if (pendingProps != null) {
+            for (DartBlockProperty dp : pendingProps) {
+                Property<?> prop = dp.toMinecraftProperty();
+                blockProperties.add(prop);
+                propertyByName.put(dp.name, prop);
+            }
+
+            // Register default state with all properties at their first values
+            if (!blockProperties.isEmpty()) {
+                BlockState defaultState = this.stateDefinition.any();
+                for (Property<?> prop : blockProperties) {
+                    defaultState = setPropertyDefault(defaultState, prop);
+                }
+                this.registerDefaultState(defaultState);
             }
         }
-        this.ticksRandomly = ticksRandomlyValue;
+
+        // Extract ticksRandomly from the record if available
+        this.ticksRandomly = extractBoolean(blockSettings, "ticksRandomly", false);
+
+        // Extract redstone settings
+        this.isRedstoneSource = extractBoolean(blockSettings, "isRedstoneSource", false);
+        this.hasAnalogOutput = extractBoolean(blockSettings, "hasAnalogOutput", false);
     }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        // This is called during the super() constructor, before our fields are set
+        // We use the ThreadLocal to get the properties that were set before construction
+        List<DartBlockProperty> props = PENDING_PROPERTIES.get();
+        if (props != null) {
+            for (DartBlockProperty dp : props) {
+                builder.add(dp.toMinecraftProperty());
+            }
+        }
+    }
+
+    /**
+     * Extract a boolean value from a record-like object using reflection.
+     */
+    private static boolean extractBoolean(Object obj, String methodName, boolean defaultValue) {
+        if (obj == null) return defaultValue;
+        try {
+            var method = obj.getClass().getMethod(methodName);
+            return (Boolean) method.invoke(obj);
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Set a property to its default (first) value.
+     */
+    @SuppressWarnings("unchecked")
+    private <T extends Comparable<T>> BlockState setPropertyDefault(BlockState state, Property<T> prop) {
+        T defaultValue = prop.getPossibleValues().iterator().next();
+        return state.setValue(prop, defaultValue);
+    }
+
+    // === Accessors ===
 
     public long getDartHandlerId() {
         return dartHandlerId;
     }
+
+    /**
+     * Get a property by name.
+     */
+    public Property<?> getProperty(String name) {
+        return propertyByName.get(name);
+    }
+
+    /**
+     * Get all block properties.
+     */
+    public List<Property<?>> getBlockProperties() {
+        return blockProperties;
+    }
+
+    /**
+     * Check if this block is configured as a redstone signal source.
+     */
+    public boolean isRedstoneSourceBlock() {
+        return isRedstoneSource;
+    }
+
+    // === Redstone Methods ===
+
+    @Override
+    protected boolean isSignalSource(BlockState state) {
+        return isRedstoneSource;
+    }
+
+    @Override
+    protected int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
+        if (!isRedstoneSource || !DartBridge.isInitialized()) return 0;
+
+        int stateData = encodeState(state);
+        return DartBridge.onProxyBlockGetSignal(
+            dartHandlerId,
+            stateData,
+            direction.ordinal()
+        );
+    }
+
+    @Override
+    protected int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
+        if (!isRedstoneSource || !DartBridge.isInitialized()) return 0;
+
+        int stateData = encodeState(state);
+        return DartBridge.onProxyBlockGetDirectSignal(
+            dartHandlerId,
+            stateData,
+            direction.ordinal()
+        );
+    }
+
+    @Override
+    protected boolean hasAnalogOutputSignal(BlockState state) {
+        return hasAnalogOutput;
+    }
+
+    @Override
+    protected int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos, Direction direction) {
+        if (!hasAnalogOutput || !DartBridge.isInitialized()) return 0;
+
+        int stateData = encodeState(state);
+        return DartBridge.onProxyBlockGetAnalogOutput(
+            dartHandlerId,
+            level.hashCode(),
+            pos.getX(), pos.getY(), pos.getZ(),
+            stateData
+        );
+    }
+
+    // === State Encoding/Decoding ===
+
+    /**
+     * Encode the block state properties into a single int.
+     * Each property gets a portion of bits based on its range.
+     *
+     * @param state The block state to encode
+     * @return Packed integer containing all property values
+     */
+    public int encodeState(BlockState state) {
+        if (blockProperties.isEmpty()) return 0;
+
+        int encoded = 0;
+        int shift = 0;
+
+        for (Property<?> prop : blockProperties) {
+            int value = getPropertyIndex(state, prop);
+            int bits = bitsNeeded(prop);
+            encoded |= (value << shift);
+            shift += bits;
+        }
+
+        return encoded;
+    }
+
+    /**
+     * Decode a packed int back into a BlockState.
+     *
+     * @param encoded The packed integer
+     * @return A BlockState with the decoded property values
+     */
+    public BlockState decodeState(int encoded) {
+        BlockState state = this.defaultBlockState();
+        if (blockProperties.isEmpty()) return state;
+
+        int shift = 0;
+        for (Property<?> prop : blockProperties) {
+            int bits = bitsNeeded(prop);
+            int mask = (1 << bits) - 1;
+            int value = (encoded >> shift) & mask;
+            state = setPropertyByIndex(state, prop, value);
+            shift += bits;
+        }
+
+        return state;
+    }
+
+    /**
+     * Get the index of the current property value within its possible values.
+     */
+    private <T extends Comparable<T>> int getPropertyIndex(BlockState state, Property<T> prop) {
+        T value = state.getValue(prop);
+        int index = 0;
+        for (T allowed : prop.getPossibleValues()) {
+            if (allowed.equals(value)) return index;
+            index++;
+        }
+        return 0;
+    }
+
+    /**
+     * Set a property by its value index.
+     */
+    @SuppressWarnings("unchecked")
+    private <T extends Comparable<T>> BlockState setPropertyByIndex(BlockState state, Property<T> prop, int index) {
+        int i = 0;
+        for (T allowed : prop.getPossibleValues()) {
+            if (i == index) {
+                return state.setValue(prop, allowed);
+            }
+            i++;
+        }
+        return state;
+    }
+
+    /**
+     * Calculate the number of bits needed to represent all values of a property.
+     */
+    private int bitsNeeded(Property<?> prop) {
+        int values = prop.getPossibleValues().size();
+        if (values <= 1) return 0;
+        return (int) Math.ceil(Math.log(values) / Math.log(2));
+    }
+
+    // === Standard Block Callbacks ===
 
     @Override
     public BlockState playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {

@@ -87,6 +87,14 @@ extern "C" {
     typedef void (*ProxyBlockEntityInsideCallback)(int64_t handler_id, int64_t world_id,
                                                     int32_t x, int32_t y, int32_t z, int32_t entity_id);
 
+    // Redstone callbacks - return power levels (0-15)
+    typedef int32_t (*ProxyBlockGetSignalCallback)(int64_t handler_id, int32_t state_data, int32_t direction);
+    typedef int32_t (*ProxyBlockGetDirectSignalCallback)(int64_t handler_id, int32_t state_data, int32_t direction);
+    typedef int32_t (*ProxyBlockGetAnalogOutputCallback)(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t state_data);
+
+    // Block state change callback - called when Dart wants to update a block's state
+    typedef void (*ProxyBlockSetStateCallback)(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t new_state_data);
+
     void register_proxy_block_stepped_on_handler(ProxyBlockSteppedOnCallback cb);
     void register_proxy_block_fallen_upon_handler(ProxyBlockFallenUponCallback cb);
     void register_proxy_block_random_tick_handler(ProxyBlockRandomTickCallback cb);
@@ -94,6 +102,12 @@ extern "C" {
     void register_proxy_block_removed_handler(ProxyBlockRemovedCallback cb);
     void register_proxy_block_neighbor_changed_handler(ProxyBlockNeighborChangedCallback cb);
     void register_proxy_block_entity_inside_handler(ProxyBlockEntityInsideCallback cb);
+
+    // Redstone callback registration
+    void register_proxy_block_get_signal_handler(ProxyBlockGetSignalCallback cb);
+    void register_proxy_block_get_direct_signal_handler(ProxyBlockGetDirectSignalCallback cb);
+    void register_proxy_block_get_analog_output_handler(ProxyBlockGetAnalogOutputCallback cb);
+    void register_proxy_block_set_state_handler(ProxyBlockSetStateCallback cb);
 
     // Event dispatch (called from Java via JNI)
     int32_t dispatch_block_break(int32_t x, int32_t y, int32_t z, int64_t player_id);
@@ -124,6 +138,15 @@ extern "C" {
                                                 int32_t neighbor_x, int32_t neighbor_y, int32_t neighbor_z);
     void dispatch_proxy_block_entity_inside(int64_t handler_id, int64_t world_id,
                                              int32_t x, int32_t y, int32_t z, int32_t entity_id);
+
+    // Redstone dispatch functions (called from Java via JNI)
+    // Returns power level (0-15)
+    int32_t dispatch_proxy_block_get_signal(int64_t handler_id, int32_t state_data, int32_t direction);
+    int32_t dispatch_proxy_block_get_direct_signal(int64_t handler_id, int32_t state_data, int32_t direction);
+    int32_t dispatch_proxy_block_get_analog_output(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t state_data);
+
+    // Block state dispatch (called from Java when state needs to be updated)
+    void dispatch_proxy_block_set_state(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t new_state_data);
 
     // Dart -> Java communication (called from Dart, implemented via JNI callback)
     typedef void (*SendChatMessageCallback)(int64_t player_id, const char* message);

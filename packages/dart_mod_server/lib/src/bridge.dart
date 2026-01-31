@@ -148,6 +148,7 @@ class ServerBridge {
   static late final _ServerQueueEntityRegistration _serverQueueEntityRegistration;
   static late final _ServerQueueBlockEntityRegistration _serverQueueBlockEntityRegistration;
   static late final _ServerQueueAnimationRegistration _serverQueueAnimationRegistration;
+  static late final _ServerQueueOreFeatureRegistration _serverQueueOreFeatureRegistration;
   static late final _ServerSignalRegistrationsQueued _serverSignalRegistrationsQueued;
 
   // Callback registration functions
@@ -162,6 +163,11 @@ class ServerBridge {
   static late final _ServerRegisterProxyBlockRemovedHandler _serverRegisterProxyBlockRemovedHandler;
   static late final _ServerRegisterProxyBlockNeighborChangedHandler _serverRegisterProxyBlockNeighborChangedHandler;
   static late final _ServerRegisterProxyBlockEntityInsideHandler _serverRegisterProxyBlockEntityInsideHandler;
+
+  // Redstone callbacks
+  static late final _ServerRegisterProxyBlockGetSignalHandler _serverRegisterProxyBlockGetSignalHandler;
+  static late final _ServerRegisterProxyBlockGetDirectSignalHandler _serverRegisterProxyBlockGetDirectSignalHandler;
+  static late final _ServerRegisterProxyBlockGetAnalogOutputHandler _serverRegisterProxyBlockGetAnalogOutputHandler;
 
   static late final _ServerRegisterPlayerJoinHandler _serverRegisterPlayerJoinHandler;
   static late final _ServerRegisterPlayerLeaveHandler _serverRegisterPlayerLeaveHandler;
@@ -248,12 +254,14 @@ class ServerBridge {
             Pointer<Utf8>, Pointer<Utf8>,
             Float, Float, Bool, Int32,
             Double, Double, Double,
-            Bool, Bool, Bool, Bool),
+            Bool, Bool, Bool, Bool,
+            Bool, Bool, Pointer<Utf8>),
         int Function(
             Pointer<Utf8>, Pointer<Utf8>,
             double, double, bool, int,
             double, double, double,
-            bool, bool, bool, bool)>('server_queue_block_registration');
+            bool, bool, bool, bool,
+            bool, bool, Pointer<Utf8>)>('server_queue_block_registration');
 
     _serverQueueItemRegistration = lib.lookupFunction<
         Int64 Function(
@@ -286,6 +294,18 @@ class ServerBridge {
     _serverQueueAnimationRegistration = lib.lookupFunction<
         Void Function(Int64, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>),
         void Function(int, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>)>('server_queue_animation_registration');
+
+    _serverQueueOreFeatureRegistration = lib.lookupFunction<
+        Int64 Function(
+            Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>,
+            Int32, Int32, Int32, Int32,
+            Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>,
+            Pointer<Utf8>, Int32),
+        int Function(
+            Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>,
+            int, int, int, int,
+            Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>,
+            Pointer<Utf8>, int)>('server_queue_ore_feature_registration');
 
     _serverSignalRegistrationsQueued =
         lib.lookupFunction<Void Function(), void Function()>('server_signal_registrations_queued');
@@ -341,6 +361,19 @@ class ServerBridge {
     _serverRegisterProxyBlockEntityInsideHandler = lib.lookupFunction<
         Void Function(Pointer<NativeFunction<_ProxyBlockEntityInsideCallbackNative>>),
         void Function(Pointer<NativeFunction<_ProxyBlockEntityInsideCallbackNative>>)>('server_register_proxy_block_entity_inside_handler');
+
+    // Redstone handlers
+    _serverRegisterProxyBlockGetSignalHandler = lib.lookupFunction<
+        Void Function(Pointer<NativeFunction<_ProxyBlockGetSignalCallbackNative>>),
+        void Function(Pointer<NativeFunction<_ProxyBlockGetSignalCallbackNative>>)>('server_register_proxy_block_get_signal_handler');
+
+    _serverRegisterProxyBlockGetDirectSignalHandler = lib.lookupFunction<
+        Void Function(Pointer<NativeFunction<_ProxyBlockGetDirectSignalCallbackNative>>),
+        void Function(Pointer<NativeFunction<_ProxyBlockGetDirectSignalCallbackNative>>)>('server_register_proxy_block_get_direct_signal_handler');
+
+    _serverRegisterProxyBlockGetAnalogOutputHandler = lib.lookupFunction<
+        Void Function(Pointer<NativeFunction<_ProxyBlockGetAnalogOutputCallbackNative>>),
+        void Function(Pointer<NativeFunction<_ProxyBlockGetAnalogOutputCallbackNative>>)>('server_register_proxy_block_get_analog_output_handler');
 
     // Player handlers
     _serverRegisterPlayerJoinHandler = lib.lookupFunction<
@@ -561,6 +594,9 @@ class ServerBridge {
     required bool collidable,
     required bool replaceable,
     required bool burnable,
+    required bool isRedstoneSource,
+    required bool hasAnalogOutput,
+    required String propertiesJson,
   }) {
     // In datagen mode, return fake handler IDs (no FFI available)
     if (isDatagenMode) {
@@ -569,6 +605,7 @@ class ServerBridge {
 
     final namespacePtr = namespace.toNativeUtf8();
     final pathPtr = path.toNativeUtf8();
+    final propertiesJsonPtr = propertiesJson.toNativeUtf8();
 
     try {
       return _serverQueueBlockRegistration(
@@ -576,10 +613,12 @@ class ServerBridge {
         hardness, resistance, requiresTool, luminance,
         slipperiness, velocityMultiplier, jumpVelocityMultiplier,
         ticksRandomly, collidable, replaceable, burnable,
+        isRedstoneSource, hasAnalogOutput, propertiesJsonPtr,
       );
     } finally {
       calloc.free(namespacePtr);
       calloc.free(pathPtr);
+      calloc.free(propertiesJsonPtr);
     }
   }
 
@@ -743,6 +782,82 @@ class ServerBridge {
       calloc.free(blockIdPtr);
       calloc.free(animationTypePtr);
       calloc.free(animationJsonPtr);
+    }
+  }
+
+  /// Queue an ore feature for registration.
+  ///
+  /// Ore features define how ores generate in the world, including:
+  /// - Vein size and frequency
+  /// - Height range and distribution
+  /// - Block replacement rules
+  /// - Biome selection
+  /// - Optional deepslate variant
+  ///
+  /// [namespace] The mod namespace (e.g., "mymod")
+  /// [path] The feature path/name (e.g., "copper_ore_feature")
+  /// [oreBlockId] The block to generate (e.g., "mymod:copper_ore")
+  /// [veinSize] Maximum blocks per vein
+  /// [veinsPerChunk] Number of veins to attempt per chunk
+  /// [minY] Minimum Y level for generation
+  /// [maxY] Maximum Y level for generation
+  /// [distributionType] Height distribution: "uniform", "triangle", or "trapezoid"
+  /// [replaceableTag] Tag for replaceable blocks (e.g., "minecraft:stone_ore_replaceables")
+  /// [biomeSelector] Biome selection expression (e.g., "#minecraft:is_overworld")
+  /// [deepslateVariant] Optional deepslate variant block ID (empty if none)
+  /// [deepslateTransitionY] Y level where deepslate variant starts
+  ///
+  /// Returns the handler ID assigned to this ore feature.
+  static int queueOreFeatureRegistration({
+    required String namespace,
+    required String path,
+    required String oreBlockId,
+    required int veinSize,
+    required int veinsPerChunk,
+    required int minY,
+    required int maxY,
+    required String distributionType,
+    required String replaceableTag,
+    required String biomeSelector,
+    String deepslateVariant = '',
+    int deepslateTransitionY = 0,
+  }) {
+    // In datagen mode, return fake handler IDs
+    if (isDatagenMode) {
+      return _datagenHandlerId++;
+    }
+
+    final namespacePtr = namespace.toNativeUtf8();
+    final pathPtr = path.toNativeUtf8();
+    final oreBlockIdPtr = oreBlockId.toNativeUtf8();
+    final distributionTypePtr = distributionType.toNativeUtf8();
+    final replaceableTagPtr = replaceableTag.toNativeUtf8();
+    final biomeSelectorPtr = biomeSelector.toNativeUtf8();
+    final deepslateVariantPtr = deepslateVariant.toNativeUtf8();
+
+    try {
+      return _serverQueueOreFeatureRegistration(
+        namespacePtr,
+        pathPtr,
+        oreBlockIdPtr,
+        veinSize,
+        veinsPerChunk,
+        minY,
+        maxY,
+        distributionTypePtr,
+        replaceableTagPtr,
+        biomeSelectorPtr,
+        deepslateVariantPtr,
+        deepslateTransitionY,
+      );
+    } finally {
+      calloc.free(namespacePtr);
+      calloc.free(pathPtr);
+      calloc.free(oreBlockIdPtr);
+      calloc.free(distributionTypePtr);
+      calloc.free(replaceableTagPtr);
+      calloc.free(biomeSelectorPtr);
+      calloc.free(deepslateVariantPtr);
     }
   }
 
@@ -979,6 +1094,30 @@ class ServerBridge {
   }
 
   // ==========================================================================
+  // Block State Management APIs
+  // ==========================================================================
+
+  /// Set the state of a DartBlockProxy at a given position.
+  ///
+  /// This allows Dart custom blocks to programmatically change their state.
+  /// The block at the given position must be a DartBlockProxy.
+  ///
+  /// [worldId] is the hash code of the level (from level.hashCode() in Java).
+  /// [x], [y], [z] are the block coordinates.
+  /// [stateData] is the encoded block state (from CustomBlockState.encode()).
+  ///
+  /// Returns true if the state was set successfully.
+  static bool setBlockState(int worldId, int x, int y, int z, int stateData) {
+    if (isDatagenMode) return false;
+    return GenericJniBridge.callStaticBoolMethod(
+      'com/redstone/DartBridge',
+      'setProxyBlockState',
+      '(JIIII)Z',
+      [worldId, x, y, z, stateData],
+    );
+  }
+
+  // ==========================================================================
   // Callback Registration
   // ==========================================================================
 
@@ -1033,6 +1172,19 @@ class ServerBridge {
 
   static void registerProxyBlockEntityInsideHandler(Pointer<NativeFunction<_ProxyBlockEntityInsideCallbackNative>> callback) {
     _serverRegisterProxyBlockEntityInsideHandler(callback);
+  }
+
+  // Redstone Handlers
+  static void registerProxyBlockGetSignalHandler(Pointer<NativeFunction<_ProxyBlockGetSignalCallbackNative>> callback) {
+    _serverRegisterProxyBlockGetSignalHandler(callback);
+  }
+
+  static void registerProxyBlockGetDirectSignalHandler(Pointer<NativeFunction<_ProxyBlockGetDirectSignalCallbackNative>> callback) {
+    _serverRegisterProxyBlockGetDirectSignalHandler(callback);
+  }
+
+  static void registerProxyBlockGetAnalogOutputHandler(Pointer<NativeFunction<_ProxyBlockGetAnalogOutputCallbackNative>> callback) {
+    _serverRegisterProxyBlockGetAnalogOutputHandler(callback);
   }
 
   // Player Event Handlers
@@ -1193,7 +1345,8 @@ typedef _ServerQueueBlockRegistration = int Function(
     Pointer<Utf8>, Pointer<Utf8>,
     double, double, bool, int,
     double, double, double,
-    bool, bool, bool, bool);
+    bool, bool, bool, bool,
+    bool, bool, Pointer<Utf8>);
 
 typedef _ServerQueueItemRegistration = int Function(
     Pointer<Utf8>, Pointer<Utf8>,
@@ -1213,6 +1366,12 @@ typedef _ServerQueueBlockEntityRegistration = int Function(
 typedef _ServerQueueAnimationRegistration = void Function(
     int, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>);
 
+typedef _ServerQueueOreFeatureRegistration = int Function(
+    Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>,
+    int, int, int, int,
+    Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>,
+    Pointer<Utf8>, int);
+
 typedef _ServerSignalRegistrationsQueued = void Function();
 
 // Callback registration typedefs
@@ -1227,6 +1386,9 @@ typedef _ServerRegisterProxyBlockPlacedHandler = void Function(Pointer<NativeFun
 typedef _ServerRegisterProxyBlockRemovedHandler = void Function(Pointer<NativeFunction<_ProxyBlockRemovedCallbackNative>>);
 typedef _ServerRegisterProxyBlockNeighborChangedHandler = void Function(Pointer<NativeFunction<_ProxyBlockNeighborChangedCallbackNative>>);
 typedef _ServerRegisterProxyBlockEntityInsideHandler = void Function(Pointer<NativeFunction<_ProxyBlockEntityInsideCallbackNative>>);
+typedef _ServerRegisterProxyBlockGetSignalHandler = void Function(Pointer<NativeFunction<_ProxyBlockGetSignalCallbackNative>>);
+typedef _ServerRegisterProxyBlockGetDirectSignalHandler = void Function(Pointer<NativeFunction<_ProxyBlockGetDirectSignalCallbackNative>>);
+typedef _ServerRegisterProxyBlockGetAnalogOutputHandler = void Function(Pointer<NativeFunction<_ProxyBlockGetAnalogOutputCallbackNative>>);
 typedef _ServerRegisterPlayerJoinHandler = void Function(Pointer<NativeFunction<_PlayerJoinCallbackNative>>);
 typedef _ServerRegisterPlayerLeaveHandler = void Function(Pointer<NativeFunction<_PlayerLeaveCallbackNative>>);
 typedef _ServerRegisterPlayerRespawnHandler = void Function(Pointer<NativeFunction<_PlayerRespawnCallbackNative>>);
@@ -1289,6 +1451,9 @@ typedef _ProxyBlockPlacedCallbackNative = Void Function(Int64, Int64, Int32, Int
 typedef _ProxyBlockRemovedCallbackNative = Void Function(Int64, Int64, Int32, Int32, Int32);
 typedef _ProxyBlockNeighborChangedCallbackNative = Void Function(Int64, Int64, Int32, Int32, Int32, Int32, Int32, Int32);
 typedef _ProxyBlockEntityInsideCallbackNative = Void Function(Int64, Int64, Int32, Int32, Int32, Int32);
+typedef _ProxyBlockGetSignalCallbackNative = Int32 Function(Int64, Int32, Int32);
+typedef _ProxyBlockGetDirectSignalCallbackNative = Int32 Function(Int64, Int32, Int32);
+typedef _ProxyBlockGetAnalogOutputCallbackNative = Int32 Function(Int64, Int64, Int32, Int32, Int32, Int32);
 typedef _PlayerJoinCallbackNative = Void Function(Int32);
 typedef _PlayerLeaveCallbackNative = Void Function(Int32);
 typedef _PlayerRespawnCallbackNative = Void Function(Int32, Bool);

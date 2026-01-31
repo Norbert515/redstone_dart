@@ -80,6 +80,27 @@ public:
         proxy_block_entity_inside_handler_ = cb;
     }
 
+    // Redstone callback setters
+    void setProxyBlockGetSignalHandler(ProxyBlockGetSignalCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        proxy_block_get_signal_handler_ = cb;
+    }
+
+    void setProxyBlockGetDirectSignalHandler(ProxyBlockGetDirectSignalCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        proxy_block_get_direct_signal_handler_ = cb;
+    }
+
+    void setProxyBlockGetAnalogOutputHandler(ProxyBlockGetAnalogOutputCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        proxy_block_get_analog_output_handler_ = cb;
+    }
+
+    void setProxyBlockSetStateHandler(ProxyBlockSetStateCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        proxy_block_set_state_handler_ = cb;
+    }
+
     // New event handler setters
     void setPlayerJoinHandler(PlayerJoinCallback cb) {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -420,6 +441,38 @@ public:
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (proxy_block_entity_inside_handler_) {
             proxy_block_entity_inside_handler_(handler_id, world_id, x, y, z, entity_id);
+        }
+    }
+
+    // Redstone dispatch methods
+    int32_t dispatchProxyBlockGetSignal(int64_t handler_id, int32_t state_data, int32_t direction) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (proxy_block_get_signal_handler_) {
+            return proxy_block_get_signal_handler_(handler_id, state_data, direction);
+        }
+        return 0; // Default: no power
+    }
+
+    int32_t dispatchProxyBlockGetDirectSignal(int64_t handler_id, int32_t state_data, int32_t direction) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (proxy_block_get_direct_signal_handler_) {
+            return proxy_block_get_direct_signal_handler_(handler_id, state_data, direction);
+        }
+        return 0; // Default: no power
+    }
+
+    int32_t dispatchProxyBlockGetAnalogOutput(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t state_data) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (proxy_block_get_analog_output_handler_) {
+            return proxy_block_get_analog_output_handler_(handler_id, world_id, x, y, z, state_data);
+        }
+        return 0; // Default: no output
+    }
+
+    void dispatchProxyBlockSetState(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t new_state_data) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        if (proxy_block_set_state_handler_) {
+            proxy_block_set_state_handler_(handler_id, world_id, x, y, z, new_state_data);
         }
     }
 
@@ -910,6 +963,11 @@ public:
         proxy_block_removed_handler_ = nullptr;
         proxy_block_neighbor_changed_handler_ = nullptr;
         proxy_block_entity_inside_handler_ = nullptr;
+        // Redstone handlers
+        proxy_block_get_signal_handler_ = nullptr;
+        proxy_block_get_direct_signal_handler_ = nullptr;
+        proxy_block_get_analog_output_handler_ = nullptr;
+        proxy_block_set_state_handler_ = nullptr;
         // New event handlers
         player_join_handler_ = nullptr;
         player_leave_handler_ = nullptr;
@@ -995,6 +1053,12 @@ private:
     ProxyBlockRemovedCallback proxy_block_removed_handler_ = nullptr;
     ProxyBlockNeighborChangedCallback proxy_block_neighbor_changed_handler_ = nullptr;
     ProxyBlockEntityInsideCallback proxy_block_entity_inside_handler_ = nullptr;
+
+    // Redstone handlers
+    ProxyBlockGetSignalCallback proxy_block_get_signal_handler_ = nullptr;
+    ProxyBlockGetDirectSignalCallback proxy_block_get_direct_signal_handler_ = nullptr;
+    ProxyBlockGetAnalogOutputCallback proxy_block_get_analog_output_handler_ = nullptr;
+    ProxyBlockSetStateCallback proxy_block_set_state_handler_ = nullptr;
 
     // New event handlers
     PlayerJoinCallback player_join_handler_ = nullptr;

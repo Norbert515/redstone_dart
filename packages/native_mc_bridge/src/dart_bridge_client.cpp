@@ -134,6 +134,13 @@ static int32_t g_metal_frame_height = 0;
 static std::atomic<bool> g_container_frame_ready{false};
 
 // ==========================================================================
+// Screen Frame Ready Signal
+// ==========================================================================
+// This flag is set by Dart after a custom screen UI frame has been painted.
+// Java waits for this flag to ensure the correct frame is displayed.
+static std::atomic<bool> g_screen_frame_ready{false};
+
+// ==========================================================================
 // Client Callback Registry (separate from server)
 // ==========================================================================
 
@@ -183,6 +190,14 @@ public:
 
     // Container prewarm handler (for preloading when player looks at container)
     void setContainerPrewarmHandler(ContainerPrewarmCallback cb) { container_prewarm_handler_ = cb; }
+
+    // HUD overlay handlers
+    void setHudShowHandler(HudShowCallback cb) { hud_show_handler_ = cb; }
+    void setHudHideHandler(HudHideCallback cb) { hud_hide_handler_ = cb; }
+
+    // Custom screen handlers
+    void setCustomScreenOpenHandler(CustomScreenOpenCallback cb) { custom_screen_open_handler_ = cb; }
+    void setCustomScreenCloseHandler(CustomScreenCloseCallback cb) { custom_screen_close_handler_ = cb; }
 
     // Network packet handler
     void setPacketReceivedHandler(ClientPacketReceivedCallback cb) { packet_received_handler_ = cb; }
@@ -303,6 +318,24 @@ public:
         if (container_prewarm_handler_) container_prewarm_handler_(container_id);
     }
 
+    // HUD overlay dispatch
+    void dispatchHudShow(const char* overlay_id) {
+        if (hud_show_handler_) hud_show_handler_(overlay_id);
+    }
+
+    void dispatchHudHide(const char* overlay_id) {
+        if (hud_hide_handler_) hud_hide_handler_(overlay_id);
+    }
+
+    // Custom screen dispatch
+    void dispatchCustomScreenOpen(int32_t screen_id, const char* screen_type, int32_t width, int32_t height) {
+        if (custom_screen_open_handler_) custom_screen_open_handler_(screen_id, screen_type, width, height);
+    }
+
+    void dispatchCustomScreenClose(int32_t screen_id) {
+        if (custom_screen_close_handler_) custom_screen_close_handler_(screen_id);
+    }
+
     void clear() {
         screen_init_handler_ = nullptr;
         screen_tick_handler_ = nullptr;
@@ -328,6 +361,10 @@ public:
         container_close_handler_ = nullptr;
         container_data_changed_handler_ = nullptr;
         container_prewarm_handler_ = nullptr;
+        hud_show_handler_ = nullptr;
+        hud_hide_handler_ = nullptr;
+        custom_screen_open_handler_ = nullptr;
+        custom_screen_close_handler_ = nullptr;
         packet_received_handler_ = nullptr;
     }
 
@@ -359,6 +396,10 @@ private:
     ContainerCloseCallback container_close_handler_ = nullptr;
     ContainerDataChangedCallback container_data_changed_handler_ = nullptr;
     ContainerPrewarmCallback container_prewarm_handler_ = nullptr;
+    HudShowCallback hud_show_handler_ = nullptr;
+    HudHideCallback hud_hide_handler_ = nullptr;
+    CustomScreenOpenCallback custom_screen_open_handler_ = nullptr;
+    CustomScreenCloseCallback custom_screen_close_handler_ = nullptr;
     ClientPacketReceivedCallback packet_received_handler_ = nullptr;
 };
 
@@ -1022,6 +1063,14 @@ void client_register_container_data_changed_handler(ContainerDataChangedCallback
 // Container prewarm callback registration (for preloading when player looks at container)
 void client_register_container_prewarm_handler(ContainerPrewarmCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setContainerPrewarmHandler(cb); }
 
+// HUD overlay callback registration
+void client_register_hud_show_handler(HudShowCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setHudShowHandler(cb); }
+void client_register_hud_hide_handler(HudHideCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setHudHideHandler(cb); }
+
+// Custom screen callback registration
+void client_register_custom_screen_open_handler(CustomScreenOpenCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setCustomScreenOpenHandler(cb); }
+void client_register_custom_screen_close_handler(CustomScreenCloseCallback cb) { dart_mc_bridge::ClientCallbackRegistry::instance().setCustomScreenCloseHandler(cb); }
+
 // ==========================================================================
 // Event Dispatch (called from Java via JNI)
 // Client-side uses direct FFI calls (single thread, no isolate switching)
@@ -1190,6 +1239,62 @@ void client_dispatch_container_prewarm(const char* container_id) {
 
     // Dispatch container prewarm event to Dart
     dart_mc_bridge::ClientCallbackRegistry::instance().dispatchContainerPrewarm(container_id_copy);
+}
+
+// ==========================================================================
+// HUD Overlay Event Dispatch (called from Java via JNI)
+// ==========================================================================
+
+void client_dispatch_hud_show(const char* overlay_id) {
+    CLIENT_DISPATCH_CHECK();
+
+    // Allocate persistent copy of string using malloc (Dart will free it)
+    char* overlay_id_copy = nullptr;
+    if (overlay_id && overlay_id[0] != '\0') {
+        size_t len = strlen(overlay_id) + 1;
+        overlay_id_copy = (char*)malloc(len);
+        if (overlay_id_copy) memcpy(overlay_id_copy, overlay_id, len);
+    }
+
+    dart_mc_bridge::ClientCallbackRegistry::instance().dispatchHudShow(overlay_id_copy);
+}
+
+void client_dispatch_hud_hide(const char* overlay_id) {
+    CLIENT_DISPATCH_CHECK();
+
+    // Allocate persistent copy of string using malloc (Dart will free it)
+    char* overlay_id_copy = nullptr;
+    if (overlay_id && overlay_id[0] != '\0') {
+        size_t len = strlen(overlay_id) + 1;
+        overlay_id_copy = (char*)malloc(len);
+        if (overlay_id_copy) memcpy(overlay_id_copy, overlay_id, len);
+    }
+
+    dart_mc_bridge::ClientCallbackRegistry::instance().dispatchHudHide(overlay_id_copy);
+}
+
+// ==========================================================================
+// Custom Screen Event Dispatch (called from Java via JNI)
+// ==========================================================================
+
+void client_dispatch_custom_screen_open(int32_t screen_id, const char* screen_type, int32_t width, int32_t height) {
+    CLIENT_DISPATCH_CHECK();
+
+    // Allocate persistent copy of string using malloc (Dart will free it)
+    char* screen_type_copy = nullptr;
+    if (screen_type && screen_type[0] != '\0') {
+        size_t len = strlen(screen_type) + 1;
+        screen_type_copy = (char*)malloc(len);
+        if (screen_type_copy) memcpy(screen_type_copy, screen_type, len);
+    }
+
+    dart_mc_bridge::ClientCallbackRegistry::instance().dispatchCustomScreenOpen(screen_id, screen_type_copy, width, height);
+}
+
+void client_dispatch_custom_screen_close(int32_t screen_id) {
+    CLIENT_DISPATCH_CHECK();
+
+    dart_mc_bridge::ClientCallbackRegistry::instance().dispatchCustomScreenClose(screen_id);
 }
 
 // ==========================================================================
@@ -1755,6 +1860,22 @@ bool dart_client_is_container_frame_ready() {
 
 void dart_client_clear_container_frame_ready() {
     g_container_frame_ready.store(false);
+}
+
+// ==========================================================================
+// Screen Frame Ready Signal Functions
+// ==========================================================================
+
+void dart_client_signal_screen_frame_ready() {
+    g_screen_frame_ready.store(true);
+}
+
+bool dart_client_is_screen_frame_ready() {
+    return g_screen_frame_ready.load();
+}
+
+void dart_client_clear_screen_frame_ready() {
+    g_screen_frame_ready.store(false);
 }
 
 } // extern "C"

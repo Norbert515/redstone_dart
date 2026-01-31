@@ -280,6 +280,27 @@ void _onProxyBlockEntityInside(
 }
 
 // =============================================================================
+// Proxy Block Redstone Callback Trampolines - route to BlockRegistry
+// =============================================================================
+
+@pragma('vm:entry-point')
+int _onProxyBlockGetSignal(int handlerId, int stateData, int direction) {
+  return BlockRegistry.dispatchGetSignal(handlerId, stateData, direction);
+}
+
+@pragma('vm:entry-point')
+int _onProxyBlockGetDirectSignal(int handlerId, int stateData, int direction) {
+  return BlockRegistry.dispatchGetDirectSignal(handlerId, stateData, direction);
+}
+
+@pragma('vm:entry-point')
+int _onProxyBlockGetAnalogOutput(
+    int handlerId, int worldId, int x, int y, int z, int stateData) {
+  return BlockRegistry.dispatchGetAnalogOutput(
+      handlerId, worldId, x, y, z, stateData);
+}
+
+// =============================================================================
 // Proxy Entity Callback Trampolines - route to EntityRegistry
 // =============================================================================
 
@@ -410,6 +431,9 @@ typedef _ProxyBlockNeighborChangedCallbackNative = Void Function(
     Int64, Int64, Int32, Int32, Int32, Int32, Int32, Int32);
 typedef _ProxyBlockEntityInsideCallbackNative = Void Function(
     Int64, Int64, Int32, Int32, Int32, Int32);
+typedef _ProxyBlockGetSignalCallbackNative = Int32 Function(Int64, Int32, Int32);
+typedef _ProxyBlockGetDirectSignalCallbackNative = Int32 Function(Int64, Int32, Int32);
+typedef _ProxyBlockGetAnalogOutputCallbackNative = Int32 Function(Int64, Int64, Int32, Int32, Int32, Int32);
 typedef _PlayerJoinCallbackNative = Void Function(Int32);
 typedef _PlayerLeaveCallbackNative = Void Function(Int32);
 typedef _PlayerRespawnCallbackNative = Void Function(Int32, Bool);
@@ -568,6 +592,22 @@ class Events {
         Pointer.fromFunction<_ProxyBlockEntityInsideCallbackNative>(
             _onProxyBlockEntityInside);
     ServerBridge.registerProxyBlockEntityInsideHandler(entityInsideCallback);
+
+    // Redstone handlers
+    final getSignalCallback =
+        Pointer.fromFunction<_ProxyBlockGetSignalCallbackNative>(
+            _onProxyBlockGetSignal, 0);
+    ServerBridge.registerProxyBlockGetSignalHandler(getSignalCallback);
+
+    final getDirectSignalCallback =
+        Pointer.fromFunction<_ProxyBlockGetDirectSignalCallbackNative>(
+            _onProxyBlockGetDirectSignal, 0);
+    ServerBridge.registerProxyBlockGetDirectSignalHandler(getDirectSignalCallback);
+
+    final getAnalogOutputCallback =
+        Pointer.fromFunction<_ProxyBlockGetAnalogOutputCallbackNative>(
+            _onProxyBlockGetAnalogOutput, 0);
+    ServerBridge.registerProxyBlockGetAnalogOutputHandler(getAnalogOutputCallback);
 
     print('Events: Proxy block handlers registered');
   }

@@ -65,6 +65,14 @@ typedef void (*ProxyBlockNeighborChangedCallback)(int64_t handler_id, int64_t wo
 typedef void (*ProxyBlockEntityInsideCallback)(int64_t handler_id, int64_t world_id,
                                                 int32_t x, int32_t y, int32_t z, int32_t entity_id);
 
+// Redstone callbacks - return power levels (0-15)
+typedef int32_t (*ProxyBlockGetSignalCallback)(int64_t handler_id, int32_t state_data, int32_t direction);
+typedef int32_t (*ProxyBlockGetDirectSignalCallback)(int64_t handler_id, int32_t state_data, int32_t direction);
+typedef int32_t (*ProxyBlockGetAnalogOutputCallback)(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t state_data);
+
+// Block state change callback - called when Dart wants to update a block's state
+typedef void (*ProxyBlockSetStateCallback)(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t new_state_data);
+
 // Block entity callbacks
 typedef void (*BlockEntitySetLevelCallback)(int32_t handler_id, int64_t block_pos_hash);
 typedef void (*BlockEntityLoadCallback)(int32_t handler_id, int64_t block_pos_hash, const char* nbt_json);
@@ -165,6 +173,12 @@ void server_register_proxy_block_removed_handler(ProxyBlockRemovedCallback cb);
 void server_register_proxy_block_neighbor_changed_handler(ProxyBlockNeighborChangedCallback cb);
 void server_register_proxy_block_entity_inside_handler(ProxyBlockEntityInsideCallback cb);
 
+// Redstone callback registration
+void server_register_proxy_block_get_signal_handler(ProxyBlockGetSignalCallback cb);
+void server_register_proxy_block_get_direct_signal_handler(ProxyBlockGetDirectSignalCallback cb);
+void server_register_proxy_block_get_analog_output_handler(ProxyBlockGetAnalogOutputCallback cb);
+void server_register_proxy_block_set_state_handler(ProxyBlockSetStateCallback cb);
+
 // Block entity callback registration
 void server_register_block_entity_set_level_handler(BlockEntitySetLevelCallback cb);
 void server_register_block_entity_load_handler(BlockEntityLoadCallback cb);
@@ -249,6 +263,15 @@ void server_dispatch_proxy_block_neighbor_changed(int64_t handler_id, int64_t wo
                                                    int32_t neighbor_x, int32_t neighbor_y, int32_t neighbor_z);
 void server_dispatch_proxy_block_entity_inside(int64_t handler_id, int64_t world_id,
                                                 int32_t x, int32_t y, int32_t z, int32_t entity_id);
+
+// Redstone dispatch functions (called from Java via JNI)
+// Returns power level (0-15)
+int32_t server_dispatch_proxy_block_get_signal(int64_t handler_id, int32_t state_data, int32_t direction);
+int32_t server_dispatch_proxy_block_get_direct_signal(int64_t handler_id, int32_t state_data, int32_t direction);
+int32_t server_dispatch_proxy_block_get_analog_output(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t state_data);
+
+// Block state dispatch (called from Java when state needs to be updated)
+void server_dispatch_proxy_block_set_state(int64_t handler_id, int64_t world_id, int32_t x, int32_t y, int32_t z, int32_t new_state_data);
 
 // Block entity dispatch functions
 void server_dispatch_block_entity_set_level(int32_t handler_id, int64_t block_pos_hash);
@@ -344,7 +367,8 @@ int64_t server_queue_block_registration(
     const char* namespace_id, const char* path,
     float hardness, float resistance, bool requires_tool, int32_t luminance,
     double slipperiness, double velocity_multiplier, double jump_velocity_multiplier,
-    bool ticks_randomly, bool collidable, bool replaceable, bool burnable);
+    bool ticks_randomly, bool collidable, bool replaceable, bool burnable,
+    bool is_redstone_source, bool has_analog_output, const char* properties_json);
 
 int64_t server_queue_item_registration(
     const char* namespace_id, const char* path,
@@ -376,7 +400,9 @@ bool server_get_next_block_registration(
     int32_t* out_luminance, double* out_slipperiness,
     double* out_velocity_mult, double* out_jump_velocity_mult,
     bool* out_ticks_randomly, bool* out_collidable,
-    bool* out_replaceable, bool* out_burnable);
+    bool* out_replaceable, bool* out_burnable,
+    bool* out_is_redstone_source, bool* out_has_analog_output,
+    char* out_properties_json, size_t properties_json_len);
 
 bool server_get_next_item_registration(
     int64_t* out_handler_id,
@@ -470,5 +496,64 @@ bool server_get_next_animation_registration(
     char* out_block_id, size_t block_id_len,
     char* out_animation_type, size_t animation_type_len,
     char* out_animation_json, size_t animation_json_len);
+
+// ==========================================================================
+// Ore Feature Registration Queue Functions
+// ==========================================================================
+
+/**
+ * Queue an ore feature registration from Dart.
+ *
+ * @param namespace_str The namespace (e.g., "mymod")
+ * @param path The path/name (e.g., "copper_ore_feature")
+ * @param ore_block_id The block to generate (e.g., "mymod:copper_ore")
+ * @param vein_size Maximum blocks per vein
+ * @param veins_per_chunk Number of veins to attempt per chunk
+ * @param min_y Minimum Y level for generation
+ * @param max_y Maximum Y level for generation
+ * @param distribution_type Height distribution type ("uniform", "triangle", "trapezoid")
+ * @param replaceable_tag Tag for replaceable blocks (e.g., "minecraft:stone_ore_replaceables")
+ * @param biome_selector Biome selection expression (e.g., "#minecraft:is_overworld")
+ * @param deepslate_variant Optional deepslate variant block ID (empty string if none)
+ * @param deepslate_transition_y Y level where deepslate variant starts
+ * @return Handler ID assigned to this ore feature
+ */
+int64_t server_queue_ore_feature_registration(
+    const char* namespace_str,
+    const char* path,
+    const char* ore_block_id,
+    int32_t vein_size,
+    int32_t veins_per_chunk,
+    int32_t min_y,
+    int32_t max_y,
+    const char* distribution_type,
+    const char* replaceable_tag,
+    const char* biome_selector,
+    const char* deepslate_variant,
+    int32_t deepslate_transition_y);
+
+/**
+ * Check if there are pending ore feature registrations.
+ */
+bool server_has_pending_ore_feature_registrations();
+
+/**
+ * Get the next ore feature registration from the queue.
+ * Returns true if a registration was retrieved, false if queue is empty.
+ */
+bool server_get_next_ore_feature_registration(
+    int64_t* out_handler_id,
+    char* out_namespace, size_t namespace_len,
+    char* out_path, size_t path_len,
+    char* out_ore_block_id, size_t ore_block_id_len,
+    int32_t* out_vein_size,
+    int32_t* out_veins_per_chunk,
+    int32_t* out_min_y,
+    int32_t* out_max_y,
+    char* out_distribution_type, size_t distribution_type_len,
+    char* out_replaceable_tag, size_t replaceable_tag_len,
+    char* out_biome_selector, size_t biome_selector_len,
+    char* out_deepslate_variant, size_t deepslate_variant_len,
+    int32_t* out_deepslate_transition_y);
 
 } // extern "C"

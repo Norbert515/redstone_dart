@@ -551,6 +551,93 @@ JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyBlockEntityInside(
 }
 
 // ==========================================================================
+// Redstone Proxy Block JNI Entry Points (server-side)
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockGetSignal
+ * Signature: (JII)I
+ *
+ * Called from Java proxy blocks to get redstone signal power.
+ * Routes to Dart's BlockRegistry.dispatchGetSignal().
+ * Returns power level (0-15).
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onProxyBlockGetSignal(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jint state_data, jint direction) {
+
+    return static_cast<jint>(server_dispatch_proxy_block_get_signal(
+        static_cast<int64_t>(handler_id),
+        static_cast<int32_t>(state_data),
+        static_cast<int32_t>(direction)));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockGetDirectSignal
+ * Signature: (JII)I
+ *
+ * Called from Java proxy blocks to get direct (strong) redstone signal power.
+ * Routes to Dart's BlockRegistry.dispatchGetDirectSignal().
+ * Returns power level (0-15).
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onProxyBlockGetDirectSignal(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jint state_data, jint direction) {
+
+    return static_cast<jint>(server_dispatch_proxy_block_get_direct_signal(
+        static_cast<int64_t>(handler_id),
+        static_cast<int32_t>(state_data),
+        static_cast<int32_t>(direction)));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockGetAnalogOutput
+ * Signature: (JJIIII)I
+ *
+ * Called from Java proxy blocks to get analog output signal (comparator).
+ * Routes to Dart's BlockRegistry.dispatchGetAnalogOutput().
+ * Returns power level (0-15).
+ */
+JNIEXPORT jint JNICALL Java_com_redstone_DartBridge_onProxyBlockGetAnalogOutput(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z, jint state_data) {
+
+    return static_cast<jint>(server_dispatch_proxy_block_get_analog_output(
+        static_cast<int64_t>(handler_id),
+        static_cast<int64_t>(world_id),
+        static_cast<int32_t>(x),
+        static_cast<int32_t>(y),
+        static_cast<int32_t>(z),
+        static_cast<int32_t>(state_data)));
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    onProxyBlockSetState
+ * Signature: (JJIIII)V
+ *
+ * Called from Java when a block state needs to be updated.
+ * Routes to Dart's BlockRegistry.dispatchSetState().
+ */
+JNIEXPORT void JNICALL Java_com_redstone_DartBridge_onProxyBlockSetState(
+    JNIEnv* /* env */, jclass /* cls */,
+    jlong handler_id, jlong world_id,
+    jint x, jint y, jint z, jint new_state_data) {
+
+    server_dispatch_proxy_block_set_state(
+        static_cast<int64_t>(handler_id),
+        static_cast<int64_t>(world_id),
+        static_cast<int32_t>(x),
+        static_cast<int32_t>(y),
+        static_cast<int32_t>(z),
+        static_cast<int32_t>(new_state_data));
+}
+
+// ==========================================================================
 // Player Event JNI Entry Points (server-side)
 // ==========================================================================
 
@@ -1216,6 +1303,8 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockRegistra
     int32_t luminance;
     double slipperiness, velocity_mult, jump_velocity_mult;
     bool ticks_randomly, collidable, replaceable, burnable;
+    bool is_redstone_source, has_analog_output;
+    char properties_json_buf[4096];
 
     if (!server_get_next_block_registration(
             &handler_id,
@@ -1231,13 +1320,16 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockRegistra
             &ticks_randomly,
             &collidable,
             &replaceable,
-            &burnable)) {
+            &burnable,
+            &is_redstone_source,
+            &has_analog_output,
+            properties_json_buf, sizeof(properties_json_buf))) {
         return nullptr;
     }
 
-    // Create Object array with 14 elements
+    // Create Object array with 17 elements (14 original + 3 new: isRedstoneSource, hasAnalogOutput, propertiesJson)
     jclass objectClass = env->FindClass("java/lang/Object");
-    jobjectArray result = env->NewObjectArray(14, objectClass, nullptr);
+    jobjectArray result = env->NewObjectArray(17, objectClass, nullptr);
 
     // Use shared boxing helpers from jni_helpers.h
     env->SetObjectArrayElement(result, 0, boxLong(env, static_cast<jlong>(handler_id)));
@@ -1254,6 +1346,9 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextBlockRegistra
     env->SetObjectArrayElement(result, 11, boxBool(env, collidable ? JNI_TRUE : JNI_FALSE));
     env->SetObjectArrayElement(result, 12, boxBool(env, replaceable ? JNI_TRUE : JNI_FALSE));
     env->SetObjectArrayElement(result, 13, boxBool(env, burnable ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 14, boxBool(env, is_redstone_source ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 15, boxBool(env, has_analog_output ? JNI_TRUE : JNI_FALSE));
+    env->SetObjectArrayElement(result, 16, env->NewStringUTF(properties_json_buf));
 
     return result;
 }
@@ -1659,6 +1754,88 @@ JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextAnimationRegi
     env->SetObjectArrayElement(result, 1, env->NewStringUTF(block_id_buf));
     env->SetObjectArrayElement(result, 2, env->NewStringUTF(animation_type_buf));
     env->SetObjectArrayElement(result, 3, env->NewStringUTF(animation_json_buf));
+
+    return result;
+}
+
+// ==========================================================================
+// Ore Feature Registration Queue JNI Entry Points
+// ==========================================================================
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    hasPendingOreFeatureRegistrations
+ * Signature: ()Z
+ *
+ * Check if there are pending ore feature registrations in the queue.
+ */
+JNIEXPORT jboolean JNICALL Java_com_redstone_DartBridge_hasPendingOreFeatureRegistrations(
+    JNIEnv* /* env */, jclass /* cls */) {
+    return server_has_pending_ore_feature_registrations() ? JNI_TRUE : JNI_FALSE;
+}
+
+/*
+ * Class:     com_redstone_DartBridge
+ * Method:    getNextOreFeatureRegistration
+ * Signature: ()[Ljava/lang/Object;
+ *
+ * Get the next ore feature registration from the queue.
+ * Returns an Object array: [handlerId(Long), namespace(String), path(String),
+ *                           oreBlockId(String), veinSize(Integer), veinsPerChunk(Integer),
+ *                           minY(Integer), maxY(Integer), distributionType(String),
+ *                           replaceableTag(String), biomeSelector(String),
+ *                           deepslateVariant(String), deepslateTransitionY(Integer)]
+ * Returns null if the queue is empty.
+ */
+JNIEXPORT jobjectArray JNICALL Java_com_redstone_DartBridge_getNextOreFeatureRegistration(
+    JNIEnv* env, jclass /* cls */) {
+
+    int64_t handler_id;
+    char namespace_buf[256];
+    char path_buf[256];
+    char ore_block_id_buf[256];
+    int32_t vein_size, veins_per_chunk, min_y, max_y;
+    char distribution_type_buf[64];
+    char replaceable_tag_buf[256];
+    char biome_selector_buf[512];
+    char deepslate_variant_buf[256];
+    int32_t deepslate_transition_y;
+
+    if (!server_get_next_ore_feature_registration(
+            &handler_id,
+            namespace_buf, sizeof(namespace_buf),
+            path_buf, sizeof(path_buf),
+            ore_block_id_buf, sizeof(ore_block_id_buf),
+            &vein_size,
+            &veins_per_chunk,
+            &min_y,
+            &max_y,
+            distribution_type_buf, sizeof(distribution_type_buf),
+            replaceable_tag_buf, sizeof(replaceable_tag_buf),
+            biome_selector_buf, sizeof(biome_selector_buf),
+            deepslate_variant_buf, sizeof(deepslate_variant_buf),
+            &deepslate_transition_y)) {
+        return nullptr;
+    }
+
+    // Create Object array with 13 elements
+    jclass objectClass = env->FindClass("java/lang/Object");
+    jobjectArray result = env->NewObjectArray(13, objectClass, nullptr);
+
+    // Use shared boxing helpers from jni_helpers.h
+    env->SetObjectArrayElement(result, 0, boxLong(env, static_cast<jlong>(handler_id)));
+    env->SetObjectArrayElement(result, 1, env->NewStringUTF(namespace_buf));
+    env->SetObjectArrayElement(result, 2, env->NewStringUTF(path_buf));
+    env->SetObjectArrayElement(result, 3, env->NewStringUTF(ore_block_id_buf));
+    env->SetObjectArrayElement(result, 4, boxInt(env, vein_size));
+    env->SetObjectArrayElement(result, 5, boxInt(env, veins_per_chunk));
+    env->SetObjectArrayElement(result, 6, boxInt(env, min_y));
+    env->SetObjectArrayElement(result, 7, boxInt(env, max_y));
+    env->SetObjectArrayElement(result, 8, env->NewStringUTF(distribution_type_buf));
+    env->SetObjectArrayElement(result, 9, env->NewStringUTF(replaceable_tag_buf));
+    env->SetObjectArrayElement(result, 10, env->NewStringUTF(biome_selector_buf));
+    env->SetObjectArrayElement(result, 11, env->NewStringUTF(deepslate_variant_buf));
+    env->SetObjectArrayElement(result, 12, boxInt(env, deepslate_transition_y));
 
     return result;
 }

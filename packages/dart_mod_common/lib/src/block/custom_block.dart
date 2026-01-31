@@ -5,7 +5,9 @@ import '../registry/registrable.dart';
 import '../types.dart';
 import 'block_animation.dart';
 import 'block_model.dart';
+import 'block_property.dart';
 import 'block_settings.dart';
+import 'block_state.dart';
 
 /// Base class for Dart-defined blocks.
 ///
@@ -141,4 +143,76 @@ abstract class CustomBlock implements Registrable {
 
   @override
   String toString() => 'CustomBlock($id, registered=$isRegistered)';
+
+  // === Block State Methods ===
+
+  /// Block state properties defined by this block.
+  List<BlockProperty> get properties => settings.properties;
+
+  /// Get the default block state.
+  CustomBlockState get defaultState => CustomBlockState.defaultState(id, properties);
+
+  /// Decode a state from encoded integer.
+  CustomBlockState decodeState(int encoded) =>
+      CustomBlockState.fromEncoded(id, properties, encoded);
+
+  // === Redstone Methods ===
+
+  /// Whether this block is a redstone signal source.
+  bool get isSignalSource => settings.isRedstoneSource;
+
+  /// Get the weak (indirect) signal power emitted in the given direction.
+  ///
+  /// Override this to provide custom redstone signal output.
+  /// Returns 0-15.
+  int getSignal(CustomBlockState state, Direction direction) => 0;
+
+  /// Get the strong (direct) signal power emitted in the given direction.
+  ///
+  /// Override this to provide strong power that can power blocks through other blocks.
+  /// Returns 0-15.
+  int getDirectSignal(CustomBlockState state, Direction direction) => 0;
+
+  /// Whether this block has analog (comparator) output.
+  bool get hasAnalogOutput => settings.hasAnalogOutput;
+
+  /// Get the analog output signal for comparators.
+  ///
+  /// Override this to provide comparator readings (e.g., container fullness).
+  /// Returns 0-15.
+  int getAnalogOutputSignal(CustomBlockState state, int worldId, int x, int y, int z) => 0;
+
+  /// Get the state for when this block is placed.
+  ///
+  /// Override to set initial property values based on placement context.
+  CustomBlockState getStateForPlacement(BlockPlacementContext context) => defaultState;
+
+  /// Called when the block state changes.
+  ///
+  /// Override to react to state changes.
+  void onStateChange(
+      int worldId, int x, int y, int z, CustomBlockState oldState, CustomBlockState newState) {
+    // Default: no action
+  }
+}
+
+/// Context for block placement.
+class BlockPlacementContext {
+  final int worldId;
+  final int x;
+  final int y;
+  final int z;
+  final int playerId;
+  final Direction clickedFace;
+  final Direction playerFacing;
+
+  const BlockPlacementContext({
+    required this.worldId,
+    required this.x,
+    required this.y,
+    required this.z,
+    required this.playerId,
+    required this.clickedFace,
+    required this.playerFacing,
+  });
 }

@@ -177,6 +177,10 @@ class BlockRegistry extends Registry<CustomBlock> {
   @override
   int queueRegistration(CustomBlock block) {
     final parts = block.id.split(':');
+
+    // Serialize block properties to JSON
+    final propertiesJson = _serializeProperties(block.settings.properties);
+
     final handlerId = ServerBridge.queueBlockRegistration(
       namespace: parts[0],
       path: parts[1],
@@ -191,6 +195,9 @@ class BlockRegistry extends Registry<CustomBlock> {
       collidable: block.settings.collidable,
       replaceable: block.settings.replaceable,
       burnable: block.settings.burnable,
+      isRedstoneSource: block.settings.isRedstoneSource,
+      hasAnalogOutput: block.settings.hasAnalogOutput,
+      propertiesJson: propertiesJson,
     );
 
     // If block has animation, queue the animation registration
@@ -363,6 +370,43 @@ class BlockRegistry extends Registry<CustomBlock> {
     print('BlockRegistry: Registered animated elements JSON for $blockId (${modelJson.length} chars)');
   }
 
+  /// Serialize block properties to JSON for passing to the native bridge.
+  ///
+  /// Format: [{"type": "boolean", "name": "powered"}, {"type": "int", "name": "power", "min": 0, "max": 15}, ...]
+  static String _serializeProperties(List<BlockProperty> properties) {
+    if (properties.isEmpty) return '[]';
+
+    final propList = <Map<String, dynamic>>[];
+    for (final prop in properties) {
+      final propJson = <String, dynamic>{'name': prop.name};
+
+      if (prop is BooleanProperty) {
+        propJson['type'] = 'boolean';
+      } else if (prop is IntProperty) {
+        propJson['type'] = 'int';
+        propJson['min'] = prop.min;
+        propJson['max'] = prop.max;
+      } else if (prop is DirectionProperty) {
+        propJson['type'] = 'direction';
+        // Determine if horizontal or all directions
+        if (prop.allowedDirections.length == 4 &&
+            !prop.allowedDirections.contains(Direction.up) &&
+            !prop.allowedDirections.contains(Direction.down)) {
+          propJson['directions'] = 'horizontal';
+        } else {
+          propJson['directions'] = 'all';
+        }
+      } else if (prop is EnumProperty) {
+        propJson['type'] = 'enum';
+        propJson['values'] = prop.values.map((e) => e.name).toList();
+      }
+
+      propList.add(propJson);
+    }
+
+    return jsonEncode(propList);
+  }
+
   /// Internal freeze implementation with datagen mode check.
   void _freezeWithDatagenCheck() {
     _freeze();
@@ -522,6 +566,55 @@ class BlockRegistry extends Registry<CustomBlock> {
   ) {
     final block = _instance.getByHandler(handlerId);
     block?.entityInside(worldId, x, y, z, entityId);
+  }
+
+  // ===========================================================================
+  // Redstone dispatch methods - called from native code
+  // ===========================================================================
+
+  /// Dispatch a get signal event to the appropriate handler.
+  /// Called from native code via callback.
+  /// Returns 0-15 signal strength.
+  @pragma('vm:entry-point')
+  static int dispatchGetSignal(int handlerId, int stateData, int direction) {
+    final block = _instance.getByHandler(handlerId);
+    if (block == null) return 0;
+
+    final state = block.decodeState(stateData);
+    final dir = Direction.values[direction];
+    return block.getSignal(state, dir).clamp(0, 15);
+  }
+
+  /// Dispatch a get direct signal event to the appropriate handler.
+  /// Called from native code via callback.
+  /// Returns 0-15 signal strength.
+  @pragma('vm:entry-point')
+  static int dispatchGetDirectSignal(int handlerId, int stateData, int direction) {
+    final block = _instance.getByHandler(handlerId);
+    if (block == null) return 0;
+
+    final state = block.decodeState(stateData);
+    final dir = Direction.values[direction];
+    return block.getDirectSignal(state, dir).clamp(0, 15);
+  }
+
+  /// Dispatch a get analog output event to the appropriate handler.
+  /// Called from native code via callback.
+  /// Returns 0-15 analog signal strength.
+  @pragma('vm:entry-point')
+  static int dispatchGetAnalogOutput(
+    int handlerId,
+    int worldId,
+    int x,
+    int y,
+    int z,
+    int stateData,
+  ) {
+    final block = _instance.getByHandler(handlerId);
+    if (block == null) return 0;
+
+    final state = block.decodeState(stateData);
+    return block.getAnalogOutputSignal(state, worldId, x, y, z).clamp(0, 15);
   }
 }
 
