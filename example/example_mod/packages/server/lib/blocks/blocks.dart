@@ -9,7 +9,9 @@ export 'midas_block.dart';
 export 'mob_spawner_block.dart';
 export 'particle_block.dart';
 export 'party_block.dart';
+export 'power_source_block.dart';
 export 'rainbow_block.dart';
+export 'redstone_lamp_block.dart';
 export 'terraformer_block.dart';
 export 'test_chest_block.dart';
 export 'test_ores.dart';
@@ -28,7 +30,9 @@ import 'midas_block.dart';
 import 'mob_spawner_block.dart';
 import 'particle_block.dart';
 import 'party_block.dart';
+import 'power_source_block.dart';
 import 'rainbow_block.dart';
+import 'redstone_lamp_block.dart';
 import 'terraformer_block.dart';
 import 'test_chest_block.dart';
 import 'test_ores.dart';
@@ -64,6 +68,10 @@ void registerBlocks() {
 
   // Test ores - demonstrate world generation API
   registerTestOres();
+
+  // Block states and redstone - demonstrate new features
+  BlockRegistry.register(RedstoneLampBlock());
+  BlockRegistry.register(PowerSourceBlock());
 
   BlockRegistry.freeze();
 }

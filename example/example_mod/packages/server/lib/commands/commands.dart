@@ -231,5 +231,122 @@ void registerCommands() {
   // Note: /showcase_gui command removed - use Flutter UI via /fluttertest instead
   // The old Screen-based GUI API is deprecated in favor of Flutter-based minecraft_ui
 
-  print('Commands: Registered 10 custom commands');
+  // =========================================================================
+  // Server Lifecycle Commands
+  // These commands demonstrate the Server lifecycle API
+  // =========================================================================
+
+  // /serverinfo - Shows server status information
+  Commands.register(
+    'serverinfo',
+    execute: (context) {
+      final isRunning = Server.isRunning;
+      final playerCount = Server.playerCount;
+      final uptime = Server.uptime;
+      final tps = Server.ticksPerSecond;
+      final isFrozen = Server.isTicksFrozen;
+      final tickRate = Server.tickRate;
+
+      // Format uptime
+      final hours = uptime.inHours;
+      final minutes = uptime.inMinutes % 60;
+      final seconds = uptime.inSeconds % 60;
+      final uptimeStr = '${hours}h ${minutes}m ${seconds}s';
+
+      context.sendFeedback('§6=== Server Info ===');
+      context.sendFeedback('§7Status: ${isRunning ? "§aRunning" : "§cStopped"}');
+      context.sendFeedback('§7Players: §f$playerCount');
+      context.sendFeedback('§7Uptime: §f$uptimeStr');
+      context.sendFeedback('§7TPS: §f${tps.toStringAsFixed(1)} §7(target: 20.0)');
+      context.sendFeedback('§7Tick Rate: §f${tickRate.toStringAsFixed(1)} ticks/sec');
+      context.sendFeedback('§7Frozen: ${isFrozen ? "§cYes" : "§aNo"}');
+
+      return 1;
+    },
+    description: 'Shows server status information',
+  );
+
+  // /freezetime - Freezes game ticks
+  Commands.register(
+    'freezetime',
+    execute: (context) {
+      if (Server.isTicksFrozen) {
+        context.sendFeedback('§e[Server] §fGame time is already frozen!');
+        return 0;
+      }
+
+      Server.freezeTicks();
+      context.sendFeedback('§b[Server] §fGame time frozen! Use /unfreezetime to resume.');
+      context.sendFeedback('§7Players can still move, but world updates are paused.');
+
+      return 1;
+    },
+    description: 'Freezes game ticks (world stops updating)',
+  );
+
+  // /unfreezetime - Resumes game ticks
+  Commands.register(
+    'unfreezetime',
+    execute: (context) {
+      if (!Server.isTicksFrozen) {
+        context.sendFeedback('§e[Server] §fGame time is not frozen!');
+        return 0;
+      }
+
+      Server.unfreezeTicks();
+      context.sendFeedback('§a[Server] §fGame time resumed!');
+
+      return 1;
+    },
+    description: 'Resumes game ticks after freezing',
+  );
+
+  // /stepticks <count> - Step forward by ticks while frozen
+  Commands.register(
+    'stepticks',
+    execute: (context) {
+      final count = context.requireArgument<int>('count');
+
+      if (count <= 0) {
+        context.sendError('§c[Server] §fCount must be positive!');
+        return 0;
+      }
+
+      Server.stepTicks(count);
+      context.sendFeedback('§b[Server] §fStepped forward by §f$count§7 ticks.');
+
+      return 1;
+    },
+    description: 'Step forward by a number of ticks (auto-freezes if not frozen)',
+    arguments: [
+      const CommandArgument('count', ArgumentType.integer),
+    ],
+  );
+
+  // /tickrate <rate> - Set the game tick rate
+  Commands.register(
+    'tickrate',
+    execute: (context) {
+      final rate = context.requireArgument<int>('rate');
+
+      if (rate < 1 || rate > 10000) {
+        context.sendError('§c[Server] §fTick rate must be between 1 and 10000!');
+        return 0;
+      }
+
+      Server.setTickRate(rate.toDouble());
+      context.sendFeedback('§a[Server] §fTick rate set to §f$rate§7 ticks/second.');
+      if (rate != 20) {
+        context.sendFeedback('§7Default is 20. Use /tickrate 20 to restore normal speed.');
+      }
+
+      return 1;
+    },
+    description: 'Set the game tick rate (default: 20)',
+    arguments: [
+      const CommandArgument('rate', ArgumentType.integer),
+    ],
+  );
+
+  print('Commands: Registered 15 custom commands');
 }
