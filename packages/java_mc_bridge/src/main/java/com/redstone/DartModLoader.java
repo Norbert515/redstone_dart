@@ -239,21 +239,22 @@ public class DartModLoader implements ModInitializer {
             if (oreReg == null) break;
 
             // Extract registration data from the array
-            // Format: [namespace, path, oreBlockId, veinSize, veinsPerChunk,
+            // Format: [handlerId, namespace, path, oreBlockId, veinSize, veinsPerChunk,
             //          minY, maxY, distributionType, replaceableTag, biomeSelector,
             //          deepslateVariant, deepslateTransitionY]
-            String namespace = (String) oreReg[0];
-            String path = (String) oreReg[1];
-            String oreBlockId = (String) oreReg[2];
-            int veinSize = (Integer) oreReg[3];
-            int veinsPerChunk = (Integer) oreReg[4];
-            int minY = (Integer) oreReg[5];
-            int maxY = (Integer) oreReg[6];
-            String distributionType = (String) oreReg[7];
-            String replaceableTag = (String) oreReg[8];
-            String biomeSelector = (String) oreReg[9];
-            String deepslateVariant = (String) oreReg[10];
-            int deepslateTransitionY = (Integer) oreReg[11];
+            // Note: handlerId at index 0 is unused for ore features
+            String namespace = (String) oreReg[1];
+            String path = (String) oreReg[2];
+            String oreBlockId = (String) oreReg[3];
+            int veinSize = (Integer) oreReg[4];
+            int veinsPerChunk = (Integer) oreReg[5];
+            int minY = (Integer) oreReg[6];
+            int maxY = (Integer) oreReg[7];
+            String distributionType = (String) oreReg[8];
+            String replaceableTag = (String) oreReg[9];
+            String biomeSelector = (String) oreReg[10];
+            String deepslateVariant = (String) oreReg[11];
+            int deepslateTransitionY = (Integer) oreReg[12];
 
             // Create the ore config and register
             com.redstone.worldgen.OreFeatureRegistry.OreConfig config =
