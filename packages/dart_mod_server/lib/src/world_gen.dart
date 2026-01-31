@@ -3,6 +3,9 @@
 /// Use this to register custom ore generation in your mod.
 library;
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'bridge.dart';
 
 /// Height distribution type for ore generation.
@@ -164,6 +167,61 @@ class WorldGeneration {
       deepslateTransitionY: config.deepslateTransitionY,
     );
 
+    // Also write to manifest for datagen
+    _writeToManifest(id, config, biomeSelector);
+
     print('WorldGeneration: Queued ore feature $id');
+  }
+
+  /// Write ore feature to manifest for CLI datagen.
+  static void _writeToManifest(
+    String id,
+    OreConfig config,
+    String biomeSelector,
+  ) {
+    // Read existing manifest
+    Map<String, dynamic> manifest = {};
+    final manifestFile = File('.redstone/manifest.json');
+    if (manifestFile.existsSync()) {
+      try {
+        manifest =
+            jsonDecode(manifestFile.readAsStringSync()) as Map<String, dynamic>;
+      } catch (_) {
+        // Ignore parse errors
+      }
+    }
+
+    // Get or create ore_features list
+    final oreFeatures =
+        (manifest['ore_features'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+
+    // Add this ore feature
+    oreFeatures.add({
+      'id': id,
+      'oreBlock': config.oreBlock,
+      'veinSize': config.veinSize,
+      'veinsPerChunk': config.veinsPerChunk,
+      'minY': config.minY,
+      'maxY': config.maxY,
+      'distribution': config.distribution.name,
+      'replaceableTag': config.replaceableTag,
+      'biomeSelector': biomeSelector,
+      'deepslateVariant': config.deepslateVariant,
+      'deepslateTransitionY': config.deepslateTransitionY,
+    });
+
+    manifest['ore_features'] = oreFeatures;
+
+    // Create .redstone directory if it doesn't exist
+    final redstoneDir = Directory('.redstone');
+    if (!redstoneDir.existsSync()) {
+      redstoneDir.createSync(recursive: true);
+    }
+
+    // Write manifest with pretty formatting
+    final encoder = JsonEncoder.withIndent('  ');
+    manifestFile.writeAsStringSync(encoder.convert(manifest));
+
+    print('WorldGeneration: Wrote ore feature $id to manifest');
   }
 }

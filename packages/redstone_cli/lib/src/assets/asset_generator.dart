@@ -19,6 +19,7 @@ class AssetGenerator {
     final blocks = manifest['blocks'] as List<dynamic>? ?? [];
     final items = manifest['items'] as List<dynamic>? ?? [];
     final entities = manifest['entities'] as List<dynamic>? ?? [];
+    final oreFeatures = manifest['ore_features'] as List<dynamic>? ?? [];
 
     for (final block in blocks) {
       await _generateBlockAssets(block as Map<String, dynamic>);
@@ -31,6 +32,11 @@ class AssetGenerator {
 
     // Generate loot tables for blocks
     await _generateLootTables(blocks);
+
+    // Generate worldgen assets for ore features
+    for (final oreFeature in oreFeatures) {
+      await _generateOreFeatureAssets(oreFeature as Map<String, dynamic>);
+    }
 
     await _copyTextures();
     await _copyEntityTextures(entities);
@@ -352,7 +358,13 @@ class AssetGenerator {
 
   /// Convert 'assets/textures/block/hello.png' to 'mymod:block/hello'
   /// Convert 'assets/textures/item/dart.png' to 'mymod:item/dart'
+  /// Already namespaced refs like 'minecraft:block/diamond_ore' are passed through unchanged
   String _filePathToTextureRef(String namespace, String filePath) {
+    // If already namespaced (e.g., 'minecraft:block/diamond_ore'), pass through
+    if (filePath.contains(':')) {
+      return filePath;
+    }
+
     // Remove 'assets/textures/' prefix and '.png' suffix
     var ref = filePath;
     if (ref.startsWith('assets/textures/')) {
@@ -409,6 +421,146 @@ class AssetGenerator {
       );
       await _writeJson(path, lootTable);
     }
+  }
+
+  /// Generate worldgen JSON files for ore features.
+  ///
+  /// Creates:
+  /// - data/<namespace>/worldgen/configured_feature/<name>.json
+  /// - data/<namespace>/worldgen/placed_feature/<name>.json
+  Future<void> _generateOreFeatureAssets(Map<String, dynamic> oreFeature) async {
+    final id = oreFeature['id'] as String; // e.g., 'mymod:ruby_ore_feature'
+    final namespace = id.split(':')[0];
+    final featureName = id.split(':')[1];
+
+    final oreBlock = oreFeature['oreBlock'] as String;
+    final veinSize = oreFeature['veinSize'] as int;
+    final veinsPerChunk = oreFeature['veinsPerChunk'] as int;
+    final minY = oreFeature['minY'] as int;
+    final maxY = oreFeature['maxY'] as int;
+    final distribution = oreFeature['distribution'] as String;
+    final replaceableTag = oreFeature['replaceableTag'] as String;
+    final deepslateVariant = oreFeature['deepslateVariant'] as String?;
+
+    // Generate ConfiguredFeature JSON
+    await _generateConfiguredFeature(
+      namespace,
+      featureName,
+      oreBlock,
+      veinSize,
+      replaceableTag,
+      deepslateVariant,
+    );
+
+    // Generate PlacedFeature JSON
+    await _generatePlacedFeature(
+      namespace,
+      featureName,
+      veinsPerChunk,
+      minY,
+      maxY,
+      distribution,
+    );
+
+    print('Generated worldgen assets for $id');
+  }
+
+  Future<void> _generateConfiguredFeature(
+    String namespace,
+    String featureName,
+    String oreBlock,
+    int veinSize,
+    String replaceableTag,
+    String? deepslateVariant,
+  ) async {
+    final targets = <Map<String, dynamic>>[
+      {
+        'state': {'Name': oreBlock},
+        'target': {
+          'predicate_type': 'minecraft:tag_match',
+          'tag': replaceableTag,
+        },
+      },
+    ];
+
+    // Add deepslate variant if specified
+    if (deepslateVariant != null && deepslateVariant.isNotEmpty) {
+      targets.add({
+        'state': {'Name': deepslateVariant},
+        'target': {
+          'predicate_type': 'minecraft:tag_match',
+          'tag': 'minecraft:deepslate_ore_replaceables',
+        },
+      });
+    }
+
+    final configuredFeature = {
+      'type': 'minecraft:ore',
+      'config': {
+        'discard_chance_on_air_exposure': 0.0,
+        'size': veinSize,
+        'targets': targets,
+      },
+    };
+
+    final path = p.join(
+      project.minecraftDir,
+      'src',
+      'main',
+      'resources',
+      'data',
+      namespace,
+      'worldgen',
+      'configured_feature',
+      '$featureName.json',
+    );
+    await _writeJson(path, configuredFeature);
+  }
+
+  Future<void> _generatePlacedFeature(
+    String namespace,
+    String featureName,
+    int veinsPerChunk,
+    int minY,
+    int maxY,
+    String distribution,
+  ) async {
+    // Map distribution type to Minecraft height provider
+    final heightType = switch (distribution.toLowerCase()) {
+      'triangle' => 'minecraft:trapezoid',
+      'trapezoid' => 'minecraft:trapezoid',
+      _ => 'minecraft:uniform',
+    };
+
+    final placedFeature = {
+      'feature': '$namespace:$featureName',
+      'placement': [
+        {'type': 'minecraft:count', 'count': veinsPerChunk},
+        {'type': 'minecraft:in_square'},
+        {
+          'type': 'minecraft:height_range',
+          'height': {
+            'type': heightType,
+            'min_inclusive': {'absolute': minY},
+            'max_inclusive': {'absolute': maxY},
+          },
+        },
+        {'type': 'minecraft:biome'},
+      ],
+    };
+
+    final path = p.join(
+      project.minecraftDir,
+      'src',
+      'main',
+      'resources',
+      'data',
+      namespace,
+      'worldgen',
+      'placed_feature',
+      '$featureName.json',
+    );
+    await _writeJson(path, placedFeature);
   }
 
   Future<void> _copyTextures() async {
