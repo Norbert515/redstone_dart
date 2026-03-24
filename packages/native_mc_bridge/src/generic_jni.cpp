@@ -513,7 +513,7 @@ void generic_jni_shutdown() {
 // Object Creation
 // ============================================================================
 
-int64_t jni_create_object(const char* class_name, const char* ctor_sig,
+DART_EXPORT int64_t jni_create_object(const char* class_name, const char* ctor_sig,
                           int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
     if (!env) return 0;
@@ -541,7 +541,7 @@ int64_t jni_create_object(const char* class_name, const char* ctor_sig,
 // Instance Method Calls
 // ============================================================================
 
-void jni_call_void_method(int64_t obj_handle, const char* class_name,
+DART_EXPORT void jni_call_void_method(int64_t obj_handle, const char* class_name,
                           const char* method_name, const char* sig,
                           int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
@@ -561,7 +561,7 @@ void jni_call_void_method(int64_t obj_handle, const char* class_name,
     check_exception(env);
 }
 
-int32_t jni_call_int_method(int64_t obj_handle, const char* class_name,
+DART_EXPORT int32_t jni_call_int_method(int64_t obj_handle, const char* class_name,
                             const char* method_name, const char* sig,
                             int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
@@ -583,7 +583,7 @@ int32_t jni_call_int_method(int64_t obj_handle, const char* class_name,
     return result;
 }
 
-int64_t jni_call_long_method(int64_t obj_handle, const char* class_name,
+DART_EXPORT int64_t jni_call_long_method(int64_t obj_handle, const char* class_name,
                              const char* method_name, const char* sig,
                              int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
@@ -605,7 +605,7 @@ int64_t jni_call_long_method(int64_t obj_handle, const char* class_name,
     return result;
 }
 
-double jni_call_double_method(int64_t obj_handle, const char* class_name,
+DART_EXPORT double jni_call_double_method(int64_t obj_handle, const char* class_name,
                               const char* method_name, const char* sig,
                               int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
@@ -627,7 +627,7 @@ double jni_call_double_method(int64_t obj_handle, const char* class_name,
     return result;
 }
 
-float jni_call_float_method(int64_t obj_handle, const char* class_name,
+DART_EXPORT float jni_call_float_method(int64_t obj_handle, const char* class_name,
                             const char* method_name, const char* sig,
                             int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
@@ -649,7 +649,7 @@ float jni_call_float_method(int64_t obj_handle, const char* class_name,
     return result;
 }
 
-bool jni_call_bool_method(int64_t obj_handle, const char* class_name,
+DART_EXPORT bool jni_call_bool_method(int64_t obj_handle, const char* class_name,
                           const char* method_name, const char* sig,
                           int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
@@ -671,7 +671,7 @@ bool jni_call_bool_method(int64_t obj_handle, const char* class_name,
     return result != JNI_FALSE;
 }
 
-int64_t jni_call_object_method(int64_t obj_handle, const char* class_name,
+DART_EXPORT int64_t jni_call_object_method(int64_t obj_handle, const char* class_name,
                                const char* method_name, const char* sig,
                                int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
@@ -699,7 +699,7 @@ int64_t jni_call_object_method(int64_t obj_handle, const char* class_name,
     return handle;
 }
 
-const char* jni_call_string_method(int64_t obj_handle, const char* class_name,
+DART_EXPORT const char* jni_call_string_method(int64_t obj_handle, const char* class_name,
                                    const char* method_name, const char* sig,
                                    int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
@@ -734,7 +734,7 @@ const char* jni_call_string_method(int64_t obj_handle, const char* class_name,
 // Static Method Calls
 // ============================================================================
 
-void jni_call_static_void_method(const char* class_name, const char* method_name,
+DART_EXPORT void jni_call_static_void_method(const char* class_name, const char* method_name,
                                  const char* sig, int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
     if (!env) return;
@@ -750,7 +750,7 @@ void jni_call_static_void_method(const char* class_name, const char* method_name
     check_exception(env);
 }
 
-int32_t jni_call_static_int_method(const char* class_name, const char* method_name,
+DART_EXPORT int32_t jni_call_static_int_method(const char* class_name, const char* method_name,
                                    const char* sig, int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
     if (!env) return 0;
@@ -768,7 +768,7 @@ int32_t jni_call_static_int_method(const char* class_name, const char* method_na
     return result;
 }
 
-int64_t jni_call_static_long_method(const char* class_name, const char* method_name,
+DART_EXPORT int64_t jni_call_static_long_method(const char* class_name, const char* method_name,
                                     const char* sig, int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
     if (!env) return 0;
@@ -786,7 +786,7 @@ int64_t jni_call_static_long_method(const char* class_name, const char* method_n
     return result;
 }
 
-int64_t jni_call_static_object_method(const char* class_name, const char* method_name,
+DART_EXPORT int64_t jni_call_static_object_method(const char* class_name, const char* method_name,
                                       const char* sig, int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
     if (!env) return 0;
@@ -810,7 +810,7 @@ int64_t jni_call_static_object_method(const char* class_name, const char* method
     return handle;
 }
 
-const char* jni_call_static_string_method(const char* class_name, const char* method_name,
+DART_EXPORT const char* jni_call_static_string_method(const char* class_name, const char* method_name,
                                           const char* sig, int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
     if (!env) return nullptr;
@@ -837,7 +837,7 @@ const char* jni_call_static_string_method(const char* class_name, const char* me
     return result;
 }
 
-double jni_call_static_double_method(const char* class_name, const char* method_name,
+DART_EXPORT double jni_call_static_double_method(const char* class_name, const char* method_name,
                                      const char* sig, int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
     if (!env) return 0.0;
@@ -855,7 +855,7 @@ double jni_call_static_double_method(const char* class_name, const char* method_
     return result;
 }
 
-bool jni_call_static_bool_method(const char* class_name, const char* method_name,
+DART_EXPORT bool jni_call_static_bool_method(const char* class_name, const char* method_name,
                                  const char* sig, int64_t* args, int32_t arg_count) {
     JNIEnv* env = get_env();
     if (!env) return false;
@@ -877,7 +877,7 @@ bool jni_call_static_bool_method(const char* class_name, const char* method_name
 // Field Access (Instance)
 // ============================================================================
 
-int64_t jni_get_object_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT int64_t jni_get_object_field(int64_t obj_handle, const char* class_name,
                              const char* field_name, const char* sig) {
     JNIEnv* env = get_env();
     if (!env) return 0;
@@ -902,7 +902,7 @@ int64_t jni_get_object_field(int64_t obj_handle, const char* class_name,
     return handle;
 }
 
-int32_t jni_get_int_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT int32_t jni_get_int_field(int64_t obj_handle, const char* class_name,
                           const char* field_name, const char* sig) {
     JNIEnv* env = get_env();
     if (!env) return 0;
@@ -922,7 +922,7 @@ int32_t jni_get_int_field(int64_t obj_handle, const char* class_name,
     return result;
 }
 
-int64_t jni_get_long_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT int64_t jni_get_long_field(int64_t obj_handle, const char* class_name,
                            const char* field_name, const char* sig) {
     JNIEnv* env = get_env();
     if (!env) return 0;
@@ -942,7 +942,7 @@ int64_t jni_get_long_field(int64_t obj_handle, const char* class_name,
     return result;
 }
 
-double jni_get_double_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT double jni_get_double_field(int64_t obj_handle, const char* class_name,
                             const char* field_name, const char* sig) {
     JNIEnv* env = get_env();
     if (!env) return 0.0;
@@ -962,7 +962,7 @@ double jni_get_double_field(int64_t obj_handle, const char* class_name,
     return result;
 }
 
-bool jni_get_bool_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT bool jni_get_bool_field(int64_t obj_handle, const char* class_name,
                         const char* field_name, const char* sig) {
     JNIEnv* env = get_env();
     if (!env) return false;
@@ -982,7 +982,7 @@ bool jni_get_bool_field(int64_t obj_handle, const char* class_name,
     return result != JNI_FALSE;
 }
 
-const char* jni_get_string_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT const char* jni_get_string_field(int64_t obj_handle, const char* class_name,
                                  const char* field_name, const char* sig) {
     JNIEnv* env = get_env();
     if (!env) return nullptr;
@@ -1009,7 +1009,7 @@ const char* jni_get_string_field(int64_t obj_handle, const char* class_name,
     return result;
 }
 
-void jni_set_int_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT void jni_set_int_field(int64_t obj_handle, const char* class_name,
                        const char* field_name, const char* sig, int32_t value) {
     JNIEnv* env = get_env();
     if (!env) return;
@@ -1027,7 +1027,7 @@ void jni_set_int_field(int64_t obj_handle, const char* class_name,
     check_exception(env);
 }
 
-void jni_set_long_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT void jni_set_long_field(int64_t obj_handle, const char* class_name,
                         const char* field_name, const char* sig, int64_t value) {
     JNIEnv* env = get_env();
     if (!env) return;
@@ -1045,7 +1045,7 @@ void jni_set_long_field(int64_t obj_handle, const char* class_name,
     check_exception(env);
 }
 
-void jni_set_double_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT void jni_set_double_field(int64_t obj_handle, const char* class_name,
                           const char* field_name, const char* sig, double value) {
     JNIEnv* env = get_env();
     if (!env) return;
@@ -1063,7 +1063,7 @@ void jni_set_double_field(int64_t obj_handle, const char* class_name,
     check_exception(env);
 }
 
-void jni_set_bool_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT void jni_set_bool_field(int64_t obj_handle, const char* class_name,
                         const char* field_name, const char* sig, bool value) {
     JNIEnv* env = get_env();
     if (!env) return;
@@ -1081,7 +1081,7 @@ void jni_set_bool_field(int64_t obj_handle, const char* class_name,
     check_exception(env);
 }
 
-void jni_set_object_field(int64_t obj_handle, const char* class_name,
+DART_EXPORT void jni_set_object_field(int64_t obj_handle, const char* class_name,
                           const char* field_name, const char* sig, int64_t value_handle) {
     JNIEnv* env = get_env();
     if (!env) return;
@@ -1108,7 +1108,7 @@ void jni_set_object_field(int64_t obj_handle, const char* class_name,
 // Static Field Access
 // ============================================================================
 
-int64_t jni_get_static_object_field(const char* class_name, const char* field_name,
+DART_EXPORT int64_t jni_get_static_object_field(const char* class_name, const char* field_name,
                                     const char* sig) {
     JNIEnv* env = get_env();
     if (!env) return 0;
@@ -1130,7 +1130,7 @@ int64_t jni_get_static_object_field(const char* class_name, const char* field_na
     return handle;
 }
 
-int32_t jni_get_static_int_field(const char* class_name, const char* field_name,
+DART_EXPORT int32_t jni_get_static_int_field(const char* class_name, const char* field_name,
                                  const char* sig) {
     JNIEnv* env = get_env();
     if (!env) return 0;
@@ -1151,7 +1151,7 @@ int32_t jni_get_static_int_field(const char* class_name, const char* field_name,
 // Object Lifecycle
 // ============================================================================
 
-void jni_release_object(int64_t handle) {
+DART_EXPORT void jni_release_object(int64_t handle) {
     if (handle == 0) return;
 
     JNIEnv* env = get_env();
@@ -1160,7 +1160,7 @@ void jni_release_object(int64_t handle) {
     dart_mc_bridge::ObjectRegistry::instance().release(env, handle);
 }
 
-void jni_free_string(const char* str) {
+DART_EXPORT void jni_free_string(const char* str) {
     free(const_cast<char*>(str));
 }
 
@@ -1168,16 +1168,16 @@ void jni_free_string(const char* str) {
 // Error Handling
 // ============================================================================
 
-bool jni_has_error() {
+DART_EXPORT bool jni_has_error() {
     return g_has_jni_error;
 }
 
-const char* jni_get_last_error() {
+DART_EXPORT const char* jni_get_last_error() {
     if (!g_has_jni_error) return nullptr;
     return strdup(g_last_jni_error.c_str());  // Caller must free
 }
 
-void jni_clear_error() {
+DART_EXPORT void jni_clear_error() {
     g_has_jni_error = false;
     g_last_jni_error.clear();
 }

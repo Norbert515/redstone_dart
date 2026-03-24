@@ -94,7 +94,53 @@ public class DartBridge {
         }
     }
 
+    private static void tryPreloadDependency(String libName, String winName, String macName, String linuxName) {
+        String osName = System.getProperty("os.name").toLowerCase();
+        String fileName;
+        if (osName.contains("mac")) {
+            fileName = macName;
+        } else if (osName.contains("win")) {
+            fileName = winName;
+        } else {
+            fileName = linuxName;
+        }
+
+        try {
+            System.loadLibrary(libName);
+            LOGGER.debug("Preloaded dependency {} from java.library.path", libName);
+            return;
+        } catch (UnsatisfiedLinkError e) {
+            // ignore
+        }
+
+        String runDir = System.getProperty("user.dir");
+        String[] searchPaths = {
+            runDir + "/natives/" + fileName,
+            runDir + "/" + fileName,
+            runDir + "/mods/natives/" + fileName
+        };
+
+        for (String path : searchPaths) {
+            File f = new File(path);
+            if (f.exists()) {
+                try {
+                    System.load(f.getAbsolutePath());
+                    LOGGER.debug("Preloaded dependency {} from: {}", libName, path);
+                    return;
+                } catch (Throwable t) {
+                    LOGGER.debug("Failed to preload {} from {}: {}", libName, path, t.getMessage());
+                }
+            }
+        }
+    }
+
     private static void loadNativeLibrary() {
+        // Preload dependent libraries before loading the main bridge
+        // Windows in particular fails if dynamically linked DLLs aren't in PATH or already loaded
+        tryPreloadDependency("dart_dll", "dart_dll.dll", "libdart_dll.dylib", "libdart_dll.so");
+        // Also try flutter one just in case we're in flutter mode
+        tryPreloadDependency("flutter_windows", "flutter_windows.dll", "libflutter_engine.dylib", "libflutter_engine.so");
+
         // First try development mode: load from java.library.path (set by redstone run)
         try {
             System.loadLibrary("dart_mc_bridge");

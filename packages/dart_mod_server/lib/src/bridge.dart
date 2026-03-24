@@ -92,21 +92,21 @@ class ServerBridge {
 
     final String libraryName;
     if (Platform.isWindows) {
-      libraryName = 'dart_bridge_server.dll';
+      libraryName = 'dart_mc_bridge.dll';
     } else if (Platform.isMacOS) {
-      libraryName = 'libdart_bridge_server.dylib';
+      libraryName = 'libdart_mc_bridge.dylib';
     } else {
-      libraryName = 'libdart_bridge_server.so';
+      libraryName = 'libdart_mc_bridge.so';
     }
 
     // Try multiple paths to find the library
     final paths = [
       libraryName, // Current directory
-      'dart_bridge_server.dylib', // Without lib prefix (our build)
+      'dart_mc_bridge.dylib', // Without lib prefix (our build)
       '../native/build/$libraryName', // Build output
-      '../native/build/dart_bridge_server.dylib', // Build output without prefix
+      '../native/build/dart_mc_bridge.dylib', // Build output without prefix
       'native/build/lib/$libraryName',
-      'native/build/dart_bridge_server.dylib',
+      'native/build/dart_mc_bridge.dylib',
     ];
 
     for (final path in paths) {
