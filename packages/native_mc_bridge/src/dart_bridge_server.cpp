@@ -562,7 +562,7 @@ static std::atomic<int64_t> g_server_next_ore_feature_id{1};
 
 extern "C" {
 
-bool dart_server_init(const char* script_path, const char* package_config, int service_port) {
+DART_EXPORT bool dart_server_init(const char* script_path, const char* package_config, int service_port) {
     if (g_server_initialized) {
         std::cerr << "Server Dart bridge already initialized" << std::endl;
         return false;
@@ -636,7 +636,7 @@ bool dart_server_init(const char* script_path, const char* package_config, int s
     return true;
 }
 
-bool dart_server_init_aot(const char* aot_library_path) {
+DART_EXPORT bool dart_server_init_aot(const char* aot_library_path) {
     if (g_server_initialized) {
         std::cerr << "Server Dart bridge already initialized" << std::endl;
         return false;
@@ -665,13 +665,13 @@ bool dart_server_init_aot(const char* aot_library_path) {
 
     // Load snapshot symbols from the AOT library
     // The Dart AOT compiler exports these symbols
-    const uint8_t* vm_snapshot_data = static_cast<const uint8_t*>(
+    const uint8_t* vm_snapshot_data = reinterpret_cast<const uint8_t*>(
         GET_SYMBOL(g_aot_library_handle, kVmSnapshotDataCSymbol));
-    const uint8_t* vm_snapshot_instructions = static_cast<const uint8_t*>(
+    const uint8_t* vm_snapshot_instructions = reinterpret_cast<const uint8_t*>(
         GET_SYMBOL(g_aot_library_handle, kVmSnapshotInstructionsCSymbol));
-    const uint8_t* isolate_snapshot_data = static_cast<const uint8_t*>(
+    const uint8_t* isolate_snapshot_data = reinterpret_cast<const uint8_t*>(
         GET_SYMBOL(g_aot_library_handle, kIsolateSnapshotDataCSymbol));
-    const uint8_t* isolate_snapshot_instructions = static_cast<const uint8_t*>(
+    const uint8_t* isolate_snapshot_instructions = reinterpret_cast<const uint8_t*>(
         GET_SYMBOL(g_aot_library_handle, kIsolateSnapshotInstructionsCSymbol));
 
     if (vm_snapshot_data == nullptr || vm_snapshot_instructions == nullptr ||
@@ -783,7 +783,7 @@ bool dart_server_init_aot(const char* aot_library_path) {
     return true;
 }
 
-void dart_server_shutdown() {
+DART_EXPORT void dart_server_shutdown() {
     if (!g_server_initialized) return;
 
     std::cout << "Shutting down Server Dart VM..." << std::endl;
@@ -830,7 +830,7 @@ void dart_server_shutdown() {
     std::cout << "Server Dart VM shutdown complete" << std::endl;
 }
 
-void dart_server_tick() {
+DART_EXPORT void dart_server_tick() {
     if (!g_server_initialized || g_server_isolate == nullptr) return;
 
     // Enter isolate and drain microtask queue
@@ -843,13 +843,13 @@ void dart_server_tick() {
     safe_exit_isolate(did_enter);
 }
 
-void dart_server_set_jvm(JavaVM* jvm) {
+DART_EXPORT void dart_server_set_jvm(JavaVM* jvm) {
     g_server_jvm_ref = jvm;
     // Initialize generic_jni module so Dart can call back into Java
     generic_jni_init(jvm);
 }
 
-const char* dart_server_get_service_url() {
+DART_EXPORT const char* dart_server_get_service_url() {
     if (g_server_initialized) {
         return g_server_service_url.c_str();
     }

@@ -222,6 +222,17 @@ class DartDllManager {
       binFile.copySync(libFile.path);
       binFile.deleteSync();
       Logger.debug('Moved $libName from bin/ to lib/');
+
+      // On Windows, also move the .lib file
+      if (Platform.isWindows) {
+        final libNameWindows = libName.replaceFirst('.dll', '.lib');
+        final binLibFile = File(p.join(binDir.path, libNameWindows));
+        final targetLibFile = File(p.join(libDir.path, libNameWindows));
+        if (binLibFile.existsSync()) {
+          binLibFile.copySync(targetLibFile.path);
+          binLibFile.deleteSync();
+        }
+      }
     }
   }
 }

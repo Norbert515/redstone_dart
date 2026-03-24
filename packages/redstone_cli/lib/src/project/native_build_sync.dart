@@ -16,7 +16,8 @@ class NativeBuildSync {
   ///
   /// If [flutterMode] is true, skips dart_dll check since Flutter embedder
   /// provides the Dart VM instead.
-  static Future<bool> rebuildIfNeeded(String projectDir, {bool flutterMode = false}) async {
+  static Future<bool> rebuildIfNeeded(String projectDir,
+      {bool flutterMode = false}) async {
     final nativeBridgeDir = findNativeBridgeDir();
     if (nativeBridgeDir == null) {
       Logger.debug('Could not find native_mc_bridge directory (development mode)');
@@ -51,14 +52,17 @@ class NativeBuildSync {
     }
 
     // Run CMake build
-    final buildSuccess = await _runCMakeBuild(nativeBridgeDir);
+    final buildSuccess =
+        await _runCMakeBuild(nativeBridgeDir, flutterMode: flutterMode);
     if (!buildSuccess) {
+      Logger.error('Failed to build native library');
       return false;
     }
 
-    // Copy output library to .redstone/native/
+    // After successful build, copy the library to the project
     final copySuccess = await _copyBuiltLibrary(nativeBridgeDir, projectDir);
     if (!copySuccess) {
+      Logger.error('Failed to copy native library');
       return false;
     }
 
@@ -94,14 +98,15 @@ class NativeBuildSync {
     final fileHashes = <String>[];
 
     // Get all native source files recursively and sort for determinism
-    final files = srcDir
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((f) {
-          final ext = p.extension(f.path).toLowerCase();
-          return ext == '.cpp' || ext == '.h' || ext == '.c' || ext == '.hpp' || ext == '.mm' || ext == '.m';
-        })
-        .toList()
+    final files = srcDir.listSync(recursive: true).whereType<File>().where((f) {
+      final ext = p.extension(f.path).toLowerCase();
+      return ext == '.cpp' ||
+          ext == '.h' ||
+          ext == '.c' ||
+          ext == '.hpp' ||
+          ext == '.mm' ||
+          ext == '.m';
+    }).toList()
       ..sort((a, b) => a.path.compareTo(b.path));
 
     for (final file in files) {
@@ -135,7 +140,8 @@ class NativeBuildSync {
   /// Run CMake to build the native library
   ///
   /// Returns true if build succeeded, false otherwise.
-  static Future<bool> _runCMakeBuild(String nativeBridgeDir) async {
+  static Future<bool> _runCMakeBuild(String nativeBridgeDir,
+      {bool flutterMode = false}) async {
     final buildDir = Directory(p.join(nativeBridgeDir, 'build'));
 
     // Check if CMake is available
@@ -153,9 +159,17 @@ class NativeBuildSync {
     // If build directory doesn't exist, run CMake configure first
     if (!buildDir.existsSync()) {
       Logger.debug('Configuring CMake build...');
+
+      final configArgs = ['-B', 'build', '.'];
+      if (!flutterMode) {
+        configArgs.add('-DSERVER_ONLY=ON');
+      } else {
+        configArgs.add('-DSERVER_ONLY=OFF');
+      }
+
       final configResult = await Process.run(
         'cmake',
-        ['-B', 'build', '.'],
+        configArgs,
         workingDirectory: nativeBridgeDir,
       );
 
@@ -199,10 +213,27 @@ class NativeBuildSync {
     String projectDir,
   ) async {
     final libraryName = _getLibraryName();
-    final builtLibrary = File(p.join(nativeBridgeDir, 'build', libraryName));
+    File builtLibrary = File(p.join(nativeBridgeDir, 'build', libraryName));
+
+    Logger.debug('Checking built library at: ${builtLibrary.path}');
+    if (!builtLibrary.existsSync() && Platform.isWindows) {
+      final debugLibrary =
+          File(p.join(nativeBridgeDir, 'build', 'Debug', libraryName));
+      final releaseLibrary =
+          File(p.join(nativeBridgeDir, 'build', 'Release', libraryName));
+      Logger.debug(
+          'Checking on Windows: ${debugLibrary.path}, ${releaseLibrary.path}');
+      if (debugLibrary.existsSync()) {
+        builtLibrary = debugLibrary;
+      } else if (releaseLibrary.existsSync()) {
+        builtLibrary = releaseLibrary;
+      }
+    }
 
     if (!builtLibrary.existsSync()) {
-      Logger.warning('Built library not found at ${builtLibrary.path}');
+      Logger.warning('Built library not found for $libraryName');
+      Logger.warning('Looked at ${builtLibrary.path}');
+      Logger.warning('nativeBridgeDir was $nativeBridgeDir');
       return false;
     }
 

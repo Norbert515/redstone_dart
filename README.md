@@ -94,6 +94,12 @@ No Minecraft installation needed — Redstone downloads everything automatically
 | Linux x64 | ✅ |
 | Windows x64 | ✅ |
 
+### 🪟 Windows Notes
+
+The custom Flutter engine is not yet available on Windows, which means **Dual Mode** is currently unsupported. 
+
+To run your mod successfully on Windows, you must edit your `redstone.yaml` to retain **only** the `redstone_mod` configuration block. Remove any flutter or dual mode related configuration, otherwise the runner will fail.
+
 ## License
 
 [MIT License](LICENSE)

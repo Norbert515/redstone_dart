@@ -12,6 +12,13 @@
 
 extern "C" {
 
+#if defined(_WIN32)
+    #define DART_EXPORT __declspec(dllexport)
+#else
+    #define DART_EXPORT __attribute__((visibility("default")))
+#endif
+
+
 // ==========================================================================
 // Lifecycle
 // ==========================================================================
@@ -20,25 +27,25 @@ extern "C" {
 // script_path: Path to the Dart script to run (kernel file .dill)
 // package_config: Path to package_config.json (can be null)
 // service_port: Port for Dart VM service (hot reload/debugging), 0 to disable
-bool dart_server_init(const char* script_path, const char* package_config, int service_port);
+DART_EXPORT bool dart_server_init(const char* script_path, const char* package_config, int service_port);
 
 // Initialize the Dart VM with AOT snapshot (release mode)
 // aot_library_path: Path to AOT compiled library (.so/.dll/dylib containing snapshots)
 // Returns true if successful, false otherwise
 // Note: AOT mode does not support hot reload or VM service
-bool dart_server_init_aot(const char* aot_library_path);
+DART_EXPORT bool dart_server_init_aot(const char* aot_library_path);
 
 // Shutdown the Dart VM
-void dart_server_shutdown();
+DART_EXPORT void dart_server_shutdown();
 
 // Tick the Dart VM (drain microtask queue)
-void dart_server_tick();
+DART_EXPORT void dart_server_tick();
 
 // Set JVM reference for JNI callbacks
-void dart_server_set_jvm(JavaVM* jvm);
+DART_EXPORT void dart_server_set_jvm(JavaVM* jvm);
 
 // Get the Dart VM service URL for hot reload/debugging
-const char* dart_server_get_service_url();
+DART_EXPORT const char* dart_server_get_service_url();
 
 // ==========================================================================
 // Callback Types (same as dart_bridge.h for server-side events)

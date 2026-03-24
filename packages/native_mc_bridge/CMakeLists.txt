@@ -42,6 +42,9 @@ endif()
 # Create shared library
 add_library(dart_mc_bridge SHARED ${SOURCES})
 
+# Automatically export all symbols on Windows for Dart FFI
+set_target_properties(dart_mc_bridge PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
 # Include directories and compile definitions
 if(SERVER_ONLY)
     target_include_directories(dart_mc_bridge PRIVATE
